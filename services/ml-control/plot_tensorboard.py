@@ -61,17 +61,22 @@ def plot_training_curves(metrics, out_path):
             steps = [v[0] for v in values]
             vals = [v[1] for v in values]
 
-            ax.plot(steps, vals, label=title, color='tab:blue', linewidth=1.5)
+            if len(vals) > 20:
+                window = max(1, len(vals) // 30)
+                kernel = np.ones(window) / window
+                smooth = np.convolve(vals, kernel, mode='valid')
+                smooth_steps = steps[window - 1:]
+                ax.plot(smooth_steps, smooth, label='Smoothed', color='tab:blue', linewidth=2.0)
+                ax.plot(steps, vals, label='Raw', color='tab:blue', linewidth=0.6, alpha=0.35)
+                ax.legend(fontsize=8)
+            else:
+                ax.plot(steps, vals, label=title, color='tab:blue', linewidth=1.5)
+                ax.legend(fontsize=8)
+
             ax.set_title(title)
             ax.set_xlabel('Timestep')
             ax.set_ylabel('Value')
             ax.grid(True, alpha=0.3)
-
-            # Add mean line
-            if len(vals) > 0:
-                mean_val = np.mean(vals)
-                ax.axhline(y=mean_val, color='tab:red', linestyle='--', linewidth=1.0, alpha=0.7, label=f'Mean: {mean_val:.4f}')
-                ax.legend(fontsize=8)
 
             plot_idx += 1
 
