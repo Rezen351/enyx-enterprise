@@ -449,6 +449,7 @@ def run_evaluation():
     histories = evaluate_policy(model, vec_env, num_episodes=5)
     plot_episode_comparison(histories, results_dir)
     plot_action_histograms(histories, results_dir)
+    plot_reward_curve(histories, results_dir)
     print_summary(histories)
 
     print("\n" + "=" * 80)
