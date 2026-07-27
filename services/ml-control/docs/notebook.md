@@ -65,7 +65,7 @@ $$
 
 * $D_{\text{mist}} \in [120.0, 240.0]$ detik: Durasi misting aktif per siklus (2–4 menit), sesuai praktik lapangan kentang aeroponik.
 * $interval_{\text{sec}} \in [360.0, 540.0]$ detik: Interval jeda antar siklus semprotan (6–9 menit). Rentang ini dipilih berdasarkan kajian Tunio et al. (2021): interval < 360 detik menyebabkan hipoksia akumulatif, sementara interval > 540 detik menyebabkan desikasi akar mikro (>85% RH threshold).
-* $A_{\text{valve}} \in [0.0, 1.0]$: Kontrol katup solenoid untuk **penyemprotan zona bawah akar**. Ketika diaktifkan ($\ge 0.5$), sistem menyemprot aerosol larutan nutrisi segar di zona bawah akar yang meningkatkan kelembaban lokal, memberikan pendinginan lokal, menjaga oksigenasi, dan secara tidak langsung menyegarkan $EC \to 1.5$ serta $pH \to 6.0$.
+* $A_{\text{valve}} \in [0.0, 1.0]$: Kontrol katup solenoid untuk **penyemprotan zona bawah akar**. Dipetakan dari ruang aksi ter-normalisasi $[-1, 1]$ dengan threshold **0** (tidak 0.5): jika $a_{\text{valve}} \ge 0$ maka $A_{\text{valve}} = 1.0$, jika $a_{\text{valve}} < 0$ maka $A_{\text{valve}} = 0.0$. Ketika diaktifkan, sistem menyemprot aerosol larutan nutrisi segar di zona bawah akar yang meningkatkan kelembaban lokal, memberikan pendinginan lokal, menjaga oksigenasi, dan secara tidak langsung menyegarkan $EC \to 1.5$ serta $pH \to 6.0$.
 
 #### Pemodelan Spray Delay (*Jeda Pembentukan Tekanan Pompa*)
 Pada sistem aeroponik tekanan tinggi ($60–100\text{ PSI}$), terdapat jeda waktu penekanan pipa hidrolik ($t_{\text{delay}} = 1.5\text{ detik}$) dari saat relay pompa menyala hingga katup *anti-tetes* mekar menghembuskan kabut aerosol. Durasi pengkabutan efektif ($D_{\text{effective}}$) yang menyentuh akar dirumuskan sebagai:
@@ -80,28 +80,45 @@ Jika $D_{\text{mist}} \le 1.5\text{s}$, tidak ada kabut cairan yang keluar ($D_{
 
 ### 2.3 Perumusan Fungsi Imbalan $R(t)$
 
-Fungsi imbalan dirancang untuk menyeimbangkan 5 komponen utama:
+Fungsi imbalan dirancang untuk menyeimbangkan 6 komponen utama:
 
 $$
-R(t) = R_{\text{growth}}(t) - C_{\text{resource}}(t) - P_{\text{env}}(t) - P_{\text{hypoxia}}(t) - P_{\text{interval}}(t)
+R(t) = R_{\text{growth}}(t) + R_{\text{state}}(t) + P_{\text{diversity}}(t) - C_{\text{resource}}(t) - P_{\text{env}}(t) - P_{\text{hypoxia}}(t) - P_{\text{interval}}(t)
 $$
 
-> **Catatan temporal**: $R_{\text{growth}}$ hanya tersedia saat capture vision baru (3–5 kali/hari), sedangkan $C_{\text{resource}}$, $P_{\text{env}}$, $P_{\text{hypoxia}}$, dan $P_{\text{interval}}$ dihitung setiap langkah. Agar agent tidak hanya mengoptimalkan komponen dense yang lebih sering muncul, `R_growth` diskalakan dengan bobot $w_{\text{growth}} = 1500.0$ yang besar. Antarcapture, reward pertumbuhan di-hold dari nilai terakhir; tidak ada interpolasi.
+> **Catatan temporal**: $R_{\text{growth}}$ hanya tersedia saat capture vision baru (3–5 kali/hari), sedangkan $R_{\text{state}}$, $P_{\text{diversity}}$, $C_{\text{resource}}$, $P_{\text{env}}$, $P_{\text{hypoxia}}$, dan $P_{\text{interval}}$ dihitung setiap langkah. Agar agent tidak hanya mengoptimalkan komponen dense yang lebih sering muncul, `R_growth` diskalakan dengan bobot $w_{\text{growth}} = 25.0$. Antarcapture, reward pertumbuhan di-hold dari nilai terakhir; tidak ada interpolasi. Selain itu, agent mendapatkan **survival bonus** $+0.5$ per langkah untuk mendorong bertahan selama seluruh episode 24 jam.
 
 1. **Imbalan Pertumbuhan Akar ($R_{\text{growth}}$)**:
-    $$R_{\text{growth}}(t) = w_{\text{growth}} \cdot \frac{\Delta L_{\text{root}}}{\Delta t_{\text{capture}}}$$
-    Di mana $\Delta L_{\text{root}}$ adalah selisih panjang akar antara dua capture vision berturut-turut, dan $\Delta t_{\text{capture}}$ adalah waktu sejak capture sebelumnya (dalam menit). Reward ini hanya dihitung saat capture vision baru tersedia, menjaga konsistensi satuan per hari.
+    $$R_{\text{growth}}(t) = w_{\text{growth}} \cdot \Delta L_{\text{root}}$$
+    Di mana $\Delta L_{\text{root}}$ adalah selisih panjang akar antara dua capture vision berturut-turut. Reward ini hanya dihitung saat capture vision baru tersedia.
 2. **Biaya Konsumsi Energi ($C_{\text{resource}}$)**:
-    $$C_{\text{resource}}(t) = w_{\text{mist\_cost}} \cdot D_{\text{mist}} + w_{\text{valve\_cost}} \cdot \mathbb{I}(A_{\text{valve}} \ge 0.5)$$
+    $$C_{\text{resource}}(t) = w_{\text{valve\_cost}} \cdot \mathbb{I}(A_{\text{valve}} \ge 0.5)$$
+    Biaya hanya dikenakan per aktivasi katup solenoid, bukan per detik misting. Ini mencegah agent meminimalkan $D_{\text{mist}}$ hanya untuk menghemat biaya.
 3. **Penalti Lingkungan ($P_{\text{env}}$)**:
     $$P_{\text{env}}(t) = w_{\text{env}} \cdot \left[ \mathbb{I}(pH \notin [5.5, 6.5]) \cdot |pH - 6.0| + \mathbb{I}(EC \notin [1.2, 2.0]) \cdot |EC - 1.6| + \mathbb{I}(H_{\text{in}} < 85\%) \cdot (85 - H_{\text{in}}) \right]$$
     Memberikan penalti linear per satuan deviasi dari setpoint optimal: $pH = 6.0$, $EC = 1.6$, $H_{\text{in}} = 85\%$.
 4. **Penalti Hipoksia Akar ($P_{\text{hypoxia}}$)**:
     $$P_{\text{hypoxia}}(t) = w_{\text{hypoxia}} \cdot \max\left(0.0,\; 1.0 - O2_{\text{status}}(t)\right)$$
-   - $O2_{\text{status}}(t)$: Indeks oksigenasi internal (variabel tersembunyi simulator), dihitung dari dinamika misting dan **bukan** bagian dari vektor status observasi $U_{\text{status}}$.
+    - $O2_{\text{status}}(t)$: Indeks oksigenasi internal (variabel tersembunyi simulator), dihitung dari dinamika misting dan **bukan** bagian dari vektor status observasi $U_{\text{status}}$.
 5. **Penalti Stres Interval ($P_{\text{interval}}$)**:
     $$P_{\text{interval}}(t) = w_{\text{interval}} \cdot \mathbb{I}(interval_{\text{current}} > 1800)$$
     Menghindari stres osmoregulasi akar akibat jeda pengkabutan yang terlalu panjang (>30 menit) meskipun $H_{\text{in}}$ masih di atas threshold 85%.
+6. **State Bonus ($R_{\text{state}}$)**:
+    Reward ekstra untuk menjaga parameter lingkungan dalam rentang optimal:
+    - $pH \in [5.5, 6.5]$: +0.05
+    - $EC \in [1.2, 2.0]$: +0.05
+    - $H_{\text{in}} \ge 85\%$: +0.05
+    - $T_{\text{root}} \in [10, 20]$: +0.1
+    - $O2_{\text{status}} \ge 0.6$: +0.05
+    - $D_{\text{mist}} \ge 150.0$: +0.3
+    - $390 \le interval_{\text{sec}} \le 480$: +0.2
+    - Penalty untuk $D_{\text{mist}} < 130.0$: -1.0
+    - Penalty untuk $interval_{\text{sec}} < 360.0$: -0.5
+7. **Action Diversity Bonus ($P_{\text{diversity}}$)**:
+    Bonus untuk mendorong eksplorasi yang beragam:
+    - $\text{std}(D_{\text{mist}}) > 10.0$: +2.0
+    - $\text{std}(interval) > 20.0$: +1.0
+    - $\ge 2$ kali pergantian $A_{\text{valve}}$: +0.5
 
 ---
 
@@ -228,6 +245,7 @@ Suhu luar $T_{\text{out}}$ mempengaruhi laju penguapan: saat $T_{\text{out}} > 2
 * **Evaporasi EC**: Saat misting OFF dan $H_{\text{in}} < 85\%$, terjadi penguapan air yang menaikkan konsentrasi garam secara linier: $\Delta EC = +0.00033\text{ mS/cm per menit}$ ($\approx 0.02\text{ mS/cm per jam}$, *Tibbitts et al., 2002*).
 * **Drift pH**: Penyerapan ion nutrisi oleh akar memicu pergeseran keasaman $\Delta pH = +0.00017\text{ per menit}$ ($\approx 0.01\text{ per jam}$).
 * **Penyegaran Nutrisi Bawah**: Pengkabutan utama atau pengkabutan zona bawah via katup solenoid ($A_{\text{valve}} \ge 0.5$) menghembuskan aerosol larutan hara segar yang **mengembalikan** $EC$ ke $1.5$ dan $pH$ ke $6.0$.
+* **Efek Pengenceran Saat Misting**: Saat misting aktif, air segar masuk ke chamber dan mengenceran larutan nutrisi secara halus: $\Delta EC = +(1.6 - EC) \times 0.005$ per langkah. Ini menangkap fisika bahwa kabut aeroponik mengandung air murni yang mendilusi konsentrasi nutrisi.
 
 ### 3.6 Stokastisitas Lingkungan & Kriteria Terminasi Dini
 
@@ -364,12 +382,12 @@ Bobot komponen reward ditetapkan melalui manual tuning untuk menjaga keseimbanga
 
 | Bobot | Nilai | Komponen | Justifikasi |
 | :--- | :--- | :--- | :--- |
-| $w_{\text{growth}}$ | $1500.0$ | $R_{\text{growth}}$ | Skala besar agar pertumbuhan akar menjadi dorongan utama agen |
-| $w_{\text{mist\_cost}}$ | $0.002$ | $C_{\text{resource}}$ | Biaya energi per detik misting, kecil agar tidak menghambat pertumbuhan |
-| $w_{\text{valve\_cost}}$ | $0.15$ | $C_{\text{resource}}$ | Biaya pengaktifan katup bawah, moderate untuk mengontrol frekuensi |
-| $w_{\text{env}}$ | $5.0$ | $P_{\text{env}}$ | Penalti per satuan deviasi dari rentang optimal pH/EC/H_in |
-| $w_{\text{hypoxia}}$ | $10.0$ | $P_{\text{hypoxia}}$ | Penalti besar untuk kondisi hipoksia, karena keselamatan akar adalah prioritas tinggi |
-| $w_{\text{interval}}$ | $1.0$ | $P_{\text{interval}}$ | Penalti binary saat interval > 1800 detik, mencegah stres osmoregulasi |
+| $w_{\text{growth}}$ | $25.0$ | $R_{\text{growth}}$ | Skala reward pertumbuhan absolut ($\Delta L_{\text{root}}$ per capture vision) |
+| $w_{\text{mist\_cost}}$ | $0.002$ | $C_{\text{resource}}$ | Tidak digunakan lagi; biaya per detik misting dihapus untuk mencegah agent meminimalkan $D_{\text{mist}}$ |
+| $w_{\text{valve\_cost}}$ | $0.15$ | $C_{\text{resource}}$ | Biaya per aktivasi katup bawah, moderate untuk mengontrol frekuensi |
+| $w_{\text{env}}$ | $0.05$ | $P_{\text{env}}$ | Penalti per satuan deviasi dari rentang optimal pH/EC/H_in |
+| $w_{\text{hypoxia}}$ | $0.02$ | $P_{\text{hypoxia}}$ | Penalti untuk kondisi hipoksia, karena keselamatan akar adalah prioritas tinggi |
+| $w_{\text{interval}}$ | $0.01$ | $P_{\text{interval}}$ | Penalti binary saat interval > 1800 detik, mencegah stres osmoregulasi |
 
 #### 3.9.1 Reward Komponen Pertumbuhan untuk Capture Pertama
 
@@ -381,13 +399,13 @@ Untuk capture berikutnya, digunakan selisih terhadap nilai $L_{\text{root}}$ pad
 
 ### 3.10 Penanganan Aksi & Pembatasan
 
-Karena PPO menghasilkan aksi kontinu dari distribusi Gaussian, aksi di-*clip* ke dalam rentang fisik aktuator sebelum diproses simulator. Simulator menggunakan model **timer-based misting cycle**, dimana setiap aksi menentukan satu siklus lengkap:
+Karena PPO menghasilkan aksi kontinu dari distribusi Gaussian, wrapper Gymnasium menerima aksi dalam rentang ter-normalisasi $[-1, 1]$ untuk semua 3 dimensi, lalu memetakannya ke rentang fisik aktuator sebelum diproses simulator. Simulator menggunakan model **timer-based misting cycle**, dimana setiap aksi menentukan satu siklus lengkap:
 
-- $D_{\text{mist}} \gets \text{clip}(D_{\text{mist}}, 120.0, 240.0)$ — durasi fase ON dalam detik (2–4 menit)
-- $interval_{\text{sec}} \gets \text{clip}(interval_{\text{sec}}, 360.0, 540.0)$ — durasi fase OFF dalam detik (6–9 menit)
-- $A_{\text{valve}} \gets \text{clip}(A_{\text{valve}}, 0.0, 1.0)$
+- $a_{\text{mist}} \in [-1, 1] \mapsto D_{\text{mist}} \in [120.0, 240.0]$ — durasi fase ON dalam detik (2–4 menit)
+- $a_{\text{interval}} \in [-1, 1] \mapsto interval_{\text{sec}} \in [360.0, 540.0]$ — durasi fase OFF dalam detik (6–9 menit)
+- $a_{\text{valve}} \in [-1, 1] \mapsto A_{\text{valve}} \in \{0.0, 1.0\}$ — threshold **0** (tidak 0.5): jika $a_{\text{valve}} \ge 0$ maka $A_{\text{valve}} = 1.0$, jika $a_{\text{valve}} < 0$ maka $A_{\text{valve}} = 0.0$
 
-$A_{\text{valve}}$ diperlakukan sebagai nilai kontinu. Threshold $\ge 0.5$ digunakan hanya untuk menentukan apakah katup aktif (ON) atau tidak (OFF) saat menghitung biaya $C_{\text{resource}}$.
+$A_{\text{valve}}$ diperlakukan sebagai nilai biner. Threshold $\ge 0.5$ digunakan hanya untuk menentukan apakah katup aktif (ON) atau tidak (OFF) saat menghitung biaya $C_{\text{resource}}$.
 
 ### 3.11 Step Transition Order (Timer-Based Cycle)
 
@@ -411,38 +429,139 @@ Setiap langkah simulator sekarang merupakan **satu siklus misting lengkap**:
 
 ## 💻 4. Integrasi & Pelatihan Algoritma PPO
 
-Program menggunakan library `stable-baselines3` dengan arsitektur **Actor-Critic (MlpPolicy)**:
+Program menggunakan library `stable-baselines3` dengan arsitektur **Actor-Critic (MlpPolicy)**. wrapper Gymnasium menerima aksi ter-normalisasi $[-1, 1]$ dan memetakannya ke rentang fisik sebelum dikirim ke simulator:
 
 ```python
-env = AeroponicSimulatorEnv()
-check_env(env, warn=True)
+from aeroponic_simulator import AeroponicSimulatorEnv
+from stable_baselines3 import PPO
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3.common.callbacks import BaseCallback
+
+class AeroponicGymnasiumEnv(gym.Env):
+    def __init__(self):
+        super().__init__()
+        self.sim = AeroponicSimulatorEnv()
+        self.observation_space = spaces.Box(
+            low=np.array([0.0, 0.0, 15.0, 20.0, 15.0, 20.0, 0.5, 4.0, 18.0, 0.0], dtype=np.float32),
+            high=np.array([300.0, 1.0, 30.0, 100.0, 30.0, 100.0, 3.5, 9.0, 25.0, 1.0], dtype=np.float32),
+            dtype=np.float32,
+        )
+        self.action_space = spaces.Box(
+            low=np.array([-1.0, -1.0, -1.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 1.0], dtype=np.float32),
+            dtype=np.float32,
+        )
+        self.D_mist_min = 120.0
+        self.D_mist_max = 240.0
+        self.interval_min = 360.0
+        self.interval_max = 540.0
+
+    def _map_action(self, action):
+        a_01 = (action + 1.0) / 2.0
+        D_mist = self.D_mist_min + a_01[0] * (self.D_mist_max - self.D_mist_min)
+        interval = self.interval_min + a_01[1] * (self.interval_max - self.interval_min)
+        A_valve = 1.0 if action[2] >= 0.0 else 0.0
+        return [D_mist, interval, A_valve]
+
+    def step(self, action):
+        action = np.clip(action, -1.0, 1.0)
+        physical_action = self._map_action(action)
+        state, reward, terminated, truncated, info = self.sim.step(physical_action)
+        return np.array(state, dtype=np.float32), float(reward), terminated, truncated, info
 
 # Vektor lingkungan dengan normalisasi observasi dan reward
-vec_env = DummyVecEnv([lambda: env])
-vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0)
+vec_env = make_vec_env(AeroponicGymnasiumEnv, n_envs=1)
+vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
+
+# Callback: adaptive entropy coefficient
+class AdaptiveEntropyCallback(BaseCallback):
+    def __init__(self, ent_start=0.2, ent_end=0.03, boost_factor=1.5, window_size=10):
+        super().__init__()
+        self.ent_start = ent_start
+        self.ent_end = ent_end
+        self.boost_factor = boost_factor
+        self.window_size = window_size
+        self.entropy_window = []
+        self.entropy_min = 0.3
+        self.entropy_max = 2.5
+
+    def _on_rollout_end(self):
+        if hasattr(self.model, 'rollout_buffer') and self.model.rollout_buffer is not None:
+            buf = self.model.rollout_buffer
+            if hasattr(buf, 'old_log_prob') and buf.old_log_prob is not None:
+                log_probs = buf.old_log_prob
+                ent_val = float(-log_probs.mean()) if hasattr(log_probs, 'mean') else float(-np.mean(log_probs))
+                self.entropy_window.append(ent_val)
+                if len(self.entropy_window) > self.window_size:
+                    self.entropy_window.pop(0)
+                avg_ent = sum(self.entropy_window) / len(self.entropy_window)
+                progress = min(1.0, self.num_timesteps / 500000)
+                base_ent = self.ent_start + (self.ent_end - self.ent_start) * progress
+                if avg_ent < self.entropy_min:
+                    new_ent = min(base_ent * self.boost_factor, self.entropy_max)
+                elif avg_ent > self.entropy_max:
+                    new_ent = max(base_ent * 0.7, self.entropy_min)
+                else:
+                    new_ent = base_ent
+                self.model.ent_coef = new_ent
+        return True
+
+# Callback: value normalization tracking
+class ValueNormalizationCallback(BaseCallback):
+    def __init__(self, alpha=0.99):
+        super().__init__()
+        self.alpha = alpha
+        self.reward_mean = 0.0
+        self.reward_std = 1.0
+        self.count = 0
+
+    def _on_step(self):
+        if hasattr(self.model, 'rollout_buffer'):
+            buf = self.model.rollout_buffer
+            if buf is not None and hasattr(buf, 'rewards'):
+                rewards = buf.rewards
+                if len(rewards) > 0:
+                    batch_mean = np.mean(rewards)
+                    batch_std = np.std(rewards) + 1e-8
+                    self.count += len(rewards)
+                    self.reward_mean = self.alpha * self.reward_mean + (1 - self.alpha) * batch_mean
+                    self.reward_std = self.alpha * self.reward_std + (1 - self.alpha) * batch_std
+        return True
+
+# Linear learning rate schedule
+def linear_schedule(initial_value, final_value=1e-5):
+    def func(progress_remaining):
+        return final_value + (initial_value - final_value) * progress_remaining
+    return func
 
 # Inisialisasi Model PPO
 model = PPO(
-    "MlpPolicy",
-    vec_env,
-    learning_rate=3e-4,
-    n_steps=2048,
-    batch_size=64,
+    policy="MlpPolicy",
+    env=vec_norm,
+    learning_rate=linear_schedule(3e-4, 1e-5),
+    n_steps=4096,
+    batch_size=128,
     n_epochs=10,
     gamma=0.995,
-    ent_coef=0.01,
+    ent_coef=0.05,
+    vf_coef=0.5,
+    max_grad_norm=1.0,
+    clip_range=0.1,
+    gae_lambda=0.95,
     verbose=1,
+    tensorboard_log="./aeroponic_ppo_tensorboard/",
     device="cpu",
-    tensorboard_log="./tensorboard/aeroponic_ppo_tensorboard/"
 )
 
-# Pelatihan Agen
-model.learn(total_timesteps=500000)
+# Pelatihan Agen dengan callback
+callbacks = [AdaptiveEntropyCallback(ent_start=0.2, ent_end=0.03), ValueNormalizationCallback()]
+model.learn(total_timesteps=500000, callback=callbacks)
 model.save("models/aeroponic_ppo.zip")
-vec_env.save("models/vec_normalize.pkl")
+vec_norm.save("models/vec_normalize.pkl")
 ```
 
-> **Catatan**: `check_env(env, warn=True)` mungkin menghasilkan warning tentang bentuk observasi atau aksi. Semua warning yang muncul harus didokumentasikan dan dijelaskan apakah mempengaruhi konfigurasi environment sebelum melanjutkan training.
+> **Catatan**: `make_vec_env` dan `VecNormalize` digunakan untuk stabilisasi training. Pastikan statistik `VecNormalize` disimpan dan dimuat kembali saat evaluasi untuk mencegah *distribution shift*.
 
 ### 4.1 Arsitektur Jaringan Syaraf & Normalisasi `VecNormalize`
 1. **Arsitektur Actor-Critic MLP**: Policy network ($\pi_\theta$) dan Value network ($V_\phi$) menggunakan arsitektur Multi-Layer Perceptron dengan 2 *hidden layers* (masing-masing 64 neuron) dan fungsi aktivasi `Tanh`.
@@ -519,7 +638,7 @@ Berdasarkan analisis di atas, **PPO dipilih sebagai algoritma utama** untuk sist
 
 1. **Stabilitas training yang tinggi**: PPO menggunakan clipped surrogate objective yang membatasi perubahan policy antar update. Ini mencegah policy collapse dan memastikan convergence yang lebih predictable untuk continuous action space.
 
-2. **Batch size besar**: `n_steps=2048` dengan single environment menghasilkan batch yang cukup besar untuk gradient estimate yang stabil. Ini krusial untuk reward function yang kompleks dengan multiple components.
+2. **Batch size besar**: `n_steps=4096` dengan single environment menghasilkan batch yang cukup besar untuk gradient estimate yang stabil. Ini krusial untuk reward function yang kompleks dengan multiple components.
 
 3. **Robustness hyperparameter**: PPO kurang sensitif terhadap hyperparameter tuning dibanding A2C. Konfigurasi default dari SB3 RL Zoo sudah bekerja well untuk continuous control, memudahkan reproducibility.
 
@@ -533,28 +652,36 @@ Berdasarkan analisis di atas, **PPO dipilih sebagai algoritma utama** untuk sist
 
 #### 4.5.6 Konfigurasi Hyperparameter PPO
 
-Berdasarkan SB3 RL Zoo dan best practices untuk continuous control:
+Berdasarkan SB3 RL Zoo, best practices untuk continuous control, dan perbaikan terkini:
 
 | Hyperparameter | Nilai | Justifikasi |
 |----------------|-------|-------------|
-| `learning_rate` | 3e-4 | Default PPO; stabil untuk continuous action |
-| `n_steps` | 2048 | Default SB3 RL Zoo untuk PPO; batch size besar untuk stabilitas gradien |
-| `batch_size` | 64 | Mini-batch untuk penggunaan GPU/CPU yang efisien |
+| `learning_rate` | 3e-4 → 1e-5 (linear schedule) | Default PPO; diikuti linear decay untuk fine-tuning di akhir training |
+| `n_steps` | 4096 | Batch size besar untuk stabilitas gradien pada reward multi-komponen |
+| `batch_size` | 128 | Mini-batch untuk penggunaan CPU yang efisien |
 | `n_epochs` | 10 | Jumlah epoch per update; cukup untuk konvergensi |
 | `gamma` | 0.995 | Episode 24 jam timer-based; diskon tinggi untuk reward jangka panjang |
-| `ent_coef` | 0.05 | Eksplorasi lebih tinggi untuk menghindari local optimum pada action space yang sempit |
-| `device` | cpu | A2C/PPO dengan MlpPolicy lebih cepat di CPU |
+| `ent_coef` | 0.05 (adaptive) | Eksplorasi lebih tinggi; diadaptasi secara dinamis berdasarkan entropy policy |
+| `vf_coef` | 0.5 | Bobot value function loss; menyeimbangkan policy dan value learning |
+| `max_grad_norm` | 1.0 | Clipping gradient untuk stabilitas training |
+| `clip_range` | 0.1 | PPO clipping parameter; lebih konservatif untuk prevent policy collapse |
+| `gae_lambda` | 0.95 | Lambda untuk Generalized Advantage Estimation |
+| `device` | cpu | PPO dengan MlpPolicy lebih stabil di CPU |
 | `tensorboard_log` | ./aeroponic_ppo_tensorboard/ | Melacak kurva training |
+| `clip_obs` | 10.0 | Batas clipping observasi pada VecNormalize |
+| `clip_reward` | 10.0 | Batas clipping reward pada VecNormalize untuk stabilisasi critic |
 
-#### 4.5.7 Action Diversity Penalty
+#### 4.5.7 Action Diversity Bonus
 
-Untuk mencegah agent menempel di batas bawah action space (`D_mist=120`, `interval=360`, `A_valve=0`), ditambahkan small diversity penalty pada reward function:
+Untuk mencegah agent menempel di batas bawah action space ($D_{\text{mist}}=120$, $interval=360$, $A_{\text{valve}}=0$), ditambahkan diversity bonus berbasis history aksi terakhir:
 
-- $P_{\text{diversity}} = 0.5 \cdot \max(0, 150 - D_{\text{mist}}) + 0.2 \cdot \max(0, 420 - interval_{\text{sec}}) + 0.3 \cdot \max(0, 0.1 - A_{\text{valve}})$
+- Jika $\text{std}(D_{\text{mist}}) > 10.0$: +2.0
+- Jika $\text{std}(interval) > 20.0$: +1.0
+- Jika pergantian $A_{\text{valve}} \ge 2$ kali: +0.5
 
-Penalty ini:
-- Mendorong eksplorasi durasi misting > 120s
-- Mendorong interval OFF > 360s
+Bonus ini:
+- Mendorong eksplorasi durasi misting yang beragam di luar 120s
+- Mendorong interval OFF yang bervariasi di luar 360s
 - Mendorong penggunaan valve untuk memastikan agent memanfaatkan seluruh action space
 
 | Metrik | A2C (50k timesteps) | A2C (500k timesteps) | PPO (500k timesteps) |

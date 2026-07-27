@@ -46,12 +46,25 @@ def plot_training_curves(metrics, out_path):
         'train/approx_kl': 'Approximate KL Divergence',
         'train/explained_variance': 'Explained Variance',
         'train/learning_rate': 'Learning Rate',
+        'rollout/reward_growth': 'Reward Growth',
+        'rollout/reward_resource': 'Reward Resource',
+        'rollout/reward_state': 'Reward State',
+        'rollout/reward_env': 'Reward Env',
+        'rollout/reward_hypoxia': 'Reward Hypoxia',
+        'rollout/reward_interval': 'Reward Interval',
     }
 
     # Create subplots
     n_plots = len(key_metrics)
-    fig, axes = plt.subplots(3, 3, figsize=(16, 10))
-    axes = axes.flatten()
+    n_cols = 3
+    n_rows = max(1, (n_plots + n_cols - 1) // n_cols)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, 3 * n_rows))
+    if n_rows == 1 and n_cols == 1:
+        axes = np.array([[axes]])
+    elif n_rows == 1 or n_cols == 1:
+        axes = axes.flatten()
+    else:
+        axes = axes.flatten()
 
     plot_idx = 0
     for tag, title in key_metrics.items():
@@ -137,6 +150,13 @@ def print_summary(metrics):
         'train/clip_fraction': 'Clip Fraction',
         'train/approx_kl': 'Approximate KL',
         'train/explained_variance': 'Explained Variance',
+        'train/learning_rate': 'Learning Rate',
+        'rollout/reward_growth': 'Reward Growth',
+        'rollout/reward_resource': 'Reward Resource',
+        'rollout/reward_state': 'Reward State',
+        'rollout/reward_env': 'Reward Env',
+        'rollout/reward_hypoxia': 'Reward Hypoxia',
+        'rollout/reward_interval': 'Reward Interval',
     }
 
     for tag, name in key_metrics.items():

@@ -781,12 +781,12 @@ Catatan: Validasi peran dilakukan oleh middleware `RequireRole` di level mikrose
 | Results | `results/` | PNG plots: training curves, action histograms, evaluation states/actions |
 | Models | `models/` | `aeroponic_ppo.zip`, `vec_normalize.pkl`, `best_config.json` |
 
-### Action Space (Timer-Based Cycles)
+### Action Space (Normalized [-1,1] → Physical Ranges)
 
-Setiap aksi = satu siklus ON/OFF lengkap:
-- `D_mist`: durasi ON **[120, 240]s** (2–4 menit)
-- `interval_sec`: durasi OFF **[360, 540]s** (6–9 menit)
-- `A_valve`: bottom valve activation **[0, 1]** → binary threshold **0.5**
+Setiap aksi = satu siklus ON/OFF lengkap. Wrapper Gymnasium menerima aksi ter-normalisasi $[-1, 1]$ untuk semua 3 dimensi, lalu memetakannya ke rentang fisik:
+- $a_{\text{mist}} \in [-1, 1] \mapsto D_{\text{mist}} \in [120, 240]\text{s}$ (2–4 menit)
+- $a_{\text{interval}} \in [-1, 1] \mapsto interval_{\text{sec}} \in [360, 540]\text{s}$ (6–9 menit)
+- $a_{\text{valve}} \in [-1, 1] \mapsto A_{\text{valve}} \in \{0, 1\}$ dengan threshold **0** (tidak 0.5): $\ge 0 \to 1.0$, $< 0 \to 0.0$
 
 ### State Space (10D)
 
@@ -797,17 +797,25 @@ Setiap aksi = satu siklus ON/OFF lengkap:
 ### Reward Function
 
 ```
-R_total = w_growth * captured_growth * 20.0    # dense growth signal
-         + R_state                               # state bonuses (pH, EC, H_in, T_root, O2, D_mist, interval)
-         + P_diversity                           # action diversity from history
-         - w_mist_cost * D_mist                  # resource cost
-         - w_valve_cost * (A_valve >= 0.5)       # valve activation cost
-         - P_hypoxia                            # oxygen depletion penalty
-         - P_interval                           # long interval penalty
-         - P_action_collapse                    # penalty for min-bound actions
+R_total = R_growth + R_state + P_diversity - C_resource - P_env - P_hypoxia - P_interval
+         + 0.5 * survival_bonus_per_step
 ```
 
-### Hasil Training Terkini (v23, 500k timesteps)
+di mana:
+- `R_growth = w_growth * delta_l_root` (capture vision, w_growth = 25.0)
+- `C_resource = w_valve_cost * (A_valve >= 0.5)` (hanya biaya aktivasi valve, tidak ada biaya per detik misting)
+- `P_env = w_env * (dev_pH + dev_EC + dev_Hin)` dengan w_env = 0.05
+- `P_hypoxia = w_hypoxia * max(0, 1 - O2_status)` dengan w_hypoxia = 0.02
+- `P_interval = w_interval * (interval_sec > 1800)` dengan w_interval = 0.01
+- Survival bonus: +0.5 per langkah
+- Early termination penalty: -0.5 * remaining_steps - w_growth * 5.0
+- Action diversity bonus: +2.0 (std D_mist > 10), +1.0 (std interval > 20), +0.5 (>=2 valve toggles)
+- State bonuses: +0.05 (pH in range), +0.05 (EC in range), +0.05 (H_in >= 85%), +0.1 (T_root in range), +0.05 (O2 >= 0.6)
+- State penalties: -1.0 (D_mist < 130), -0.5 (interval < 360)
+
+### Hasil Training Terkini (Fixed Config: normalized action, adaptive entropy, value norm)
+
+> **Catatan:** Metrics di bawah adalah dari run terakhir sebelum implementasi fixed config (v23, 500k timesteps). Setelah perubahan ke normalized action space, survival bonus, EC correction, dan callback baru, training harus dijalankan ulang untuk mendapatkan metrics terbaru.
 
 | Metric | Nilai |
 |---|---|
@@ -821,6 +829,15 @@ R_total = w_growth * captured_growth * 20.0    # dense growth signal
 | Interval CV | **0.20** ⚠️ |
 | A_valve Usage | **50.1%** ✅ |
 
+**Perubahan Utama pada Fixed Config:**
+- Action space: normalized [-1,1] (fixes double-scaling bug)
+- Survival bonus: +0.5/step + strong early termination penalty
+- EC correction during misting (dilution effect)
+- Resource cost: hanya valve activation, tidak per detik misting
+- Adaptive entropy callback + value normalization callback
+- Linear LR schedule: 3e-4 → 1e-5
+- Hyperparameters: n_steps=4096, batch_size=128, ent_coef=0.05, clip_range=0.1, gae_lambda=0.95, max_grad_norm=1.0, vf_coef=0.5
+
 ### Stress Test Results
 
 | Scenario | Growth | Reward | Status |
@@ -833,14 +850,21 @@ R_total = w_growth * captured_growth * 20.0    # dense growth signal
 
 ### Rencana Perbaikan Lanjutan
 
-Berdasarkan analisis explained variance ≈ 0 dan interval CV 0.20, rencana perbaikan:
+Berdasarkan analisis explained variance ≈ 0 dan interval CV 0.20, berikut perbaikan yang **sudah diimplementasikan** dan yang **masih direncanakan**:
 
-1. **Value Normalization:** Implementasi running mean/std normalization untuk value targets agar critic lebih stabil
-2. **Reward Normalization:** Z-score normalization per batch untuk reward mixture yang lebih seimbang
-3. **Adaptive Entropy:** Dynamic `ent_coef` scheduling berdasarkan policy entropy
-4. **Beta Policy:** Ganti Gaussian continuous policy dengan Beta distribution untuk bounded actions [120,240] dan [360,540]
-5. **Percentile Scaling:** Scale advantages berdasarkan 5th–95th percentile per batch
-6. **Hybrid Approach (opsional):** EVPO-style critic gating — switch ke GRPO-style batch mean saat EV < 0
+**Sudah Diimplementasikan:**
+1. ✅ **Value Normalization:** `VecNormalize` dengan `clip_reward=10.0` dan `ValueNormalizationCallback` untuk stabilisasi critic
+2. ✅ **Reward Normalization:** Z-score normalization per batch via `VecNormalize` (`norm_reward=True`)
+3. ✅ **Adaptive Entropy:** `AdaptiveEntropyCallback` dengan scheduling dinamis berdasarkan policy entropy
+4. ✅ **Normalized Action Space:** Aksi $[-1, 1]$ dengan mapping ke physical ranges, menghilangkan double-scaling bug
+5. ✅ **Survival Bonus:** +0.5 per langkah + early termination penalty yang diperkuat
+6. ✅ **EC Correction:** Efek pengenceran saat misting aktif
+7. ✅ **Resource Cost Fix:** Hanya biaya aktivasi valve, tidak ada biaya per detik misting
+
+**Masih Direncanakan:**
+1. **Beta Policy:** Ganti Gaussian continuous policy dengan Beta distribution untuk bounded actions [120,240] dan [360,540]
+2. **Percentile Scaling:** Scale advantages berdasarkan 5th–95th percentile per batch
+3. **Hybrid Approach (opsional):** EVPO-style critic gating — switch ke GRPO-style batch mean saat EV < 0
 
 ### Referensi
 

@@ -90,7 +90,13 @@ def evaluate_policy(model, vec_env, num_episodes=5):
             pre_pH = sim.state[7]
             pre_T_nut = sim.state[8]
 
-            obs, reward, done, info = vec_env.step(action)
+            # Map normalized PPO actions to physical values for accurate logging
+            a_01 = (action + 1.0) / 2.0
+            D_mist_phys = 120.0 + a_01[0] * 120.0
+            interval_phys = 360.0 + a_01[1] * 180.0
+            A_valve_phys = 1.0 if action[2] >= 0.0 else 0.0
+
+            obs, reward, done, info = vec_env.step(action.reshape(1, -1))
             terminated = bool(np.any(done)) if isinstance(done, np.ndarray) else bool(done)
             sim = raw.sim
 
@@ -132,9 +138,9 @@ def evaluate_policy(model, vec_env, num_episodes=5):
             history['T_nut'].append(log_T_nut)
             history['O2_status'].append(log_O2)
             history['total_reward'].append(float(reward[0]) if isinstance(reward, np.ndarray) else float(reward))
-            history['D_mist'].append(action[0])
-            history['interval_sec'].append(action[1])
-            history['A_valve'].append(action[2])
+            history['D_mist'].append(D_mist_phys)
+            history['interval_sec'].append(interval_phys)
+            history['A_valve'].append(A_valve_phys)
             history['captured'].append(sim._captured_this_step)
 
             steps += 1
@@ -192,13 +198,12 @@ def plot_action_histograms(histories, out_path):
 
     # A_valve histogram
     ax3 = axes[2]
-    ax3.hist(all_A_valve, bins=20, color='tab:red', alpha=0.7, edgecolor='black')
+    ax3.hist(all_A_valve, bins=[-0.5, 0.5, 1.5], color='tab:red', alpha=0.7, edgecolor='black', rwidth=0.6)
     ax3.set_xlabel('A_valve')
     ax3.set_ylabel('Count')
     ax3.set_title('Bottom Valve Actuation Distribution')
-    ax3.axvline(x=0.5, color='tab:red', linestyle='--', linewidth=2, label='Threshold (0.5)')
-    ax3.axvline(x=np.mean(all_A_valve), color='tab:orange', linestyle='--', linewidth=2, label=f'Mean: {np.mean(all_A_valve):.3f}')
-    ax3.legend()
+    ax3.set_xticks([0, 1])
+    ax3.set_xticklabels(['OFF (0)', 'ON (1)'])
     ax3.grid(True, alpha=0.3)
 
     plt.tight_layout()

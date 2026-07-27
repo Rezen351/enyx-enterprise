@@ -26,8 +26,11 @@ from aeroponic_simulator import AeroponicSimulatorEnv
 class AeroponicGymnasiumEnv(gym.Env):
     """
     Gymnasium wrapper for AeroponicSimulatorEnv.
-    Observation: 11D continuous
-    Action: 3D continuous [D_mist, interval_sec, A_valve]
+    Observation: 10D continuous
+    Action: 3D continuous [-1, 1] normalized, mapped to physical ranges:
+      - D_mist: [120, 240] seconds (2-4 minutes ON)
+      - interval_sec: [360, 540] seconds (6-9 minutes OFF)
+      - A_valve: [0, 1] (threshold at 0)
     """
     def __init__(self):
         super().__init__()
@@ -40,15 +43,28 @@ class AeroponicGymnasiumEnv(gym.Env):
         high_obs = np.array([300.0, 1.0, 30.0, 100.0, 30.0, 100.0, 3.5, 9.0, 25.0, 1.0], dtype=np.float32)
         self.observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
 
-        # Action space: 3D continuous [D_mist, interval_sec, A_valve]
-        # D_mist: [120, 240] seconds (2-4 minutes ON)
-        # interval_sec: [360, 540] seconds (6-9 minutes OFF)
-        # A_valve: [0, 1]
+        # Normalized action space: [-1, 1] for all 3 dimensions
+        # PPO samples from this range; we map to physical values in step()
         self.action_space = spaces.Box(
-            low=np.array([120.0, 360.0, 0.0], dtype=np.float32),
-            high=np.array([240.0, 540.0, 1.0], dtype=np.float32),
+            low=np.array([-1.0, -1.0, -1.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32,
         )
+
+        # Physical action bounds for mapping
+        self.D_mist_min = 120.0
+        self.D_mist_max = 240.0
+        self.interval_min = 360.0
+        self.interval_max = 540.0
+
+    def _map_action(self, action):
+        """Map normalized [-1, 1] actions to physical ranges."""
+        # Scale from [-1, 1] to [0, 1] first
+        a_01 = (action + 1.0) / 2.0
+        D_mist = self.D_mist_min + a_01[0] * (self.D_mist_max - self.D_mist_min)
+        interval = self.interval_min + a_01[1] * (self.interval_max - self.interval_min)
+        A_valve = 1.0 if action[2] >= 0.0 else 0.0  # threshold at 0 in normalized space
+        return [D_mist, interval, A_valve]
 
     def reset(self, seed=None, options=None, L_root=None):
         super().reset(seed=seed)
@@ -56,9 +72,11 @@ class AeroponicGymnasiumEnv(gym.Env):
         return np.array(state, dtype=np.float32), {}
 
     def step(self, action):
-        # Clip action to valid range
-        action = np.clip(action, self.action_space.low, self.action_space.high)
-        state, reward, terminated, truncated, info = self.sim.step(action.tolist())
+        # Clip normalized action to [-1, 1]
+        action = np.clip(action, -1.0, 1.0)
+        # Map to physical values
+        physical_action = self._map_action(action)
+        state, reward, terminated, truncated, info = self.sim.step(physical_action)
         return np.array(state, dtype=np.float32), float(reward), terminated, truncated, info
 
     def set_curriculum_weather_scale(self, scale):
@@ -155,10 +173,80 @@ class ValueNormalizationCallback(BaseCallback):
         return True
 
 
+class RewardLoggingCallback(BaseCallback):
+    """
+    Log reward component breakdown from environment info dict to TensorBoard.
+    Computes per-rollout averages for:
+      - reward_growth
+      - reward_resource
+      - reward_state
+      - reward_env
+      - reward_hypoxia
+      - reward_interval
+      - reward_diversity
+    """
+    def __init__(self, window_size=10):
+        super().__init__()
+        self.window_size = window_size
+        self.episode_rewards = []
+
+    def _on_step(self):
+        infos = self.locals.get("infos", [])
+        dones = self.locals.get("dones", [])
+        if not infos or not dones:
+            return True
+
+        for info, done in zip(infos, dones):
+            if done and isinstance(info, dict):
+                self.episode_rewards.append({
+                    "reward_growth": info.get("reward_growth", 0.0),
+                    "reward_resource": info.get("reward_resource", 0.0),
+                    "reward_state": info.get("reward_state", 0.0),
+                    "reward_env": info.get("reward_env", 0.0),
+                    "reward_hypoxia": info.get("reward_hypoxia", 0.0),
+                    "reward_interval": info.get("reward_interval", 0.0),
+                })
+        return True
+
+    def _on_rollout_end(self):
+        if not self.episode_rewards:
+            return True
+
+        keys = [
+            "reward_growth",
+            "reward_resource",
+            "reward_state",
+            "reward_env",
+            "reward_hypoxia",
+            "reward_interval",
+        ]
+
+        for key in keys:
+            values = [ep[key] for ep in self.episode_rewards[-self.window_size:]]
+            mean_value = float(np.mean(values))
+            self.model.logger.record(f"rollout/{key}", mean_value)
+
+        if len(self.episode_rewards) > self.window_size:
+            self.episode_rewards = self.episode_rewards[-self.window_size:]
+
+        return True
+
+
+def linear_schedule(initial_value: float, final_value: float = 1e-5):
+    """Linear learning rate schedule from initial_value to final_value."""
+    def func(progress_remaining: float) -> float:
+        return final_value + (initial_value - final_value) * progress_remaining
+    return func
+
 
 def train_ppo():
     """
-    Train PPO agent with stabilized hyperparameters and reward normalization.
+    Train PPO agent with optimized hyperparameters.
+    Key fixes vs previous runs:
+    - Normalized [-1,1] action space (fixes double-scaling bug)
+    - Higher entropy for better exploration
+    - More timesteps for convergence
+    - Linear LR schedule for fine-tuning
     """
     base_dir = '/home/almuzky/TA/Microservices/services/ml-control'
     models_dir = os.path.join(base_dir, 'models')
@@ -171,46 +259,60 @@ def train_ppo():
     vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
 
     # Adaptive entropy callback
-    entropy_callback = AdaptiveEntropyCallback(ent_start=0.2, ent_end=0.02)
+    entropy_callback = AdaptiveEntropyCallback(ent_start=0.2, ent_end=0.03)
     value_norm_callback = ValueNormalizationCallback()
+    reward_log_callback = RewardLoggingCallback()
+
+    # Training hyperparameters
+    total_timesteps = 1_000_000
+    lr_schedule = linear_schedule(3e-4, 1e-5)
 
     model = PPO(
         policy='MlpPolicy',
         env=vec_norm,
-        learning_rate=5e-4,
+        learning_rate=lr_schedule,
         n_steps=4096,
-        batch_size=64,
+        batch_size=128,
         n_epochs=10,
         gamma=0.995,
-        ent_coef=0.2,
+        ent_coef=0.05,
         vf_coef=0.5,
-        max_grad_norm=0.5,
-        clip_range=0.2,
+        max_grad_norm=1.0,
+        clip_range=0.1,
+        gae_lambda=0.95,
         verbose=1,
         tensorboard_log=tensorboard_dir,
         device='cpu',
     )
 
     print("=" * 80)
-    print("STARTING PPO TRAINING")
+    print("STARTING PPO TRAINING (FIXED CONFIG)")
     print("=" * 80)
-    print(f"Total timesteps: 500,000")
-    print(f"Learning rate: 5e-4")
-    print(f"n_steps: 4096")
-    print(f"batch_size: 64")
-    print(f"n_epochs: 10")
-    print(f"gamma: 0.995")
-    print(f"ent_coef: 0.2 (adaptive)")
-    print(f"vf_coef: 0.5")
-    print(f"max_grad_norm: 0.5")
-    print(f"clip_reward: 10.0")
-    print(f"device: cpu")
-    print(f"tensorboard_log: {tensorboard_dir}")
-    print(f"model save path: {os.path.join(models_dir, 'aeroponic_ppo.zip')}")
+    print(f"Fixes applied:")
+    print(f"  - Normalized [-1,1] action space (fixes double-scaling bug)")
+    print(f"  - Survival bonus (+0.5/step) + strong early termination penalty")
+    print(f"  - EC correction during misting (dilution effect)")
+    print(f"  - Linear LR schedule: 3e-4 -> 1e-5")
+    print(f"Hyperparameters:")
+    print(f"  Total timesteps: {total_timesteps:,}")
+    print(f"  Learning rate: 3e-4 -> 1e-5 (linear schedule)")
+    print(f"  n_steps: 4096")
+    print(f"  batch_size: 128")
+    print(f"  n_epochs: 10")
+    print(f"  gamma: 0.995")
+    print(f"  ent_coef: 0.05 (adaptive)")
+    print(f"  vf_coef: 0.5")
+    print(f"  max_grad_norm: 1.0")
+    print(f"  clip_range: 0.1")
+    print(f"  gae_lambda: 0.95")
+    print(f"  clip_reward: 10.0")
+    print(f"  device: cpu")
+    print(f"  tensorboard_log: {tensorboard_dir}")
+    print(f"  model save path: {os.path.join(models_dir, 'aeroponic_ppo.zip')}")
     print("=" * 80)
 
-    callback = [entropy_callback, value_norm_callback]
-    model.learn(total_timesteps=500000, callback=callback)
+    callback = [entropy_callback, value_norm_callback, reward_log_callback]
+    model.learn(total_timesteps=total_timesteps, callback=callback)
 
     model_path = os.path.join(models_dir, 'aeroponic_ppo.zip')
     model.save(model_path)

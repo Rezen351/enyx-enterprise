@@ -16,7 +16,6 @@ import matplotlib.pyplot as plt
 class AeroponicSimulatorEnv:
     def __init__(self):
         self.dt = 60.0  # 1 minute in seconds
-        self.episode_time = 24 * 60 * 60  # 24 hours in seconds
         self.current_time = 0.0  # current time in seconds from episode start
 
         # State vector: 10D
@@ -26,6 +25,8 @@ class AeroponicSimulatorEnv:
 
         # Continuous misting counter for O2 model
         self.T_continuous = 0
+        self.max_steps = 180
+        self._step_count = 0
 
         # Action space bounds (timer-based cycles)
         self.D_mist_min = 120.0   # 2 minutes minimum ON
@@ -85,6 +86,7 @@ class AeroponicSimulatorEnv:
                     Useful for multi-day simulations where growth should carry over.
         """
         L_root_init = L_root if L_root is not None else 8.0
+        self.L_root_init = L_root_init
         
         # Domain randomization for sim-to-real robustness
         # Indonesian greenhouse: T_in varies 22-32°C depending on season, time, conditions
@@ -117,6 +119,7 @@ class AeroponicSimulatorEnv:
         ]
         self.current_time = 0.0
         self.T_continuous = 0
+        self._step_count = 0
         self.T_root = T_in
         self.last_reward_growth = 0.0
         self.last_capture_time = -4 * 3600
@@ -231,6 +234,13 @@ class AeroponicSimulatorEnv:
                 pH = 6.0
                 self.T_continuous = max(0, self.T_continuous - 1)
 
+            # EC correction during misting: nutrient dilution effect
+            # Misting introduces fresh water, slightly diluting EC back toward target
+            if is_misting_on:
+                EC += (1.6 - EC) * 0.005  # gentle drift toward target EC=1.6
+                # pH correction during misting: fresh nutrient solution stabilizes pH
+                pH += (6.0 - pH) * 0.003  # gentle drift toward target pH=6.0
+
             # EC/pH dynamics (section 3.5)
             if not is_misting_on and H_in < 85.0:
                 EC += 0.00033
@@ -323,7 +333,7 @@ class AeroponicSimulatorEnv:
                     f_T = max(0.3, 1.0 - (T_root - 20) * 0.15)
                 day_mult = 1.2 if I_day == 1.0 else 0.6
 
-                delta_l = r_step * 240.0 * L_root * (1 - L_root / K) * f_Hin * f_O2 * f_T * day_mult
+                delta_l = r_step * 240.0 * self.L_root_init * (1 - self.L_root_init / K) * f_Hin * f_O2 * f_T * day_mult
                 new_L_root = max(0.0, L_root + delta_l)
                 captured_growth = new_L_root - L_root
                 L_root = new_L_root
@@ -351,21 +361,26 @@ class AeroponicSimulatorEnv:
             # Advance simulation time by 1 minute
             self.current_time += self.dt
 
-            # Episode termination check inside loop
-            if self.current_time >= self.episode_time:
-                break
-
     def step(self, action):
         """
         Execute one timer-based misting cycle.
         action = [D_mist, interval_sec, A_valve]
-        D_mist: ON duration in seconds (120-240s, field: 2-4 min)
-        interval_sec: OFF duration in seconds (360-540s, field: 6-9 min)
+        D_mist: ON duration in seconds (120-240s, already in physical range)
+        interval_sec: OFF duration in seconds (360-540s, already in physical range)
         A_valve: bottom valve activation [0, 1]
+        
+        NOTE: Actions are expected in raw physical units. The Gymnasium wrapper
+        handles mapping from normalized [-1, 1] to physical ranges.
+        Do NOT rescale here — previous double-scaling bug caused agent actions
+        to always saturate at maximum.
         """
+        # Accept raw physical values directly (no rescaling)
+        D_mist_raw = float(action[0])
+        interval_raw = float(action[1])
+        
         # Apply actuator noise to actions (realistic hardware)
-        D_mist_noisy = float(action[0]) * (1.0 + random.uniform(-self.actuator_noise_D_mist, self.actuator_noise_D_mist))
-        interval_noisy = float(action[1]) * (1.0 + random.uniform(-self.actuator_noise_D_mist * 0.5, self.actuator_noise_D_mist * 0.5))
+        D_mist_noisy = D_mist_raw * (1.0 + random.uniform(-self.actuator_noise_D_mist, self.actuator_noise_D_mist))
+        interval_noisy = interval_raw * (1.0 + random.uniform(-self.actuator_noise_D_mist * 0.5, self.actuator_noise_D_mist * 0.5))
         
         D_mist = self._clip(D_mist_noisy, self.D_mist_min, self.D_mist_max)
         interval_sec = self._clip(interval_noisy, self.interval_min, self.interval_max)
@@ -384,6 +399,9 @@ class AeroponicSimulatorEnv:
         self.T_continuous += on_substeps
         self._update_state_dynamics(is_misting_on=True, A_valve_active=A_valve_active, substeps=on_substeps)
 
+        # Save T_continuous before reset for hypoxia reward
+        T_continuous_for_reward = self.T_continuous
+
         # OFF phase
         off_substeps = int(interval_sec / 60.0)
         if off_substeps == 0:
@@ -396,22 +414,39 @@ class AeroponicSimulatorEnv:
         if len(self._action_history) > self._action_history_max:
             self._action_history.pop(0)
 
+        T_continuous_snapshot = T_continuous_for_reward
+
         # Compute reward for this cycle using processed actions
-        reward = self._compute_reward([D_mist, interval_sec, A_valve])
+        reward = self._compute_reward([D_mist, interval_sec, A_valve], T_continuous=T_continuous_for_reward)
+        
+        # Survival bonus: reward agent for each step it stays alive
+        # This incentivizes maintaining healthy state throughout the episode
+        reward += 0.5
+        
+        # Step counting for 180-step milestone + completion tracking
+        self._step_count += 1
+        if self._step_count == self.max_steps:
+            reward += 10.0  # full 180-step completion bonus
         
         # Clip reward for training stability
         reward = self._clip(reward, -50.0, 50.0)
 
-        # Check termination
+        # Check termination — use slightly relaxed bounds to reduce
+        # premature termination from sensor noise + natural drift
         pH_val = self.state[7]
         EC_val = self.state[6]
-        terminated = (pH_val < 4.0 or pH_val > 9.0 or EC_val < 0.5 or EC_val > 3.5)
-        truncated = self.current_time >= self.episode_time
+        terminated = (pH_val < 4.5 or pH_val > 8.5 or EC_val < 0.5 or EC_val > 3.0)
+        truncated = self._step_count >= self.max_steps
 
-        # Early termination penalty to encourage episode survival
+        # Episode completion bonus: reward agent for surviving the full episode
+        if truncated and not terminated:
+            reward += 10.0  # significant bonus for full episode survival
+
+        # Strong early termination penalty: losing remaining survival bonus + growth
         if terminated and not truncated:
-            progress = min(1.0, self.current_time / self.episode_time)
-            reward -= self.w_growth * 5.0 * (1.0 - progress)
+            remaining_steps = max(1, self.max_steps - self._step_count)
+            reward -= 0.5 * remaining_steps  # lost survival bonus
+            reward -= self.w_growth * 5.0     # additional growth penalty
 
         # Robustness
         if not math.isfinite(reward):
@@ -439,7 +474,7 @@ class AeroponicSimulatorEnv:
         info = {
             'D_effective': D_effective,
             'T_continuous': self.T_continuous,
-            'O2_status': max(0.2, 1.0 - 0.08 * max(0, self.T_continuous - 3)),
+            'O2_status': max(0.2, 1.0 - 0.08 * max(0, T_continuous_snapshot - 3)),
             'reward_growth': self._last_R_growth,
             'reward_resource': self._last_C_resource,
             'reward_state': self._last_R_state,
@@ -454,14 +489,20 @@ class AeroponicSimulatorEnv:
 
         return self.state[:], reward, terminated, truncated, info
 
-    def _compute_reward(self, action):
+    def _compute_reward(self, action, T_continuous=None):
         """Compute total reward R(t) from section 2.3"""
         D_mist, interval_sec, A_valve = action
 
+        if T_continuous is None:
+            T_continuous = self.T_continuous
+
         R_growth = self.last_reward_growth
 
-        C_resource = self.w_mist_cost * D_mist + self.w_valve_cost * (1.0 if A_valve >= 0.5 else 0.0)
+        # Resource cost: only charge per misting ON event, not per second.
+        # This prevents the agent from minimizing D_mist just to save cost.
+        C_resource = self.w_valve_cost * (1.0 if A_valve >= 0.5 else 0.0)
 
+        # Environmental penalties
         pH = self.state[7]
         EC = self.state[6]
         H_in = self.state[3]
@@ -470,18 +511,11 @@ class AeroponicSimulatorEnv:
         dev_Hin = max(0.0, 85.0 - H_in) if H_in < 85.0 else 0.0
         P_env = self.w_env * (dev_pH + dev_EC + dev_Hin)
 
-        O2_status = max(0.2, 1.0 - 0.08 * max(0, self.T_continuous - 3))
+        O2_status = max(0.2, 1.0 - 0.08 * max(0, T_continuous - 3))
         P_hypoxia = self.w_hypoxia * max(0.0, 1.0 - O2_status)
 
-        P_interval = self.w_interval * (1.0 if interval_sec > 1800 else 0.0)
-
-        P_action_collapse = 0.0
-
-        pH = self.state[7]
-        EC = self.state[6]
-        H_in = self.state[3]
+        # State-based reward: encourage healthy ranges
         T_root = self.T_root
-        O2_status = max(0.2, 1.0 - 0.08 * max(0, self.T_continuous - 3))
 
         R_state = 0.0
         if 5.5 <= pH <= 6.5:
@@ -515,15 +549,18 @@ class AeroponicSimulatorEnv:
         else:
             R_state -= 0.2 * (0.6 - O2_status)
 
-        if D_mist > 150.0:
-            R_state += 0.2
+        # Action shaping: reward effective misting duration, penalize too-short intervals
+        if D_mist >= 150.0:
+            R_state += 0.3
         elif D_mist < 130.0:
-            R_state -= 0.1
+            R_state -= 1.0
 
-        if interval_sec > 420.0:
-            R_state += 0.1
-        elif interval_sec < 390.0:
-            R_state -= 0.05
+        if 390.0 <= interval_sec <= 480.0:
+            R_state += 0.2
+        elif interval_sec < 360.0:
+            R_state -= 0.5
+
+        P_interval = self.w_interval * (1.0 if interval_sec > 520 else 0.0)
 
         P_diversity = 0.0
         if len(self._action_history) >= 5:
@@ -534,12 +571,12 @@ class AeroponicSimulatorEnv:
 
             if d_mist_std > 10.0:
                 P_diversity += 2.0
-            if interval_std > 10.0:
+            if interval_std > 20.0:
                 P_diversity += 1.0
             if a_valve_toggles >= 2:
                 P_diversity += 0.5
 
-        R_total = R_growth + R_state + P_diversity - C_resource - P_env - P_hypoxia - P_interval - P_action_collapse
+        R_total = R_growth + R_state + P_diversity - C_resource - P_env - P_hypoxia - P_interval
 
         self._last_R_growth = R_growth
         self._last_C_resource = C_resource
@@ -1184,7 +1221,7 @@ def run_ppo_multi_day_simulation(days=90, deterministic=False):
             action = np.clip(action, vec_env_local.action_space.low, vec_env_local.action_space.high)
             last_action = action
             
-            obs, reward, done, info = vec_norm_local.step(action)
+            obs, reward, done, info = vec_norm_local.step(action.reshape(1, -1))
             terminated = bool(np.any(done)) if isinstance(done, np.ndarray) else bool(done)
             info0 = info[0] if isinstance(info, list) else info
             current_O2 = info0.get('O2_status', max(0.2, 1.0 - 0.08 * max(0, pre_O2 - 3)))
