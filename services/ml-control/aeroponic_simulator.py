@@ -7,6 +7,7 @@ Run: /home/almuzky/jupyter/venv/bin/python3 aeroponic_simulator.py
 
 import math
 import random
+import os
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -76,8 +77,15 @@ class AeroponicSimulatorEnv:
         self.T_nut_alpha = 0.008  # drift coefficient per minute (1/120)
         self.T_nut_misting_cooling = 0.05  # cooling per minute of misting ON
 
-    def reset(self):
-        """Reset to initial conditions from notebook.md section 3.8"""
+    def reset(self, L_root=None):
+        """Reset to initial conditions from notebook.md section 3.8
+        
+        Args:
+            L_root: If provided, use this value as initial L_root instead of 8.0.
+                    Useful for multi-day simulations where growth should carry over.
+        """
+        L_root_init = L_root if L_root is not None else 8.0
+        
         # Domain randomization for sim-to-real robustness
         # Indonesian greenhouse: T_in varies 22-32°C depending on season, time, conditions
         base_T_in = 27.0  # average tropical greenhouse temperature
@@ -96,7 +104,7 @@ class AeroponicSimulatorEnv:
         T_nut = T_in + random.uniform(-1.0, 1.0)  # starts close to air temp
 
         self.state = [
-            8.0,    # L_root
+            L_root_init,  # L_root - carried over from previous episode for multi-day sims
             0.95,   # U_status
             T_in,   # T_in randomized for tropical greenhouse
             H_in,   # H_in randomized
@@ -1074,6 +1082,154 @@ def run_test_plots():
     print("=" * 80)
 
 
+def run_ppo_multi_day_simulation(days=90, deterministic=False):
+    """
+    Run 90-day continuous simulation using trained PPO agent.
+    
+    Each episode is 24h, so we run 90 episodes, carrying over L_root across episodes.
+    
+    Args:
+        days: Number of days to simulate
+        deterministic: If True, use deterministic actions; if False, stochastic
+        
+    Returns:
+        dict with history of state evolution per capture point
+    """
+    try:
+        from stable_baselines3 import PPO
+        from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+    except ImportError:
+        print("ERROR: stable_baselines3 not installed. Cannot run PPO simulation.")
+        return None
+    
+    base_dir = '/home/almuzky/TA/Microservices/services/ml-control'
+    model_path = f'{base_dir}/models/aeroponic_ppo.zip'
+    vec_norm_path = f'{base_dir}/models/vec_normalize.pkl'
+    
+    if not os.path.exists(model_path):
+        print(f"ERROR: Model not found at {model_path}")
+        return None
+    
+    try:
+        from train_ppo import AeroponicGymnasiumEnv
+    except ImportError:
+        print("ERROR: Cannot import AeroponicGymnasiumEnv from train_ppo.py")
+        return None
+    
+    gym_env = AeroponicGymnasiumEnv()
+    vec_env = DummyVecEnv([lambda: gym_env])
+    vec_norm = VecNormalize.load(vec_norm_path, vec_env)
+    vec_norm.training = False
+    vec_norm.norm_reward = False
+    
+    model = PPO.load(model_path, env=vec_norm)
+    
+    print("\n" + "=" * 80)
+    print(f"PPO 90-DAY CONTINUOUS SIMULATION ({days} days)")
+    print("=" * 80)
+    
+    history = {
+        'day': [0],
+        'time_s': [0.0],
+        'L_root': [8.0],
+        'H_in': [82.0],
+        'T_in': [27.0],
+        'T_out': [26.0],
+        'H_out': [70.0],
+        'EC': [1.7],
+        'pH': [5.9],
+        'T_nut': [27.0],
+        'O2_status': [1.0],
+        'D_mist': [],
+        'interval_sec': [],
+        'A_valve': [],
+    }
+    
+    L_root_carry = 8.0
+    total_growth = 0.0
+    current_episode = 0
+    
+    L_root_init = L_root_carry
+    episode_actions = {'D_mist': [], 'interval_sec': [], 'A_valve': []}
+    
+    while current_episode < days:
+        gym_env_local = AeroponicGymnasiumEnv()
+        vec_env_local = DummyVecEnv([lambda: gym_env_local])
+        vec_norm_local = VecNormalize.load(vec_norm_path, vec_env_local)
+        vec_norm_local.training = False
+        vec_norm_local.norm_reward = False
+        
+        raw_obs, _ = gym_env_local.reset(L_root=L_root_carry)
+        obs = vec_norm_local.normalize_obs(raw_obs.reshape(1, -1))
+        
+        episode_terminated = False
+        last_action = None
+        
+        while not episode_terminated:
+            # Read true state BEFORE the step so we don't get reset state
+            sim = gym_env_local.sim
+            pre_L_root = sim.state[0]
+            pre_H_in = sim.state[3]
+            pre_T_in = sim.state[2]
+            pre_T_out = sim.state[4]
+            pre_H_out = sim.state[5]
+            pre_EC = sim.state[6]
+            pre_pH = sim.state[7]
+            pre_T_nut = sim.state[8]
+            pre_O2 = sim.T_continuous
+            pre_time = sim.current_time
+            
+            action, _ = model.predict(obs, deterministic=deterministic)
+            action = np.asarray(action).flatten()
+            action = np.clip(action, vec_env_local.action_space.low, vec_env_local.action_space.high)
+            last_action = action
+            
+            obs, reward, done, info = vec_norm_local.step(action)
+            terminated = bool(np.any(done)) if isinstance(done, np.ndarray) else bool(done)
+            info0 = info[0] if isinstance(info, list) else info
+            current_O2 = info0.get('O2_status', max(0.2, 1.0 - 0.08 * max(0, pre_O2 - 3)))
+            
+            if terminated:
+                episode_terminated = True
+                
+                history['day'].append(current_episode + 1)
+                history['time_s'].append(pre_time)
+                history['L_root'].append(pre_L_root)
+                history['H_in'].append(pre_H_in)
+                history['T_in'].append(pre_T_in)
+                history['T_out'].append(pre_T_out)
+                history['H_out'].append(pre_H_out)
+                history['EC'].append(pre_EC)
+                history['pH'].append(pre_pH)
+                history['T_nut'].append(pre_T_nut)
+                history['O2_status'].append(current_O2)
+                if last_action is not None:
+                    episode_actions['D_mist'].append(last_action[0])
+                    episode_actions['interval_sec'].append(last_action[1])
+                    episode_actions['A_valve'].append(last_action[2])
+                
+                L_root_carry = pre_L_root
+                total_growth += pre_L_root - L_root_init
+                current_episode += 1
+                
+                print(f"Day {current_episode:3d}: L_root={pre_L_root:.4f} cm, "
+                      f"H_in={pre_H_in:.1f}%, EC={pre_EC:.2f}, pH={pre_pH:.2f}, "
+                      f"O2={current_O2:.2f}, D_mist={last_action[0]:.0f}s, interval={last_action[1]:.0f}s, "
+                      f"growth_this_ep={pre_L_root - L_root_init:.4f} cm")
+    
+    history['D_mist'] = episode_actions['D_mist']
+    history['interval_sec'] = episode_actions['interval_sec']
+    history['A_valve'] = episode_actions['A_valve']
+    
+    final_L = L_root_carry
+    print(f"\nFinal L_root: {final_L:.4f} cm")
+    print(f"Total growth over {days} days: {final_L - L_root_init:.4f} cm")
+    print(f"Average growth per day: {(final_L - L_root_init)/days:.4f} cm/day")
+    print("=" * 80)
+    
+    return history
+
+
 if __name__ == "__main__":
     run_validation()
     print("\n")
@@ -1086,8 +1242,16 @@ if __name__ == "__main__":
     multi_history = run_multi_day_simulation(days=90, action=[180.0, 540.0, 0.0], verbose=True)
     
     # Save multi-day plot
-    import os
     results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
     os.makedirs(results_dir, exist_ok=True)
     plot_multi_day(multi_history, os.path.join(results_dir, "multi_day_90d.png"))
     print(f"\nMulti-day simulation complete. Plot saved to: {results_dir}/multi_day_90d.png")
+    
+    # Run PPO agent 90-day simulation
+    print("\n" + "=" * 80)
+    print("PPO AGENT 90-DAY CONTINUOUS SIMULATION")
+    print("=" * 80)
+    ppo_history = run_ppo_multi_day_simulation(days=90, deterministic=False)
+    if ppo_history is not None:
+        plot_multi_day(ppo_history, os.path.join(results_dir, "ppo_multi_day_90d.png"))
+        print(f"\nPPO multi-day simulation complete. Plot saved to: {results_dir}/ppo_multi_day_90d.png")

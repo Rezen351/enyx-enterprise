@@ -29,7 +29,6 @@ class AeroponicGymnasiumEnv(gym.Env):
     Observation: 11D continuous
     Action: 3D continuous [D_mist, interval_sec, A_valve]
     """
-
     def __init__(self):
         super().__init__()
         self.sim = AeroponicSimulatorEnv()
@@ -51,9 +50,9 @@ class AeroponicGymnasiumEnv(gym.Env):
             dtype=np.float32,
         )
 
-    def reset(self, seed=None, options=None):
+    def reset(self, seed=None, options=None, L_root=None):
         super().reset(seed=seed)
-        state = self.sim.reset()
+        state = self.sim.reset(L_root=L_root)
         return np.array(state, dtype=np.float32), {}
 
     def step(self, action):
