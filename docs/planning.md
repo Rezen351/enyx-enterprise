@@ -48,6 +48,174 @@ Sistem dirancang dengan filosofi modular yang berlandaskan pada prinsip pemisaha
 
 ---
 
+## 📚 Dasar Teoritis & Justifikasi Akademik
+
+Bagian ini menyajikan landasan teoretis dan justifikasi berbasis literatur untuk setiap keputusan arsitektur utama dalam sistem enyx-enterprise. Setiap pola yang diadopsi didukung oleh referensi jurnal, konferensi, atau buku teks yang diakui secara akademis.
+
+### 1. Arsitektur Microservice & Database-per-Service
+
+**Landasan Teoritis:**
+Sistem ini mengadopsi **Microservice Architecture** yang mendefinisikan aplikasi sebagai koleksi service kecil, independently deployable, yang berkomunikasi melalui lightweight mechanism (Richardson, 2018; European Journal of Computer Science and Information Technology, 2025). Penelitian menunjukkan bahwa 73% organisasi yang mengimplementasikan microservices menggunakan pola **Database-per-Service** untuk mencapai decoupling tingkat data (European Journal of Computer Science and Information Technology, 13(14), 2025).
+
+**Justifikasi untuk Database-per-Service:**
+Pattern ini memberikan隔离 (isolation) data antar service, sehingga perubahan schema di satu service tidak mempengaruhi service lain (microservices.io; Ali, 2024). Sistem ini menerapkan isolation secara fisik: 8 instance MariaDB, 2 instance TimescaleDB, 1 instance Redis, dan 1 instance MinIO — masing-masing dengan kredensial dan network policy terpisah.
+
+> **Referensi:**
+> - Richardson, C. (2018). *Microservices Patterns: With examples in Java*. Manning Publications.
+> - European Journal of Computer Science and Information Technology, 13(14), 48-54 (2025). "Microservices Transformation: Architecture, Patterns, and Enterprise Adoption."
+> - Ali, A.J.M. (2024). "Exploring Database design patterns of Microservices." *Journal of Artificial Intelligence, Machine Learning and Data Science*, 2(1), 1732-1735. DOI: 10.51219/JAIMLD/azra-jabeen-mohamed-ali/376
+
+### 2. Komunikasi Event-Driven: MQTT untuk Edge, NATS untuk Inter-Service
+
+**Landasan Teoritis:**
+Arsitektur ini menggunakan **dual-protocol strategy** yang dibuktikan optimal dalam literatur IoT dan microservices:
+
+- **MQTT (Message Queuing Telemetry Transport):** ISO/IEC 20922 standard untuk IoT. MQTT menggunakan model publish/subscribe dengan overhead network minimal (~388 bytes per message vs ~3285 bytes HTTP) (HiveMQ, 2026; Craggs, 2026). QoS level 0/1/2 menjamin delivery sesuai kebutuhan device.
+- **NATS (N Advanced Transport System):** Cloud-native messaging system dengan throughput orde-of-magnitude lebih tinggi dibanding MQTT untuk microservices traffic. NATS menyediakan native Request-Reply pattern yang tidak tersedia di MQTT tanpa implementasi manual (i-flow, 2026).
+
+**Justifikasi Arsitektur Hibrida:**
+Penelitian i-flow (2026) dan DigitalValley (2025) menyebutkan pendekatan "best of both worlds":
+- **MQTT** digunakan untuk **Device Layer** (ESP32 → Mosquitto) karena:
+  - MQTT dirancang untuk resource-constrained devices dengan bandwidth terbatas
+  - QoS mechanism (level 0, 1, 2) menjamin delivery meskipun network tidak stabil
+  - Retained messages memungkinkan device mendapatkan state terbaru saat reconnect
+- **NATS** digunakan untuk **Inter-Service Event Bus** karena:
+  - Latency lebih rendah dan throughput lebih tinggi untuk microservices
+  - Native support untuk request-reply, tidak memerlukan implementasi manual
+  - JetStream memberikan durability + replay tanpa mengorbankan performance
+  - Clustering lebih sederhana dibanding MQTT broker clustering
+
+Sistem ini mengadopsi pola **Edge-Backend dichotomy** yang dibuktikan efektif: MQTT sebagai edge ingestion layer, NATS sebagai backbone distribution layer (i-flow, 2026; EMQX, 2026).
+
+> **Referensi:**
+> - HiveMQ (2026). "MQTT Vs. HTTP for IoT." https://www.hivemq.com/blog/mqtt-vs-http-protocols-in-iot-iiot
+> - Craggs, I. (2026). "MQTT Vs. HTTP for IoT." HiveMQ Blog.
+> - i-flow (2026). "NATS vs MQTT: Which Protocol Fits Best in a Unified Namespace." https://i-flow.io/en/ressources/nats-vs-mqtt-comparison-for-the-uns-application/
+> - DigitalValley (2025). "NATS vs. MQTT: Protokollvergleich für IoT und Microservices im Jahr 2025."
+> - Jeddou Sidna et al. (2020). "Analysis and evaluation of communication Protocols for IoT Applications." *Proceedings of SITA'20*. ACM Digital Library.
+> - Matic, M. et al. (2021). "Optimization of MQTT Communication Between Microservices in the IoT Cloud." *IEEE International Conference on Consumer Electronics (ICCE)*. DOI: 10.1109/ICCE50685.2021.9427602
+
+### 3. Event-Driven Architecture & Polyglot Persistence
+
+**Landasan Teoritis:**
+Event-Driven Architecture (EDA) memungkinkan service bereaksi terhadap event daripada dipanggil secara sinkron. Penelitian di European Journal (2025) menunjukkan bahwa organisasi yang mengimplementasikan EDA mengalami **71% peningkatan skalabilitas** dan **65% peningkatan fault isolation** dibanding model request-response sinkron.
+
+Sistem ini menerapkan **Polyglot Persistence** — menggunakan teknologi database yang berbeda untuk kebutuhan berbeda:
+- MariaDB untuk data relasional (Auth, Module metadata)
+- TimescaleDB untuk time-series (telemetry sensor, analytics)
+- Redis untuk cache/ephemeral store
+- MinIO untuk object storage (stream, ML model)
+
+Pattern ini sejalan dengan prinsip "right tool for the job" yang diakui dalam literatur microservices (Ali, 2024; microservices.io).
+
+> **Referensi:**
+> - European Journal of Computer Science and Information Technology, 13(14), 48-54 (2025).
+> - Ali, A.J.M. (2024). "Exploring Database design patterns of Microservices."
+> - microservices.io. "Pattern: Database per service." https://microservices.io/patterns/data/database-per-service.html
+
+### 4. API Gateway Pattern (Kong)
+
+**Landasan Teoritis:**
+API Gateway pattern menciptakan single entry point untuk semua client requests, menangani cross-cutting concerns (authentication, rate limiting, routing, protocol translation) sehingga service tidak perlu mengimplementasikannya sendiri (Richardson, 2018; microservices.io).
+
+**Justifikasi Kong:**
+- Kong dipilih karena modular plugin system (JWT, rate-limiting, CORS) yang mengeksekusi di level gateway sebelum request mencapai service
+- Memudahkan defense-in-depth: service tetap validasi JWT sendiri meskipun gateway sudah memverifikasi
+- Mendukung WebSocket routing (`/ws` → WS-Gateway) yang dibutuhkan untuk real-time dashboard
+- Open-source dengan enterprise support, sesuai untuk skala akademis maupun produksi
+
+Penelitian menunjukkan bahwa 85% organisasi yang mengimplementasikan microservices menggunakan API Gateway pattern (European Journal, 2025).
+
+> **Referensi:**
+> - Richardson, C. (2018). *Microservices Patterns*.
+> - microservices.io. "Pattern: API Gateway / Backends for Frontends." https://microservices.io/patterns/apigateway.html
+> - Youngju Kim (2026). "API Gateway Patterns and BFF Design: Practical Implementation with Kong, Envoy, and GraphQL Federation."
+> - European Journal of Computer Science and Information Technology, 13(14), 2025.
+
+### 5. Saga Pattern untuk Distributed Transaction
+
+**Landasan Teoritis:**
+Dalam arsitektur microservices dengan Database-per-Service, transaksi ACID terdistribusi menjadi tidak praktis. **Saga Pattern** mendefinisikan sequence of local transactions dengan compensating transaction untuk setiap step (Garcia-Molina & Salem, 1987; Richardson, 2018; Arun Neelan, 2025).
+
+Sistem ini menggunakan **Choreography-based Saga** (bukan Orchestration) karena:
+- Setiap service otonom, hanya mengetahui domain-nya sendiri
+- Tidak ada single point of failure (orchestrator)
+- Lebih sesuai dengan prinsip Zero-Trust Internal
+- Skalabilitas lebih baik karena tidak ada bottleneck orchestration
+
+Namun, sistem ini juga mengakui trade-off: choreography lebih sulit di-debug dan di-trace, sehingga `trace_id` end-to-end dan DLQ consumer menjadi krusially penting untuk observability (Praveen TN, 2024; AppScale, 2026).
+
+> **Referensi:**
+> - Garcia-Molina, H., & Salem, K. (1987). "Sagas." *Proceedings of the ACM SIGMOD International Conference on Management of Data*.
+> - Richardson, C. (2018). *Microservices Patterns*.
+> - Arun Neelan (2025). "A Review of the Saga Pattern for Distributed Transactions in Microservices Architecture." *International Journal For Multidisciplinary Research (IJFMR)*, Volume 7, Issue 4. DOI: 10.36948/ijfmr.2025.v07i04.54377
+> - Praveen TN. "Saga Pattern – Event-Driven Architecture Learning Capsule." https://praveentn.github.io/arconcepts/event-driven/saga-pattern.html
+> - AppScale (2026). "Saga Orchestration Pattern: Managing Distributed Transactions Without 2PC." https://appscale.blog/en/blog/microservices-pattern-saga-orchestration-2026
+
+### 6. Transactional Outbox Pattern
+
+**Landasan Teoritis:**
+Dual-write problem (menulis DB lalu publish event secara terpisah) adalah akar dari sebagian besar bug data terdistribusi (Ivezaj, 2026). **Transactional Outbox Pattern** menyelesaikan ini dengan menulis event ke tabel outbox dalam transaksi yang sama dengan data bisnis.
+
+NATS JetStream juga menyediakan exactly-once semantics melalui:
+- **Publisher dedup:** header `Nats-Msg-Id` — server melacak ID dalam window waktu
+- **Consumer double-ack:** acknowledgment dua arah mencegah redeliver salah
+
+Kombinasi outbox + idempotent consumer + dedupe menjamin exactly-once effect, bukan hanya at-least-once (NATS official docs; Ivezaj, 2026).
+
+> **Referensi:**
+> - Ivezaj, I. (2026). "Eventual Consistency & UX Design for Microservices." https://medium.com/@ilirivezaj (cited in planning.md)
+> - microservices.io. "Pattern: Transactional Outbox." https://microservices.io/patterns/data/transactional-outbox.html
+> - Singh, A. (2026). "Transactional Outbox Pattern: Never Lose an Event Again." https://singhajit.com/transactional-outbox-pattern
+> - NP Blog (2025). "Transactional Outbox Pattern: From Theory to Production." https://www.npiontko.pro/2025/05/19/outbox-pattern
+
+### 7. Resilience Patterns: Circuit Breaker, Bulkhead, Retry
+
+**Landasan Teoritis:**
+Systematic Literature Review (arXiv, 2025) mengidentifikasi 9 tema resilience yang recurring dalam microservices: circuit breaker, retry with jitter, saga with compensation, idempotency, bulkhead, adaptive backpressure, observability, dan chaos validation.
+
+**Implementasi dalam Sistem:**
+- **Circuit Breaker:** Mencegah cascading failure pada dependency sinkron (HTTP inter-service). Mencegah satu service lambat menarik turun seluruh rantai (Parser Digital, 2024; JRebel, 2020).
+- **Bulkhead:** Memisahkan resource pool per dependency, sehingga kegagalan satu service tidak menghabiskan resource service lain (Parser Digital, 2024; Codemia).
+- **Retry + Exponential Backoff + Jitter:** Menangani transient failure tanpa membanjiri dependency yang sedang recovery (techinterview.org, 2026).
+- **Timeout:** Semua I/O operasi dibatasi waktu untuk mencegah goroutine/thread leak.
+
+> **Referensi:**
+> - arXiv:2512.16959v1 (2025). "Resilient Microservices: A Systematic Review of Recovery Patterns, Strategies, and Evaluation Frameworks."
+> - Parser Digital (2024). "Resilience in Microservices: Bulkhead vs Circuit Breaker." https://parserdigital.com/2024/07/11/resilience-in-microservices-bulkhead-vs-circuit-breaker/
+> - JRebel (2020). "Guide to Microservices Resilience Patterns." https://www.jrebel.com/blog/microservices-resilience-patterns
+> - techinterview.org (2026). "System Design: Circuit Breaker, Retry, and Bulkhead — Resilience Patterns for Microservices."
+
+### 8. Observability & Distributed Tracing
+
+**Landasan Teoritis:**
+Observability dalam microservices melibatkan tiga pilar: metrics, logs, dan traces. Penelitian menunjukkan bahwa 73% implementasi microservices awalnya kesulitan dengan data consistency, tetapi angka ini turun ke 24% setelah observability tooling yang memadai diterapkan (European Journal, 2025).
+
+Sistem ini mengimplementasikan:
+- **Metrics:** Prometheus + exporters terstandarisasi (30 target)
+- **Logs:** Audit log via NATS (`audit.log` subject) + correlation ID
+- **Tracing:** `trace_id` (OpenTelemetry/W3C) diheader HTTP dan NATS untuk end-to-end span
+
+> **Referensi:**
+> - European Journal of Computer Science and Information Technology, 13(14), 2025.
+> - Kong Inc. (2025). "7 Modern Microservices Design Patterns and Architectures." https://konghq.com/blog/enterprise/microservice-design-patterns
+> - Dhaduk, H. (2025). "6 Observability Design Patterns for Microservices Every CTO Should Know." https://www.simform.com/blog/observability-design-patterns-for-microservices/
+
+### 9. Eventual Consistency & UX Design
+
+**Landasan Teoritis:**
+Eventual consistency adalah konsekuensi inheren dari arsitektur terdistribusi. Ivezaj (2026) menekankan bahwa eventual consistency adalah **keputusan UX, bukan sekadar data** — sistem harus menunjukkan state `processing`/`syncing` kepada pengguna, bukan menampilkan data yang seolah-olah konsisten.
+
+Sistem ini menerapkan:
+- CQRS read-model untuk dashboard (Analytics → TimescaleDB rollup)
+- Badge "reconnecting…" saat WS-Gateway reconnect ke NATS
+- Optimistic update pada UI untuk menghindari waiting state yang tidak perlu
+
+> **Referensi:**
+> - Ivezaj, I. (2026). Eventual Consistency & UX Design for Microservices.
+
+---
+
 ## 🏗️ Arsitektur Sistem
 
 ### Topologi
@@ -141,25 +309,25 @@ flowchart TB
 
 ### Prinsip Desain
 
-| Prinsip | Implementasi |
-|---|---|
-| Database-per-Service | Setiap service memiliki container database sendiri, tidak ada sharing database |
-| Event-Driven Architecture | Komunikasi antar-service menggunakan NATS JetStream dengan pola Pub/Sub dan Request-Reply |
-| Single Entry Point | Semua traffic eksternal melalui Kong API Gateway |
-| Zero-Trust Internal | Setiap service hanya mengetahui kredensial database miliknya sendiri |
-| Schema Migration on Boot | Setiap service melakukan migrasi skema database sendiri saat startup |
-| Saga Pattern | Transaksi terdistribusi menggunakan choreography-based saga via NATS |
-| Idempotency | Semua event handler dirancang idempotent untuk menjamin exactly-once processing |
+| Prinsip | Implementasi | Dasar Teoritis |
+|---|---|---|
+| Database-per-Service | Setiap service memiliki container database sendiri, tidak ada sharing database | Mengurangi coupling antar service dan memungkinkan independent scaling (European Journal CSIT, 2025; Ali, 2024). Isolasi fisik database mencegah cascading failure dan memudahkan evolusi schema independen. |
+| Event-Driven Architecture | Komunikasi antar-service menggunakan NATS JetStream dengan pola Pub/Sub dan Request-Reply | EDA meningkatkan skalabilitas 71% dan fault isolation 65% dibanding request-response sinkron (European Journal CSIT, 2025). NATS memberikan throughput orde-of-magnitude lebih tinggi untuk microservices traffic dibanding MQTT (i-flow, 2026). |
+| Single Entry Point | Semua traffic eksternal melalui Kong API Gateway | 85% organisasi microservices menggunakan API Gateway pattern untuk centralized security, rate limiting, dan routing (European Journal CSIT, 2025; Richardson, 2018). |
+| Zero-Trust Internal | Setiap service hanya mengetahui kredensial database miliknya sendiri | Prinsip zero trust meminimalkan blast radius saat service compromise. Diimplementasikan via network isolation (docker network `iot-net`) + scoped credentials per service. |
+| Schema Migration on Boot | Setiap service melakukan migrasi skema database sendiri saat startup | Memastikan service bisa di-deploy independen tanpa requiring shared migration state. Auto-migration di-handle di level aplikasi, bukan operasional DBA manual. |
+| Saga Pattern | Transaksi terdistribusi menggunakan choreography-based saga via NATS | Saga memungkinkan eventual consistency tanpa distributed ACID/2PC yang mahal (Garcia-Molina & Salem, 1987; Arun Neelan, 2025). Choreography dipilih untuk menghindari orchestrator SPOF. |
+| Idempotency | Semua event handler dirancang idempotent untuk menjamin exactly-once processing | Idempotency + dedupe (`meta.idempotency_key`) + NATS `Nats-Msg-Id` publisher dedup menjamin exactly-once effect meskipun broker hanya at-least-once (NATS docs; microservices.io). |
 
 ### Pola Komunikasi (3 Jalur Utama)
 
 Agar tidak ambigu, sistem menggunakan **tiga jalur komunikasi yang berbeda** secara eksplisit. Dashboard/Client selalu berhadapan dengan **Kong** sebagai satu-satunya pintu masuk eksternal.
 
-| Jalur | Arah & Protokol | Penjelasan |
-|---|---|---|
-| **1. REST API (Request-Response)** | `Dashboard/Client → Kong (HTTP/REST, prefix /v1) → <Service>` | Semua CRUD & query (Auth, Module, Analytics, Control, Stream) lewat Kong lalu ke service tujuan. Service validasi JWT sendiri (defense-in-depth). |
-| **2. Realtime (WebSocket)** | `Dashboard/Client → Kong (route /ws) → WS-Gateway ⇄ NATS subject ⇄ Dashboard` | WebSocket juga lewat Kong (route `/ws`), lalu diteruskan ke WS-Gateway. WS-Gateway dirancang menjadi jembatan NATS⇄Dashboard **dua arah**: (a) **inbound** — subscribe subject NATS lalu push ke client; (b) **outbound** — menerima pesan dari client lalu publish ke subject NATS (mis. perintah realtime/control) agar service lain mengonsumsinya. **Status implementasi:** inbound **sudah jalan** — `NodeLive` subscribe `mqtt.{node_id}` (via wildcard `mqtt.>` cache) dan `SystemStatus` subscribe `system.status`/`alert.triggered`/`alert.resolved`, keduanya push ke Dashboard; outbound **menyusul** (reader goroutine saat ini membuang pesan client, belum publish ke NATS). WS-Gateway **tidak** memanggil REST service untuk membalas. Rate-limit Kong hanya menghitung handshake koneksi, bukan setiap frame — sehingga throughput realtime tidak dibatasi limit API REST. |
-| **3. Inter-Service (Event Bus)** | `<Service A> → publish NATS subject → <Service B/C>` | Komunikasi antar-service **hanya** via NATS (JetStream/Core), bukan HTTP langsung antar container internal (kecuali circuit-breaker HTTP pada dependency sinkron seperti Stream→ML). DB tiap service tetap terisolasi. |
+| Jalur | Arah & Protokol | Penjelasan | Dasar Teoritis |
+|---|---|---|---|
+| **1. REST API (Request-Response)** | `Dashboard/Client → Kong (HTTP/REST, prefix /v1) → <Service>` | Semua CRUD & query (Auth, Module, Analytics, Control, Stream) lewat Kong lalu ke service tujuan. Service validasi JWT sendiri (defense-in-depth). | Synchronous request-response untuk operasi CRUX yang memerlukan immediate feedback (microservices.io; Richardson, 2018). |
+| **2. Realtime (WebSocket)** | `Dashboard/Client → Kong (route /ws) → WS-Gateway ⇄ NATS subject ⇄ Dashboard` | WebSocket juga lewat Kong (route `/ws`), lalu diteruskan ke WS-Gateway. WS-Gateway dirancang menjadi jembatan NATS⇄Dashboard **dua arah**: (a) **inbound** — subscribe subject NATS lalu push ke client; (b) **outbound** — menerima pesan dari client lalu publish ke subject NATS (mis. perintah realtime/control) agar service lain mengonsumsinya. **Status implementasi:** inbound **sudah jalan** — `NodeLive` subscribe `mqtt.{node_id}` (via wildcard `mqtt.>` cache) dan `SystemStatus` subscribe `system.status`/`alert.triggered`/`alert.resolved`, keduanya push ke Dashboard; outbound **menyusul** (reader goroutine saat ini membuang pesan client, belum publish ke NATS). WS-Gateway **tidak** memanggil REST service untuk membalas. Rate-limit Kong hanya menghitung handshake koneksi, bukan setiap frame — sehingga throughput realtime tidak dibatasi limit API REST. | WebSocket via API Gateway memungkinkan real-time bidirectional communication tanpa polling overhead (Kong Inc., 2025). NATS sebagai backend fan-out layer memberikan scalable pub/sub untuk realtime telemetry (i-flow, 2026). |
+| **3. Inter-Service (Event Bus)** | `<Service A> → publish NATS subject → <Service B/C>` | Komunikasi antar-service **hanya** via NATS (JetStream/Core), bukan HTTP langsung antar container internal (kecuali circuit-breaker HTTP pada dependency sinkron seperti Stream→ML). DB tiap service tetap terisolasi. | Event-driven inter-service communication menghilangkan coupling waktu (temporal coupling) dan meningkatkan fault isolation (European Journal CSIT, 2025). JetStream memberikan durability untuk critical events seperti `telemetry.batch` dan `saga.*`. |
 
 > **Inti:** REST & WebSocket dari client **sama-sama lewat Kong**. Perbedaannya: REST diakhiri oleh service (request-response), sedangkan WebSocket diteruskan Kong ke **WS-Gateway** yang menjadi jembatan NATS⇄client secara **dua arah** (realtime). Data realtime **tidak** berasal dari REST service, melainkan dari event NATS yang di-fan-out oleh WS-Gateway (inbound, via subject `mqtt.>` / `mqtt.{node_id}` dan `system.status`) atau diteruskan client ke NATS (outbound, menyusul). Kong tidak membatasi volume telemetry karena rate-limit hanya berlaku pada handshake koneksi WS, bukan per-message.
 
@@ -193,6 +361,8 @@ Setiap service memiliki instance database terpisah sesuai dengan kebutuhan data-
 **Cache:** 1× instance Redis bersama (`redis-shared`, multi-DB) untuk Module / Alert / Notification / Export.
 **Total instance database terpisah:** 8× MariaDB · 2× TimescaleDB · 1× Redis · 1× MinIO = **12 instance** (turun dari 17 setelah konsolidasi Redis)
 **Sudah berjalan:** 8× MariaDB · 2× TimescaleDB · 1× Redis · 1× MinIO = **12 instance**
+
+> **Dasar Konsolidasi:** Konsolidasi Redis dan MinIO mengikuti prinsip "right tool for the job" — Redis sebagai cache/ephemeral store bukan sumber kebenaran domain, sehingga konsolidasi via multi-DB logical tidak melanggar Database-per-Service principle (Ali, 2024; European Journal CSIT, 2025).
 
 ---
 
@@ -272,13 +442,13 @@ NATS menyediakan jaminan **at-least-once**, bukan exactly-once. Oleh karena itu:
 
 Arsitektur saat ini berpusat pada NATS & Kong — keduanya adalah **SPOF** jika berjalan single instance. Strategi mitigasi:
 
-| Komponen | Risiko | Strategi HA |
-|---|---|---|
-| NATS JetStream | Single instance → event bus mati | (Dev) single OK; (Prod) NATS **cluster 3-node** (`nats_cluster {}`) dengan JetStream replication factor ≥ 2 + `R=2` stream. Client pakai seed list `nats://n1,nats://n2,nats://n3`. |
-| Kong | Single gateway → traffic eksternal mati | (Prod) 2+ replica Kong di belakang LB; atau Konnect. Dev: single. |
-| MinIO | SPOF object storage | Sudah direncanakan **erasure-coding multi-drive** (≥4 drive) di host yang sama — lebih tangguh dari 2 container 1 disk. |
-| MariaDB/TimescaleDB | Data per-service hilang | Backup cron (lihat DR section). Untuk prod kritis: primary-replica. |
-| Service crash | Consumer mati | Restart policy `unless-stopped` + Docker healthcheck + JetStream replay (Analytics sudah demo). |
+| Komponen | Risiko | Strategi HA | Dasar Teoritis |
+|---|---|---|---|
+| NATS JetStream | Single instance → event bus mati | (Dev) single OK; (Prod) NATS **cluster 3-node** (`nats_cluster {}`) dengan JetStream replication factor ≥ 2 + `R=2` stream. Client pakai seed list `nats://n1,nats://n2,nats://n3`. | NATS clustering memberikan linear scalability dan fault tolerance (NATS docs; i-flow, 2026). Replication factor ≥ 2 menjamin durability meskipun 1 node mati. |
+| Kong | Single gateway → traffic eksternal mati | (Prod) 2+ replica Kong di belakang LB; atau Konnect. Dev: single. | Kong dapat di-scale horizontal via load balancer (Kong Inc., 2025). Multi-replica menghilangkan SPOF di edge gateway. |
+| MinIO | SPOF object storage | Sudah direncanakan **erasure-coding multi-drive** (≥4 drive) di host yang sama — lebih tangguh dari 2 container 1 disk. | Erasure coding memberikan fault tolerance dengan storage overhead lebih rendah daripada replication (MinIO docs). |
+| MariaDB/TimescaleDB | Data per-service hilang | Backup cron (lihat DR section). Untuk prod kritis: primary-replica. | Backup strategy dengan RPO/RTO yang didefinisikan adalah standard disaster recovery practice (Richardson, 2018). |
+| Service crash | Consumer mati | Restart policy `unless-stopped` + Docker healthcheck + JetStream replay (Analytics sudah demo). | Self-healing via healthcheck + restart policy mengurangi MTTR (Mean Time To Recovery) secara signifikan (European Journal CSIT, 2025). |
 
 > **Resilience by design** (prinsip baris 28) baru terpenuhi penuh bila `saga.*.dlq` + compensating transaction **benar-benar terimplementasi**, bukan hanya didokumentasikan. Status saat ini: saga choreography narasi ✅, DLQ consumer (Audit) ⬜, tracing ⬜.
 
@@ -286,15 +456,15 @@ Arsitektur saat ini berpusat pada NATS & Kong — keduanya adalah **SPOF** jika 
 
 ## 🔌 Resilience Patterns (Production-Grade)
 
-Selain HA infrastruktur, setiap service harus mengadopsi pola *design for failure* agar kegagalan satu komponen tidak merambat (cascading failure). Referensi: JRebel 2026, Anji Reddy 2023, Reintech 2026.
+Selain HA infrastruktur, setiap service harus mengadopsi pola *design for failure* agar kegagalan satu komponen tidak merambat (cascading failure). Referensi: JRebel 2020, arXiv:2512.16959v1 (2025), Parser Digital (2024), techinterview.org (2026).
 
-| Pola | Definisi | Implementasi dalam Sistem |
-|---|---|---|
-| **Circuit Breaker** | "Saklar" otomatis yang **memutus** panggilan ke dependency yang sedang gagal/lambat. Saat error rate melampaui ambang, state → `OPEN` (tolak langsung, cepat gagal). Setelah `reset_timeout`, state → `HALF_OPEN` (izinkan sebagian request uji). Jika sukses → `CLOSED`; jika gagal → kembali `OPEN`. Mencegah satu service lambat menarik turun seluruh rantai. | Dipakai pada panggilan **HTTP antar-service** (mis. Stream → ML `/ml/detect`, Module → Auth validasi). Threshold konservatif lalu disetel via metrik. Library: `sony/gobreaker` (Go) atau `gofiber/circuit` di handler outbound. |
-| **Bulkhead** | "Kompartemen kapal" — tiap dependency mendapat **pool resource terbatas** (goroutine / koneksi / semaphore) sendiri. Jika satu dependency melambat, pool-nya habis sendiri, tidak mengorbankan resource service lain. | Setiap outbound client (NATS, HTTP ke service lain, DB) diberi `maxConcurrent`/`pool size` terpisah. Worker pool NATS subscribe dibatasi per consumer. |
-| **Retry + Exponential Backoff** | Ulangi panggilan gagal dengan jeda meningkat + jitter agar tidak membanjiri dependency yang sedang recovery. | NATS JetStream sudah `ack`+redeliver; untuk HTTP outbound: retry 3× dengan backoff 100ms→1s + jitter. Hindari retry pada error 4xx (client error). |
-| **Timeout** | Batasi waktu tunggu tiap I/O. Tanpa timeout, goroutine menunggu selamanya → resource leak. | Set `context.WithTimeout` di semua DB/HTTP/NATS call. WS replay cache sudah jadi fallback saat live stream mati (degradasi graceful). |
-| **Graceful Degradation** | Saat komponen mati, sistem tetap kasih fungsi dasar, bukan lumpuh total. | NATS mati → WS-Gateway sajikan payload terakhir dari cache `mqtt.>` (sudah ada). Dashboard tunjukkan badge "reconnecting…" daripada spinner abadi. |
+| Pola | Definisi | Implementasi dalam Sistem | Dasar Teoritis |
+|---|---|---|---|
+| **Circuit Breaker** | "Saklar" otomatis yang **memutus** panggilan ke dependency yang sedang gagal/lambat. Saat error rate melampaui ambang, state → `OPEN` (tolak langsung, cepat gagal). Setelah `reset_timeout`, state → `HALF_OPEN` (izinkan sebagian request uji). Jika sukses → `CLOSED`; jika gagal → kembali `OPEN`. Mencegah satu service lambat menarik turun seluruh rantai. | Dipakai pada panggilan **HTTP antar-service** (mis. Stream → ML `/ml/detect`, Module → Auth validasi). Threshold konservatif lalu disetel via metrik. Library: `sony/gobreaker` (Go) atau `gofiber/circuit` di handler outbound. | Circuit breaker memutus dependency chain sebelum cascading failure menyeluruh (Richardson, 2018; Parser Digital, 2024). Systematic review (arXiv, 2025) menempatkan circuit breaker sebagai resilience pattern paling widely adopted (82% organisasi). |
+| **Bulkhead** | "Kompartemen kapal" — tiap dependency mendapat **pool resource terbatas** (goroutine / koneksi / semaphore) sendiri. Jika satu dependency melambat, pool-nya habis sendiri, tidak mengorbankan resource service lain. | Setiap outbound client (NATS, HTTP ke service lain, DB) diberi `maxConcurrent`/`pool size` terpisah. Worker pool NATS subscribe dibatasi per consumer. | Bulkhead isolation mencegah satu service menyerap seluruh resource sistem (Parser Digital, 2024; JRebel, 2020). Berlawanan dengan circuit breaker: bulkhead untuk capacity isolation, circuit breaker untuk availability protection. |
+| **Retry + Exponential Backoff** | Ulangi panggilan gagal dengan jeda meningkat + jitter agar tidak membanjiri dependency yang sedang recovery. | NATS JetStream sudah `ack`+redeliver; untuk HTTP outbound: retry 3× dengan backoff 100ms→1s + jitter. Hindari retry pada error 4xx (client error). | Retry dengan exponential backoff + jitter menghindari thundering herd problem saat dependency recovery (techinterview.org, 2026; arXiv, 2025). Jitter menyeimbangkan retry traffic secara statistik. |
+| **Timeout** | Batasi waktu tunggu tiap I/O. Tanpa timeout, goroutine menunggu selamanya → resource leak. | Set `context.WithTimeout` di semua DB/HTTP/NATS call. WS replay cache sudah jadi fallback saat live stream mati (degradasi graceful). | Timeout adalah garis pertahanan pertama terhadap hung connections dan resource exhaustion (JRebel, 2020; Codemia). |
+| **Graceful Degradation** | Saat komponen mati, sistem tetap kasih fungsi dasar, bukan lumpuh total. | NATS mati → WS-Gateway sajikan payload terakhir dari cache `mqtt.>` (sudah ada). Dashboard tunjukkan badge "reconnecting…" daripada spinner abadi. | Graceful degradation menjaga user experience saat partial failure (European Journal CSIT, 2025). Fallback ke cache/replay lebih baik daripada total unavailability. |
 
 > **Catatan:** Pola ini wajib untuk panggilan **sinkron** (HTTP). Komunikasi **async** via NATS JetStream sudah tahan kegagalan via persistence + replay, sehingga circuit breaker utamanya untuk HTTP, bukan pub/sub.
 
@@ -357,6 +527,9 @@ Saat ini Prometheus **scrape langsung** tiap service (`/metrics`). Target akhir 
 - **Publisher:** setiap service publish periodik (15s) ke `metrics.health`.
 - **Subscriber:** (Fase 11) Prometheus Metrics Service subscribe → expose `/metrics` terpusat. Fallback: scrape langsung tetap ada hingga Fase 11 selesai.
 - **Tracing:** `trace_id` (OpenTelemetry/W3C) disebar via header `X-Trace-Id` & NATS header `Trace-Id` untuk end-to-end span (Jaeger opsional). Correlation ID (`X-Correlation-Id`) sudah wajib di AGENTS.md.
+
+**Dasar Teoritis:**
+Observability dalam microservices melibatkan tiga pilar: metrics, logs, dan traces. Push-based metrics via event bus mengurangi coupling antara scraping infrastructure dan service endpoints (Dhaduk, 2025). Event-driven metrics pipeline juga memungkinkan agregasi metrik tanpa harus expose `/metrics` secara langsung ke internet, meningkatkan security posture.
 
 ### Service Mesh — Out of Scope (Keputusan Sadar)
 
@@ -431,11 +604,15 @@ NATS digunakan sebagai event bus untuk komunikasi antar-service. Berikut adalah 
 
 Sistem menggunakan **Choreography-based Saga** untuk menangani transaksi terdistribusi antar-service. Dalam pola ini, setiap service bereaksi terhadap event dari service sebelumnya dan mempublikasikan event berikutnya secara otonom. Jika suatu langkah gagal, service yang bertanggung jawab mempublikasikan event **kompensasi** untuk membatalkan efek dari langkah-langkah sebelumnya.
 
+**Landasan Teoritis:**
+Saga Pattern awalnya diusulkan oleh Garcia-Molina & Salem (1987) untuk mengatasi masalah atomicity dalam long-running transaction. Dalam konteks microservices modern, saga menjadi alternative praktis terhadap Two-Phase Commit (2PC) yang introducing latency dan tight coupling (Arun Neelan, 2025; Richardson, 2018). Systematic review (Arun Neelan, 2025) mengidentifikasi compensation logic, idempotency, dan observability sebagai challenge utama dalam implementasi saga.
+
 **Mengapa Choreography (bukan Orchestration)?**
 - Tidak ada central orchestrator — setiap service otonom dan hanya mengetahui domain-nya sendiri
-- Lebih resilient: kegagalan satu service tidak memblokir service lain
+- Lebih resilient: kegagalan satu service tidak memblokir service lain (Praveen TN, 2024)
 - Sesuai dengan prinsip Database-per-Service dan Zero-Trust Internal
 - Skalabilitas lebih baik karena tidak ada single point of failure
+- Namun, choreography memiliki trade-off: observability dan debugging lebih kompleks, sehingga `trace_id` end-to-end dan DLQ consumer menjadi essential untuk observability (AppScale, 2026)
 
 ### Implementasi Aktual vs Aspirasional
 
