@@ -44,13 +44,14 @@ def evaluate_policy(model, vec_env, num_episodes=5):
     all_histories = []
 
     for ep in range(num_episodes):
-        # Access underlying sim for logging
         base_env = vec_env.envs[0]
-        sim = base_env.sim
-        sim.curriculum_weather_scale = 1.0  # fixed evaluation difficulty
+        raw = base_env
+        while hasattr(raw, 'env'):
+            raw = raw.env
+        sim = raw.sim
+        sim.curriculum_weather_scale = 1.0
 
-        # Reset through normalized vec_env so observations match training distribution
-        obs, _ = vec_env.reset()
+        obs = vec_env.reset()
         terminated = False
         truncated = False
         steps = 0
@@ -74,36 +75,75 @@ def evaluate_policy(model, vec_env, num_episodes=5):
             'A_valve': [],
             'captured': [],
         }
+        L_root_init = sim.state[0]
 
         while not terminated and not truncated:
             action, _ = model.predict(obs, deterministic=False)
-            action = np.clip(action, base_env.action_space.low, base_env.action_space.high)
+            action = np.asarray(action).flatten()
+            action = np.clip(action, vec_env.action_space.low, vec_env.action_space.high)
 
-            obs, reward, terminated, truncated, info = vec_env.step(action)
+            pre_L_root = sim.state[0]
+            pre_time = sim.current_time
+            pre_T_in = sim.state[2]
+            pre_H_in = sim.state[3]
+            pre_EC = sim.state[6]
+            pre_pH = sim.state[7]
+            pre_T_nut = sim.state[8]
+
+            obs, reward, done, info = vec_env.step(action)
+            terminated = bool(np.any(done)) if isinstance(done, np.ndarray) else bool(done)
+            sim = raw.sim
+
+            if terminated:
+                log_L = pre_L_root
+                log_time = pre_time
+                log_T_in = pre_T_in
+                log_H_in = pre_H_in
+                log_EC = pre_EC
+                log_pH = pre_pH
+                log_T_nut = pre_T_nut
+                info0 = info[0] if isinstance(info, (list, tuple)) else info
+                log_O2 = info0.get('O2_status', 0.0)
+                log_T_out = info0.get('T_out', sim.state[4])
+                log_H_out = info0.get('H_out', sim.state[5])
+            else:
+                log_L = sim.state[0]
+                log_time = sim.current_time
+                log_T_in = sim.state[2]
+                log_H_in = sim.state[3]
+                log_EC = sim.state[6]
+                log_pH = sim.state[7]
+                log_T_nut = sim.state[8]
+                info0 = info[0] if isinstance(info, (list, tuple)) else info
+                log_O2 = info0.get('O2_status', 0.0)
+                log_T_out = info0.get('T_out', sim.state[4])
+                log_H_out = info0.get('H_out', sim.state[5])
 
             history['cycle'].append(steps)
-            history['time_s'].append(sim.current_time)
-            history['time_h'].append(sim.current_time / 3600.0)
-            history['L_root'].append(sim.state[0])
-            history['H_in'].append(sim.state[3])
-            history['T_in'].append(sim.state[2])
-            history['T_out'].append(info.get('T_out', sim.state[4]))
-            history['H_out'].append(info.get('H_out', sim.state[5]))
-            history['EC'].append(sim.state[6])
-            history['pH'].append(sim.state[7])
-            history['T_nut'].append(sim.state[8])
-            history['O2_status'].append(info['O2_status'])
-            history['total_reward'].append(reward)
+            history['time_s'].append(log_time)
+            history['time_h'].append(log_time / 3600.0)
+            history['L_root'].append(log_L)
+            history['H_in'].append(log_H_in)
+            history['T_in'].append(log_T_in)
+            history['T_out'].append(log_T_out)
+            history['H_out'].append(log_H_out)
+            history['EC'].append(log_EC)
+            history['pH'].append(log_pH)
+            history['T_nut'].append(log_T_nut)
+            history['O2_status'].append(log_O2)
+            history['total_reward'].append(float(reward[0]) if isinstance(reward, np.ndarray) else float(reward))
             history['D_mist'].append(action[0])
             history['interval_sec'].append(action[1])
             history['A_valve'].append(action[2])
-            history['captured'].append(info['captured'])
+            history['captured'].append(sim._captured_this_step)
 
             steps += 1
 
         all_histories.append(history)
+        L_final = history['L_root'][-1]
+        L_growth = L_final - L_root_init
         print(f"Episode {ep+1}: {steps} cycles, captures={sum(history['captured'])}, "
-              f"final L_root={history['L_root'][-1]:.4f}, time={sim.current_time:.0f}s")
+              f"final L_root={L_final:.4f}, growth={L_growth:.4f} cm, time={history['time_s'][-1]:.0f}s")
 
     return all_histories
 

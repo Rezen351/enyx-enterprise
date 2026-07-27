@@ -68,29 +68,91 @@ class AeroponicGymnasiumEnv(gym.Env):
     def render(self):
         pass
 
-class EntropyCurriculumCallback(BaseCallback):
+class AdaptiveEntropyCallback(BaseCallback):
     """
-    Decay entropy coefficient and ramp weather difficulty over training.
+    Adaptive entropy coefficient:
+    - Starts high for exploration
+    - Decays linearly to a minimum
+    - Boosts temporarily when policy entropy drops too low
     """
-    def __init__(self, ent_start=0.2, ent_end=0.02, weather_start=0.5, weather_end=2.0, total_steps=500000):
+    def __init__(self, ent_start=0.2, ent_end=0.02, boost_factor=1.5, window_size=10):
         super().__init__()
         self.ent_start = ent_start
         self.ent_end = ent_end
-        self.weather_start = weather_start
-        self.weather_end = weather_end
-        self.total_steps = total_steps
+        self.boost_factor = boost_factor
+        self.window_size = window_size
+        self.entropy_window = []
+        self.entropy_min = 0.3
+        self.entropy_max = 2.5
 
     def _on_step(self):
-        progress = min(1.0, self.num_timesteps / self.total_steps)
-        ent_coef = self.ent_start + (self.ent_end - self.ent_start) * progress
-        weather_scale = self.weather_start + (self.weather_end - self.weather_start) * progress
-        self.model.ent_coef = ent_coef
-        # Access the underlying env to set curriculum scale
-        env = self.training_env
-        # For VecEnv wrapping
-        base_env = env.envs[0] if hasattr(env, "envs") else env
-        if hasattr(base_env, "set_curriculum_weather_scale"):
-            base_env.set_curriculum_weather_scale(weather_scale)
+        # No-op: entropy adjustment happens in _on_rollout_end
+        return True
+
+    def _on_rollout_end(self):
+        # Compute entropy from the rollout buffer's log probs
+        if hasattr(self.model, 'rollout_buffer') and self.model.rollout_buffer is not None:
+            buf = self.model.rollout_buffer
+            if hasattr(buf, 'old_log_prob') and buf.old_log_prob is not None:
+                log_probs = buf.old_log_prob
+                if hasattr(log_probs, 'mean'):
+                    ent_val = float(-log_probs.mean())
+                else:
+                    ent_val = float(-np.mean(log_probs))
+                
+                self.entropy_window.append(ent_val)
+                if len(self.entropy_window) > self.window_size:
+                    self.entropy_window.pop(0)
+
+                avg_ent = sum(self.entropy_window) / len(self.entropy_window)
+
+                progress = min(1.0, self.num_timesteps / 500000)
+                base_ent = self.ent_start + (self.ent_end - self.ent_start) * progress
+
+                if avg_ent < self.entropy_min:
+                    new_ent = min(base_ent * self.boost_factor, self.entropy_max)
+                elif avg_ent > self.entropy_max:
+                    new_ent = max(base_ent * 0.7, self.entropy_min)
+                else:
+                    new_ent = base_ent
+
+                self.model.ent_coef = new_ent
+                
+                if self.verbose > 0 and self.num_timesteps % 50000 < self.n_steps:
+                    print(f"  [EntropyAdaptive] avg_ent={avg_ent:.3f}, ent_coef={new_ent:.4f}")
+        return True
+
+
+class ValueNormalizationCallback(BaseCallback):
+    """
+    Track running reward statistics and normalize value targets.
+    Helps stabilize value function learning when reward scale varies.
+    """
+    def __init__(self, alpha=0.99):
+        super().__init__()
+        self.alpha = alpha
+        self.reward_mean = 0.0
+        self.reward_std = 1.0
+        self.count = 0
+
+    def _on_step(self):
+        # Update running statistics from recent rewards
+        if hasattr(self.model, 'rollout_buffer'):
+            buf = self.model.rollout_buffer
+            if buf is not None and hasattr(buf, 'rewards'):
+                rewards = buf.rewards
+                if len(rewards) > 0:
+                    batch_mean = np.mean(rewards)
+                    batch_std = np.std(rewards) + 1e-8
+                    
+                    # Update running stats
+                    self.count += len(rewards)
+                    self.reward_mean = self.alpha * self.reward_mean + (1 - self.alpha) * batch_mean
+                    self.reward_std = self.alpha * self.reward_std + (1 - self.alpha) * batch_std
+                    
+                    # Log for monitoring
+                    if self.num_timesteps % 10000 == 0:
+                        print(f"  [ValueNorm] reward_mean={self.reward_mean:.2f}, reward_std={self.reward_std:.2f}")
         return True
 
 
@@ -107,18 +169,22 @@ def train_ppo():
 
     # Vectorized env for stabilization and reward normalization
     vec_env = make_vec_env(AeroponicGymnasiumEnv, n_envs=1)
-    vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0)
+    vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
+
+    # Adaptive entropy callback
+    entropy_callback = AdaptiveEntropyCallback(ent_start=0.2, ent_end=0.02)
+    value_norm_callback = ValueNormalizationCallback()
 
     model = PPO(
         policy='MlpPolicy',
         env=vec_norm,
-        learning_rate=3e-4,
-        n_steps=8192,
+        learning_rate=5e-4,
+        n_steps=4096,
         batch_size=64,
         n_epochs=10,
-        gamma=0.999,
+        gamma=0.995,
         ent_coef=0.2,
-        vf_coef=0.1,
+        vf_coef=0.5,
         max_grad_norm=0.5,
         clip_range=0.2,
         verbose=1,
@@ -130,21 +196,21 @@ def train_ppo():
     print("STARTING PPO TRAINING")
     print("=" * 80)
     print(f"Total timesteps: 500,000")
-    print(f"Learning rate: 3e-4")
-    print(f"n_steps: 8192")
+    print(f"Learning rate: 5e-4")
+    print(f"n_steps: 4096")
     print(f"batch_size: 64")
     print(f"n_epochs: 10")
-    print(f"gamma: 0.999")
-    print(f"ent_coef: 0.2 -> 0.02 schedule")
-    print(f"vf_coef: 0.1")
+    print(f"gamma: 0.995")
+    print(f"ent_coef: 0.2 (adaptive)")
+    print(f"vf_coef: 0.5")
     print(f"max_grad_norm: 0.5")
-    print(f"curriculum: weather 0.5 -> 2.0")
+    print(f"clip_reward: 10.0")
     print(f"device: cpu")
     print(f"tensorboard_log: {tensorboard_dir}")
     print(f"model save path: {os.path.join(models_dir, 'aeroponic_ppo.zip')}")
     print("=" * 80)
 
-    callback = EntropyCurriculumCallback(total_steps=500000)
+    callback = [entropy_callback, value_norm_callback]
     model.learn(total_timesteps=500000, callback=callback)
 
     model_path = os.path.join(models_dir, 'aeroponic_ppo.zip')

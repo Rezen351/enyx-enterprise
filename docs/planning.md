@@ -708,11 +708,12 @@ Status implementasi per fase **di dokumentasikan lengkap di [`roadmap.md`](./roa
 | 5/6 | Stream Service (MediaMTX + MinIO) | ✅ Selesai | P3 |
 | 6 | ML / Vision API (YOLOv8 Model Registry) | ✅ Selesai | P3 |
 | 6b/6c | Snapshot→AI Detection + CCTV Recording | ✅ Selesai | P3 |
+| 6d | ML Control — PPO Aeroponic Training (timer-based cycles, domain randomization, stress testing) | 🟡 In Progress | P2 |
 | 7 | DLQ Saga Worker | ✅ Selesai | P1 |
 | 8 | Audit Service | ✅ Selesai | P1 |
 | 9 | Dashboard Lengkap | ✅ Selesai | P3 |
 | 9b | Export Service / Data API | ✅ Selesai | P3 |
-| 13 | Spray Automation Service (AI-driven misting + snapshot) | ⬜ Rencana | P2 |
+| 13 | Spray Automation Service (AI-driven misting + PPO control integration) | 🟡 In Progress | P2 |
 
 > **Catatan:** Detail kontrak firmware (Control), endpoint ML, dan implementasi Stream (ffmpeg/ffprobe) berada di `roadmap.md`. Keputusan arsitektur (MinIO, Export Opsi A, Shared JWT) berada di [`adr.md`](./adr.md`).
 
@@ -762,6 +763,90 @@ Untuk menjaga konsistensi hak akses lintas mikroservis, berikut adalah detail pe
 | **DLQ Worker** | Dead Letter Queue consumer | `✗` | `✗` | `✓` | Admin only untuk investigasi pesan gagal. |
 
 Catatan: Validasi peran dilakukan oleh middleware `RequireRole` di level mikroservis (*defense-in-depth*) setelah lolos validasi JWT di Kong Gateway.
+
+---
+
+## 🤖 ML Control Service — PPO Aeroponic Controller
+
+### Arsitektur Training
+
+`services/ml-control/` mengimplementasikan **PPO (Proximal Policy Optimization)** untuk mengontrol siklus misting aeroponik secara otonom. Komponen utama:
+
+| Komponen | File | Deskripsi |
+|---|---|---|
+| Simulator | `aeroponic_simulator.py` | Environment Gymnasium dengan fisika aeroponik: humidity dynamics, temperature drift, EC/pH drift, oxygen depletion, domain randomization |
+| Training | `train_ppo.py` | PPO training loop dengan SB3, tensorboard logging, model save |
+| Evaluation | `evaluate_ppo.py` | 5-episode evaluation dengan action histograms, state trajectories, episode comparison |
+| Stress Test | `stress_test.py` | 5 weather scenarios: Baseline, Hot & Dry, Cool & Humid, Rainy, Night |
+| Results | `results/` | PNG plots: training curves, action histograms, evaluation states/actions |
+| Models | `models/` | `aeroponic_ppo.zip`, `vec_normalize.pkl`, `best_config.json` |
+
+### Action Space (Timer-Based Cycles)
+
+Setiap aksi = satu siklus ON/OFF lengkap:
+- `D_mist`: durasi ON **[120, 240]s** (2–4 menit)
+- `interval_sec`: durasi OFF **[360, 540]s** (6–9 menit)
+- `A_valve`: bottom valve activation **[0, 1]** → binary threshold **0.5**
+
+### State Space (10D)
+
+`[L_root, U_status, T_in, H_in, T_out, H_out, EC, pH, T_nut, I_day]`
+
+`T_root` disembunyikan dari agent (partial observability) untuk meniru kondisi hardware nyata tanpa sensor akar langsung.
+
+### Reward Function
+
+```
+R_total = w_growth * captured_growth * 20.0    # dense growth signal
+         + R_state                               # state bonuses (pH, EC, H_in, T_root, O2, D_mist, interval)
+         + P_diversity                           # action diversity from history
+         - w_mist_cost * D_mist                  # resource cost
+         - w_valve_cost * (A_valve >= 0.5)       # valve activation cost
+         - P_hypoxia                            # oxygen depletion penalty
+         - P_interval                           # long interval penalty
+         - P_action_collapse                    # penalty for min-bound actions
+```
+
+### Hasil Training Terkini (v23, 500k timesteps)
+
+| Metric | Nilai |
+|---|---|
+| Mean Episode Reward | **6,671** |
+| Episode Length | **150 cycles** |
+| Entropy Loss | **-26.1** |
+| Clip Fraction | **0.059** |
+| Explained Variance | **≈ 0** ⚠️ |
+| Mean Growth (5 episodes) | **5.48 cm** |
+| D_mist CV | **0.33** ✅ |
+| Interval CV | **0.20** ⚠️ |
+| A_valve Usage | **50.1%** ✅ |
+
+### Stress Test Results
+
+| Scenario | Growth | Reward | Status |
+|---|---|---|---|
+| Baseline | 8.25 cm | 6,148 | ✅ |
+| Hot & Dry | 5.04 cm | 5,814 | ✅ |
+| Cool & Humid | 10.81 cm | 8,190 | ✅ |
+| Rainy | 5.01 cm | 5,900 | ✅ |
+| Night | 8.18 cm | 5,986 | ✅ |
+
+### Rencana Perbaikan Lanjutan
+
+Berdasarkan analisis explained variance ≈ 0 dan interval CV 0.20, rencana perbaikan:
+
+1. **Value Normalization:** Implementasi running mean/std normalization untuk value targets agar critic lebih stabil
+2. **Reward Normalization:** Z-score normalization per batch untuk reward mixture yang lebih seimbang
+3. **Adaptive Entropy:** Dynamic `ent_coef` scheduling berdasarkan policy entropy
+4. **Beta Policy:** Ganti Gaussian continuous policy dengan Beta distribution untuk bounded actions [120,240] dan [360,540]
+5. **Percentile Scaling:** Scale advantages berdasarkan 5th–95th percentile per batch
+6. **Hybrid Approach (opsional):** EVPO-style critic gating — switch ke GRPO-style batch mean saat EV < 0
+
+### Referensi
+
+- Best config: `services/ml-control/models/best_config.json`
+- Notebook: `services/ml-control/docs/notebook.md`
+- Research: AE-PPO (adaptive entropy), PPO-DAP (diffusion action prior), EVPO (explained variance gating), Beta policy for bounded actions
 
 ---
 

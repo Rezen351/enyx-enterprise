@@ -390,6 +390,9 @@ class AeroponicSimulatorEnv:
 
         # Compute reward for this cycle using processed actions
         reward = self._compute_reward([D_mist, interval_sec, A_valve])
+        
+        # Clip reward for training stability
+        reward = self._clip(reward, -50.0, 50.0)
 
         # Check termination
         pH_val = self.state[7]

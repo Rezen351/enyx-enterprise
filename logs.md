@@ -52,9 +52,28 @@
 
 **Keputusan Teknis:** Mengadopsi pendekatan *multi-signal* untuk pengurangan air: (1) peningkatan linear 5–10x biaya sumber daya, (2) penalty kuadratik untuk durasi panjang, (3) weakening hubungan linear D_mist→H_target agar pulse pendek cukup, dan (4) bonus explisit water budget yang mendekopled dari reward pertumbuhan. Semua varian ablasi diselaraskan agar komparasi reward component tetap valid secara ilmiah. Bug kritis pada evaluasi ablasi (`last_terminal_state` tidak ter-update) berhasil diidentifikasi dan diperbaiki tanpa training ulang model. Serangkaian kalibrasi fisika dilakukan untuk mendekatkan simulator ke kondisi nyata: koreksi `r_step` 10x, melunak kurva pertumbuhan suhu, menaikkan ambang water budget, mengurangi boost O2, memperbaiki drift pH menjadi bidirectional, dan memperketat batas atas suhu akar. Hasil evaluasi ulang menunjukkan pertumbuhan ~0.66 cm per 24-jam, sesuai dengan laju fisiologis kentang di bawah kondisi sub-optimal kontrol.
 
+---
 
+### ML Control — PPO Training Improvement v24 (2026-07-27)
 
-### ML Control — Documentation Alignment & Physics Realism Fixes (2026-07-25)
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Value Normalization (VecNormalize + clip_reward=10):** Menambahkan `clip_reward=10.0` pada `VecNormalize` di `train_ppo.py` untuk stabilisasi value function. `norm_reward=True` during training, `norm_reward=False` during evaluation. |
+| 2 | ✅ | **Adaptive Entropy Callback:** Mengganti curriculum decay dengan `AdaptiveEntropyCallback` berbasis `rollout_buffer.old_log_prob`. Entropy decay linear `0.2→0.02` dengan boost `1.5x` saat di bawah threshold 0.3, clamp `[0.3, 2.5]`. |
+| 3 | ✅ | **Reward Clipping di Simulator:** Menambahkan `np.clip(reward, -50.0, 50.0)` pada `aeroponic_simulator.py` `step()` sebelum return, mencegah reward outlier dari namachaning training. |
+| 4 | ✅ | **Hyperparameter Tuning v24:** `lr=5e-4`, `n_steps=4096`, `vf_coef=0.5`, `gamma=0.995`, `ent_coef=0.2` (adaptive), `batch_size=64`, `n_epochs=10`, `clip_range=0.2`. Training curve: explained_variance 0.93-0.96, value_loss < 0.01, entropy_loss -26→-57, clip_fraction 0.25-0.35. |
+| 5 | ✅ | **evaluate_ppo.py Terminal State Bug Fix:** Memperbaiki bug kritis di mana `DummyVecEnv` auto-reset simulator saat `done=True`, sehingga `final L_root` selalu terdeteksi sebagai 8.0 cm (reset state). Sekarang menyimpan `pre_L_root = sim.state[0]` sebelum `vec_env.step()` dan menggunakan nilai tersebut untuk logging episode terakhir. |
+| 6 | ✅ | **evaluate_ppo.py Action Shape Fix:** Menambahkan `action = np.asarray(action).flatten()` setelah `model.predict()` karena VecEnv dengan n_envs=1 mengembalikan action array shape `(1, 3)`, bukan `(3,)`. |
+| 7 | ✅ | **Evaluation Results v24 (5 episodes):** Mean growth **0.92 cm** (range 0.82-1.18), mean reward 875, D_mist CV **0.33** (passes target 0.25), interval CV **0.20** (marginal, but consistent behavior), A_valve usage **50.7%**. |
+| 8 | ✅ | **Stress Test v24 (5 scenarios):** Semua skenario lulus: Baseline 0.81 cm, Hot & Dry 0.77 cm, Cool & Humid 1.04 cm, Rainy 0.80 cm, Night 0.80 cm. D_mist CV range 0.32-0.35, interval CV 0.19-0.20. |
+| 9 | ✅ | **Models Saved:** `models/aeroponic_ppo.zip` (v24, 500k timesteps), `models/vec_normalize.pkl`, `models/best_config.json` updated. Tensorboard: `aeroponic_ppo_tensorboard/PPO_26/`. |
+| 10 | 📝 | **Remaining:** Interval CV 0.20 remains below 0.25 target; consider Beta policy for bounded actions or narrower interval penalty range. |
+
+**Keputusan Teknis:** Menggunakan running value normalization via `VecNormalize(clip_reward=10)` alih-alih custom value normalization karena lebih stabil dan terintegrasi dengan SB3. Adaptive entropy callback menggunakan `rollout_buffer.old_log_prob` (bukan logger scalar) karena callback `_on_step` dijalankan SEBELUM `train()` update entropy ke logger. Reward clipping [-50,+50] diterapkan di simulator (bukan VecNormalize) agar reward range tetap compatible dengan value targets. `evaluate_ppo.py` menggunakan pre-step state capture untuk DummyVecEnv terminal state karena VecEnv secara default auto-reset setelah `done=True`, membuat `sim.state` menunjukkan state post-reset (L_root=8.0, time=0). Model menunjukkan explained_variance ≈ 0.93 (vs ~0 sebelumnya), value_loss konsisten <0.01, dan robustness lintas 5 skenario cuaca.
+
+---
+
+### Aeroponic Water Usage Optimization — Reward Function & Humidity Target Retuning (2026-07-26)
 
 | # | Status | Aktivitas |
 |---|---|---|
