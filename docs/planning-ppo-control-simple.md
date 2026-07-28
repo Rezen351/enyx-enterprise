@@ -3,15 +3,6 @@
 > **Feature:** PPO Control sebagai dua service terpisah yang reusable:
 > - `ppo-controller` = pure inference service (single responsibility: menerima state 10D → return aksi)
 > - `ppo-control` = scheduler/cron loop yang mengumpulkan telemetry + mengambil metadata MinIO untuk vision data, memanggil `ppo-controller`, dan memperbarui kontrol akturator (pump + valve)
->
-> **Training location:** `ppo-model-training/`
-> - Model: `ppo-model-training/models/aeroponic_ppo.zip`
-> - VecNormalize: `ppo-model-training/models/vec_normalize.pkl`
-> - Training scripts: `train_ppo.py`, `evaluate_ppo.py`, `plot_tensorboard.py`
-> - Reward structure: growth + humidity/temperature maintenance + efficiency + environmental penalties
-> - Action space: `D_mist [60, 900]s`, `interval_sec [60, 900]s`, `A_valve [0, 1]`
-> - Curriculum: weather scale 0.3 → 1.0 during training
-> - Domain randomization: sensor noise + actuator noise during training
 
 ---
 
@@ -450,91 +441,10 @@ NATS_URL=nats://nats:4222
 
 ---
 
-## 15. PPO Training Reference
-
-### 15.1 Training Location
-
-All PPO training code has been moved from `services/ml-control/` to `ppo-model-training/`:
-
-```
-ppo-model-training/
-├── train_ppo.py              # Main PPO training script (500k timesteps)
-├── evaluate_ppo.py           # Model evaluation with curriculum/DR testing
-├── plot_tensorboard.py       # Training curve visualization
-├── aeroponic_simulator.py    # Gymnasium environment with extreme weather
-├── models/
-│   ├── aeroponic_ppo.zip     # Trained PPO model
-│   └── vec_normalize.pkl     # Observation/reward normalization stats
-├── aeroponic_ppo_tensorboard/ # TensorBoard logs
-└── results/                  # Training curves, evaluation plots
-```
-
-### 15.2 Model Architecture
-
-- **Policy:** MlpPolicy (2 hidden layers, 64 units each)
-- **Observation space:** 10D continuous `[L_root, U_status, T_in, H_in, T_out, H_out, EC, pH, T_nut, I_day]`
-- **Action space:** 3D continuous `[-1, 1]` mapped to:
-  - `D_mist`: `[60, 900]` seconds (1–15 minutes ON)
-  - `interval_sec`: `[60, 900]` seconds (1–15 minutes OFF)
-  - `A_valve`: `[0, 1]` (threshold at 0)
-
-### 15.3 Reward Structure
-
-| Component | Weight | Condition |
-|-----------|--------|-----------|
-| `R_growth` | `w_growth=15.0` | Per-step growth reward from simulator |
-| `R_humidity_maintenance` | +1.5 / -3.0 | +1.5 if `80≤H_in≤95%`, -3.0 if `H_in<70%` or `H_in>97%` |
-| `R_temperature_maintenance` | +1.5 / -3.0 | +1.5 if `18≤T_in≤28°C`, -3.0 if `T_in<15°C` or `T_in>32°C` |
-| `R_efficiency` | +0.05/+0.03/+0.02 | If state healthy: valve OFF, `D_mist≤180s`, `interval≥600s` |
-| `P_env` | `w_env=0.05` | pH/EC/H_in deviation penalty |
-| `P_hypoxia` | `w_hypoxia=0.02` | Oxygen depletion penalty |
-| `P_interval` | `w_interval=0.01` | Very long interval penalty (`>720s`) |
-| `C_resource` | `w_valve_cost=0.15` | Per-misting valve cost |
-
-**Target sweet spot:** Agent learns to maximize growth (~2–4 cm per episode) while keeping H_in and T_in in safe zone 98% of the time.
-
-### 15.4 Training Configuration
-
-| Parameter | Value |
-|-----------|-------|
-| Total timesteps | 500,000 |
-| Learning rate | 3e-4 → 1e-5 (linear schedule) |
-| `n_steps` | 4096 |
-| `batch_size` | 128 |
-| `n_epochs` | 10 |
-| `gamma` | 0.995 |
-| `clip_range` | 0.1 |
-| `gae_lambda` | 0.95 |
-| `ent_coef` | 0.05 (adaptive) |
-| `vf_coef` | 0.5 |
-| `max_grad_norm` | 1.0 |
-
-### 15.5 Curriculum & Domain Randomization
-
-- **Curriculum weather scale:** 0.3 → 1.0 linear over training
-- **Sensor noise:** ±0.3°C T, ±2% H, ±0.1 EC, ±0.1 pH
-- **Actuator noise:** ±5% D_mist, ±0.3s spray delay
-- **Extreme weather events:** heat wave, cold snap, drought, storm (5–8% probability each)
-
-### 15.6 Evaluation Results (500k model)
-
-| Metric | Value |
-|--------|-------|
-| Mean Episode Reward | 1,576 |
-| Explained Variance | 0.937 |
-| Value Loss | 0.021 |
-| H_in safe zone | ~58% (before maintenance reward retrain) |
-| T_in safe zone | ~77% (before maintenance reward retrain) |
-
-**Next step:** Retrain with balanced reward weights to achieve 98% safe zone for both H_in and T_in.
-
----
-
-## 16. References
+## 15. References
 
 - ppo-controller service: `services/ppo-controller/`
 - Control Service schedule API: `POST/PUT /control/schedules`
 - Control Service integration guide: `docs/integration-guides/control.md`
 - Telemetry.ingest NATS subject: `telemetry.ingest`
 - MinIO bucket `ml` untuk metadata vision
-- PPO training code: `ppo-model-training/`
