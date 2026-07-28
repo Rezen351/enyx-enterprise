@@ -62,7 +62,8 @@ DEFAULT_MODBUS = [
         "slave_id": 2,
         "baudrate": 9600,
         "registers": [
-            {"address": 0, "name": "temp", "type": "HOLDING", "multiplier": 1.0},
+            {"address": 0, "name": "hum", "type": "HOLDING", "multiplier": 1.0},
+            {"address": 1, "name": "temp", "type": "HOLDING", "multiplier": 1.0},
         ],
     },
 ]

@@ -21,22 +21,28 @@ import random
 import time
 
 # name-substring -> (unit, base, amplitude, lo, hi, raw_max)
+# Abbreviated names (hum, temp) are listed first so exact-match in _profile_for
+# resolves them before the substring pass can collide with longer keys.
 _PROFILES: dict[str, tuple[str, float, float, float, float, int]] = {
-    "temp":   ("C",    26.0, 2.0, 18.0, 35.0, 4095),
-    "humid":  ("%",    70.0, 6.0, 40.0, 95.0, 4095),
-    "press":  ("hPa",  1013.0, 4.0, 990.0, 1030.0, 4095),
-    "co2":    ("ppm",  600.0, 120.0, 400.0, 1200.0, 4095),
-    "lux":    ("lx",   8000.0, 3000.0, 0.0, 20000.0, 4095),
-    "ph":     ("",     6.5, 0.4, 4.0, 9.0, 4095),
-    "tds":    ("ppm",  350.0, 80.0, 0.0, 1000.0, 4095),
-    "ec":     ("mS/cm", 1.6, 0.4, 0.0, 4.0, 4095),
-    "flow":   ("L/min", 2.0, 0.8, 0.0, 6.0, 4095),
-    "level":  ("",     1.0, 0.0, 0.0, 1.0, 1),
-    "volt":   ("V",    220.0, 5.0, 200.0, 240.0, 4095),
-    "current": ("A",   1.2, 0.4, 0.0, 5.0, 4095),
-    "amp":    ("A",    1.2, 0.4, 0.0, 5.0, 4095),
-    "power":  ("W",    250.0, 60.0, 0.0, 800.0, 4095),
-    "watt":   ("W",    250.0, 60.0, 0.0, 800.0, 4095),
+    "hum":            ("%",     70.0, 6.0, 40.0, 95.0, 4095),
+    "temp":           ("C",     26.0, 2.0, 18.0, 35.0, 4095),
+    "temp_nutrisi":   ("C",     25.0, 1.5, 20.0, 32.0, 4095),
+    "humid":          ("%",     70.0, 6.0, 40.0, 95.0, 4095),
+    "press":          ("hPa", 1013.0, 4.0, 990.0, 1030.0, 4095),
+    "co2":            ("ppm",  600.0, 120.0, 400.0, 1200.0, 4095),
+    "lux":            ("lx",  8000.0, 3000.0, 0.0, 20000.0, 4095),
+    "ph":             ("",       6.5, 0.4, 4.0, 9.0, 4095),
+    "ph_nutrisi":     ("",       6.0, 0.3, 4.5, 7.5, 4095),
+    "tds":            ("ppm",  350.0, 80.0, 0.0, 1000.0, 4095),
+    "ec":             ("mS/cm", 1.6, 0.4, 0.0, 4.0, 4095),
+    "ec_nutrisi":     ("mS/cm", 1.8, 0.3, 0.5, 3.5, 4095),
+    "flow":           ("L/min", 2.0, 0.8, 0.0, 6.0, 4095),
+    "level":          ("",       1.0, 0.0, 0.0, 1.0, 1),
+    "volt":           ("V",    220.0, 5.0, 200.0, 240.0, 4095),
+    "current":        ("A",     1.2, 0.4, 0.0, 5.0, 4095),
+    "amp":            ("A",     1.2, 0.4, 0.0, 5.0, 4095),
+    "power":          ("W",    250.0, 60.0, 0.0, 800.0, 4095),
+    "watt":           ("W",    250.0, 60.0, 0.0, 800.0, 4095),
 }
 
 
@@ -45,6 +51,8 @@ def _profile_for(name: str, is_digital: bool):
         # digital sensors (buttons, level switches) are 0/1
         return ("", 0.0, 0.0, 0.0, 1.0, 1)
     n = name.lower()
+    if n in _PROFILES:
+        return _PROFILES[n]
     for key, prof in _PROFILES.items():
         if key in n:
             return prof
