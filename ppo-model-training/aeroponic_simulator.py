@@ -57,6 +57,7 @@ class AeroponicSimulatorEnv:
         self._last_R_efficiency = 0.0
         self._last_P_shrink = 0.0
         self._last_P_death = 0.0
+        self._last_P_extreme = 0.0
 
         # Action history for diversity bonus
         self._action_history = []
@@ -215,6 +216,7 @@ class AeroponicSimulatorEnv:
         self._last_R_efficiency = 0.0
         self._last_P_shrink = 0.0
         self._last_P_death = 0.0
+        self._last_P_extreme = 0.0
         
         # Preserve action history in continuous mode for consistent diversity bonus
         if not continuous:
@@ -717,6 +719,7 @@ class AeroponicSimulatorEnv:
             'reward_efficiency': self._last_R_efficiency,
             'reward_shrink': self._last_P_shrink,
             'reward_death': self._last_P_death,
+            'reward_extreme': self._last_P_extreme,
             'captured': self._captured_this_step,
             'T_in': self.state[2],
             'T_out': self.state[4],
@@ -829,7 +832,17 @@ class AeroponicSimulatorEnv:
         P_shrink = self._last_P_shrink
         P_death = self._last_P_death
 
-        R_total = R_growth + R_state + P_diversity + R_efficiency - C_resource - P_env - P_hypoxia - P_interval - P_shrink - P_death
+        # Action regularization: penalize extreme actions to prevent mode collapse
+        # This encourages the agent to use actions within sensible ranges
+        P_extreme = 0.0
+        if D_mist >= 850.0 or D_mist <= 70.0:
+            P_extreme += 2.0
+        if interval_sec <= 70.0 or interval_sec >= 850.0:
+            P_extreme += 2.0
+        if A_valve >= 0.5 and (D_mist <= 120.0 or interval_sec <= 120.0):
+            P_extreme += 1.0
+        
+        R_total = R_growth + R_state + P_diversity + R_efficiency - C_resource - P_env - P_hypoxia - P_interval - P_extreme - P_shrink - P_death
 
         self._last_R_growth = R_growth
         self._last_C_resource = C_resource
@@ -840,6 +853,7 @@ class AeroponicSimulatorEnv:
         self._last_R_efficiency = R_efficiency
         self._last_P_shrink = P_shrink
         self._last_P_death = P_death
+        self._last_P_extreme = P_extreme
 
         return R_total
 
