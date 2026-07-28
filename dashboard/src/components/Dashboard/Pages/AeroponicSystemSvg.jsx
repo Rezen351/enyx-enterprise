@@ -24,9 +24,9 @@ const AeroponicSystemSvg = ({
    const outsideTemp = activeModuleData?.sensors?.cwt_luar_temp?.value ?? '--';
    const outsideHum = activeModuleData?.sensors?.cwt_luar_hum?.value ?? '--';
 
-   const waterPh = activeModuleData?.sensors?.npk_ph?.value ?? '--';
-   const waterTemp = activeModuleData?.sensors?.npk_temp_air?.value ?? '--';
-   const waterEc = activeModuleData?.sensors?.npk_ec?.value ?? '--';
+    const waterPh = activeModuleData?.sensors?.npk_ph?.value ?? '--';
+    const waterTemp = activeModuleData?.sensors?.npk_temp_air?.value ?? '--';
+    const waterEc = activeModuleData?.sensors?.npk_ec?.value ?? '--';
 
    return (
       <div className="relative w-full h-full flex items-center justify-center bg-transparent dark:bg-slate-950/5 rounded-none p-1 overflow-hidden">
@@ -1641,28 +1641,28 @@ const AeroponicSystemSvg = ({
                   id="text824-6"
                   style={{ "fontSize": "13px", "fontFamily": "'Noto Sans'", "InkscapeFontSpecification": "'Noto Sans, Normal'", "whiteSpace": "pre", "shapeInside": "url(#rect824-87)", "display": "inline", "fill": "#ffff00", "fillOpacity": "1", "strokeWidth": "0.377953" }}
                   transform="translate(-1.8325759,3.0907168)"
-                  inkscapeLabel="ph"><tspan
-                     x="200.04688"
-                     y="404.7123"
-                     id="tspan4">{waterPh}</tspan></text>
-               <text
-                  xmlSpace="preserve"
-                  id="text824-4-6"
-                  style={{ "fontSize": "13px", "fontFamily": "'Noto Sans'", "InkscapeFontSpecification": "'Noto Sans, Normal'", "whiteSpace": "pre", "shapeInside": "url(#rect824-6-0)", "display": "inline", "fill": "#ffff00", "fillOpacity": "1", "strokeWidth": "0.377953" }}
-                  transform="translate(-0.98177221,28.282213)"
-                  inkscapeLabel="temp"><tspan
-                     x="200.04688"
-                     y="404.7123"
-                     id="tspan5">{waterTemp}°C</tspan></text>
-               <text
-                  xmlSpace="preserve"
-                  id="text824-4-6-3"
-                  style={{ "fontSize": "13px", "fontFamily": "'Noto Sans'", "InkscapeFontSpecification": "'Noto Sans, Normal'", "whiteSpace": "pre", "shapeInside": "url(#rect824-6-0-0)", "display": "inline", "fill": "#ffff00", "fillOpacity": "1", "strokeWidth": "0.377953" }}
-                  transform="translate(0.1935831,54.33767)"
-                  inkscapeLabel="ec"><tspan
-                     x="200.04688"
-                     y="404.7123"
-                     id="tspan6">{waterEc} mS</tspan></text>
+                   inkscapeLabel="ph"><tspan
+                      x="200.04688"
+                      y="404.7123"
+                      id="tspan4">{waterPh}</tspan></text>
+                <text
+                   xmlSpace="preserve"
+                   id="text824-4-6"
+                   style={{ "fontSize": "13px", "fontFamily": "'Noto Sans'", "InkscapeFontSpecification": "'Noto Sans, Normal'", "whiteSpace": "pre", "shapeInside": "url(#rect824-6-0)", "display": "inline", "fill": "#ffff00", "fillOpacity": "1", "strokeWidth": "0.377953" }}
+                   transform="translate(-0.98177221,28.282213)"
+                   inkscapeLabel="temp"><tspan
+                      x="200.04688"
+                      y="404.7123"
+                      id="tspan5">{waterTemp}°C</tspan></text>
+                <text
+                   xmlSpace="preserve"
+                   id="text824-4-6-3"
+                   style={{ "fontSize": "13px", "fontFamily": "'Noto Sans'", "InkscapeFontSpecification": "'Noto Sans, Normal'", "whiteSpace": "pre", "shapeInside": "url(#rect824-6-0-0)", "display": "inline", "fill": "#ffff00", "fillOpacity": "1", "strokeWidth": "0.377953" }}
+                   transform="translate(0.1935831,54.33767)"
+                   inkscapeLabel="ec"><tspan
+                      x="200.04688"
+                      y="404.7123"
+                      id="tspan6">{waterEc} mS</tspan></text>
             </g>
             <path
                d="m 78.209782,146.30753 v 7.383 h 1.477 v -2.953 h 1.477 v 2.953 h 1.477 v -7.383 h -1.477 v 2.953 h -1.477 v -2.953 z m -1.476,5.907 v -1.477 c 0,-0.812 -0.657,-1.477 -1.477,-1.477 h -2.953 v 7.384 h 1.476 v -2.954 h 1.477 c 0.82,0 1.477,-0.657 1.477,-1.476 z m -1.477,0 h -1.477 v -1.477 h 1.477 z"

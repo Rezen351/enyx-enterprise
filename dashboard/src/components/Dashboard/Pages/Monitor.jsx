@@ -82,10 +82,20 @@ function readTelemetry(payload, ...names) {
 }
 
 // Read a sensor field from a modbus group (e.g. telemetry.modbus.cwt1.temp)
+// Also supports top-level npk object (e.g. payload.npk.ph_nutrisi)
 function readModbus(payload, group, field, ...fallbackFields) {
   const mb = payload?.telemetry?.modbus || payload?.modbus;
   const g = mb?.[group];
-  if (!g) return undefined;
+  if (!g) {
+    const npk = payload?.npk;
+    if (npk) {
+      if (npk[field] != null) return npk[field];
+      for (const f of fallbackFields) {
+        if (npk[f] != null) return npk[f];
+      }
+    }
+    return undefined;
+  }
   if (g[field] != null) return g[field];
   for (const f of fallbackFields) {
     if (g[f] != null) return g[f];
@@ -120,9 +130,9 @@ function buildActiveModuleData(payload, actuators) {
       cwt_dalam_hum: mk(readModbus(payload, 'cwt1', 'hum', 'cwt1_hum', 'hum_dalam', 'hum_in')),
       cwt_luar_temp: mk(readModbus(payload, 'cwt2', 'temp', 'cwt2_temp', 'temp_luar', 'temp_out')),
       cwt_luar_hum: mk(readModbus(payload, 'cwt2', 'hum', 'cwt2_hum', 'hum_luar', 'hum_out')),
-      npk_ph: mk(readTelemetry(payload, 'npk_ph', 'ph')),
-      npk_temp_air: mk(readTelemetry(payload, 'npk_temp_air', 'water_temp', 'temp_air')),
-      npk_ec: mk(readTelemetry(payload, 'npk_ec', 'ec')),
+      npk_ph: mk(readModbus(payload, 'npk', 'ph_nutrisi')),
+      npk_temp_air: mk(readModbus(payload, 'npk', 'temp_nutrisi')),
+      npk_ec: mk(readModbus(payload, 'npk', 'ec_nutrisi')),
     },
   };
 }

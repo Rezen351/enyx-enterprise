@@ -113,6 +113,7 @@ const AeroponicSchematic = ({
           <text x="50" y="85" fill="#38bdf8">HUM: {safeTelemetry?.cwt_dalam_hum?.value ?? '--'}%</text>
           <text x="50" y="140" fill="#a78bfa">PH: {safeTelemetry?.npk_ph?.value ?? '--'}</text>
           <text x="50" y="155" fill="#4ade80">EC: {safeTelemetry?.npk_ec?.value ?? '--'} mS</text>
+          <text x="50" y="170" fill="#fbbf24">TEMP: {safeTelemetry?.npk_temp_air?.value ?? '--'}°C</text>
         </g>
 
         {/* Lasers / Indicators */}

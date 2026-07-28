@@ -29,8 +29,9 @@ function qs(params) {
 
 export const controlApi = {
   // ─── Manual command (published immediately) ────────────────────────────
-  // body: { node_id, output, type, value?, duration_sec? }
+  // body: { node_id, output, type, value?, duration_sec?, bypass? }
   //   type: set_state | set_level | toggle | pulse | emergency_stop
+  //   bypass: true to allow command even in AUTO mode (for AI/automation)
   sendCommand: (body) => unwrap(request('/control/command', { method: 'POST', auth: true, body })),
 
   // ─── Command log ─────────────────────────────────────────────────────

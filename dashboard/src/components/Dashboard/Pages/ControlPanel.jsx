@@ -51,6 +51,7 @@ function actuatorsToTargets(tags) {
     label: displayOf(t),
     output_type: outputTypeOf(t),
     last_value: t.last_value ?? (t.value ?? 0),
+    bypass: false,
   }));
 }
 
@@ -96,8 +97,8 @@ function Card({ title, icon: Icon, children, right }) {
 }
 
 // ─── Manual target control tile ────────────────────────────────────────────
-function TargetTile({ tag, allTargets, onCommand, nodeMode }) {
-  const allowManual = nodeMode === 'MANUAL';
+function TargetTile({ tag, allTargets, onCommand, nodeMode, onToggleBypass }) {
+  const allowManual = nodeMode === 'MANUAL' || tag.bypass;
   const isDigital = outputTypeOf(tag) === 'DIGITAL';
   const [busy, setBusy] = useState(false);
   const [level, setLevel] = useState(128);
@@ -111,6 +112,7 @@ function TargetTile({ tag, allTargets, onCommand, nodeMode }) {
     setBusy(true);
     try {
       const body = { node_id: tag.node_id, output, type, targets: allTargets };
+      if (tag.bypass) body.bypass = true;
       if (type === 'set_level') body.value = Number(level);
       if (type === 'set_state') body.value = value !== undefined ? Number(value) : (on ? 0 : 1);
       if (type === 'pulse') body.duration_sec = Number(pulseSec);
@@ -131,13 +133,28 @@ function TargetTile({ tag, allTargets, onCommand, nodeMode }) {
             {outputTypeOf(tag)} · {tag.tag_name || '—'}
           </div>
         </div>
-        <span
-          className={`shrink-0 px-2 py-1 text-[10px] font-black uppercase tracking-widest ${
-            on ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-slate-500/10 text-slate-500 border border-slate-500/20'
-          }`}
-        >
-          {on ? 'ON' : 'OFF'}
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <span
+            className={`shrink-0 px-2 py-1 text-[10px] font-black uppercase tracking-widest ${
+              on ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-slate-500/10 text-slate-500 border border-slate-500/20'
+            }`}
+          >
+            {on ? 'ON' : 'OFF'}
+          </span>
+          {nodeMode === 'AUTO' && (
+            <button
+              onClick={() => onToggleBypass(tag)}
+              title={tag.bypass ? 'Disable bypass' : 'Bypass auto mode'}
+              className={`h-7 px-2 flex items-center justify-center border text-[10px] font-black uppercase tracking-widest cursor-pointer disabled:opacity-50 ${
+                tag.bypass
+                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30'
+                  : 'bg-slate-500/10 border-slate-500/20 text-slate-400 hover:bg-slate-500/20'
+              }`}
+            >
+              {tag.bypass ? 'BYPASS' : 'BYPASS'}
+            </button>
+          )}
+        </div>
       </div>
 
       {isDigital ? (
@@ -186,8 +203,11 @@ function TargetTile({ tag, allTargets, onCommand, nodeMode }) {
         <p className="text-[10px] text-slate-500">
           {nodeMode === 'EMERGENCY'
             ? 'Emergency stop active — all outputs forced OFF. Click Resume to re-enable.'
-            : 'Automatic Mode — schedule controls outputs. Switch to Manual for direct override.'}
+            : 'Automatic Mode — schedule controls outputs. Enable BYPASS on this output for direct override.'}
         </p>
+      )}
+      {allowManual && tag.bypass && (
+        <p className="text-[10px] text-amber-400">Bypass active — this output can be controlled in Automatic mode.</p>
       )}
     </div>
   );
@@ -517,6 +537,8 @@ function ControlPanel() {
     setTargets(actuatorsToTargets(acts.map((t) => ({
       ...t, node_id: id,
       last_value: liveByKey[t.source_key]?.last_value ?? t.last_value,
+      // Preserve bypass state across reloads; default to false for new targets.
+      bypass: liveByKey[t.source_key]?.bypass ?? false,
     }))));
   }, []);
 
@@ -583,6 +605,21 @@ function ControlPanel() {
       await loadAll();
     } catch (err) {
       flash(err.message || 'Command failed', false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleToggleBypass = async (tag) => {
+    setBusy(true);
+    try {
+      const newBypass = !tag.bypass;
+      // Persist bypass state in the target's local state for UI feedback.
+      // The actual bypass behavior is sent per-command via the `bypass` flag.
+      setTargets((prev) => prev.map((t) => (t.source_key === tag.source_key ? { ...t, bypass: newBypass } : t)));
+      flash(newBypass ? 'Bypass enabled for this output' : 'Bypass disabled');
+    } catch (err) {
+      flash(err.message || 'Toggle bypass failed', false);
     } finally {
       setBusy(false);
     }
@@ -764,6 +801,7 @@ function ControlPanel() {
                       }))}
                       onCommand={handleCommand}
                       nodeMode={nodeMode}
+                      onToggleBypass={handleToggleBypass}
                     />
                   ))}
                 </div>

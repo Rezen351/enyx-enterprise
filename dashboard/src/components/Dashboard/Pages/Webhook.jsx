@@ -12,7 +12,6 @@ import {
   Save,
   Bell,
   Mail,
-  Webhook as WebhookIcon,
 } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { webhookApi } from '../../../api/webhook';
@@ -148,7 +147,7 @@ export default function Webhook() {
   };
 
   const runTest = async () => {
-    if (!testChannel) return;
+    if (testChannel == null) return;
     setTesting(true);
     setError('');
     setSuccess('');
@@ -314,46 +313,6 @@ export default function Webhook() {
                   </label>
                 </div>
               </div>
-
-              {/* Generic Webhook */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-violet-300">
-                  <WebhookIcon className="w-4 h-4" />
-                  Generic Webhook
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.webhook?.enabled || false}
-                      onChange={(e) => updateChannel('webhook', 'enabled', e.target.checked)}
-                      className="accent-emerald-500 w-4 h-4"
-                    />
-                    <span className="text-xs font-black uppercase tracking-widest text-slate-300">Enabled</span>
-                  </label>
-                  <label className="space-y-1 sm:col-span-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Endpoint URL</span>
-                    <input
-                      value={settings.webhook?.target || ''}
-                      onChange={(e) => updateChannel('webhook', 'target', e.target.value)}
-                      placeholder="https://example.com/hook"
-                      className="w-full h-10 px-3 bg-slate-900/80 border border-emerald-500/20 text-emerald-50 text-xs placeholder-slate-600 focus:outline-none focus:border-emerald-500/60"
-                    />
-                  </label>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <label className="space-y-1 sm:col-span-3">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Bearer / Header Secret</span>
-                    <input
-                      type="password"
-                      value={settings.webhook?.secret || ''}
-                      onChange={(e) => updateChannel('webhook', 'secret', e.target.value)}
-                      placeholder="encrypted / plain"
-                      className="w-full h-10 px-3 bg-slate-900/80 border border-emerald-500/20 text-emerald-50 text-xs placeholder-slate-600 focus:outline-none focus:border-emerald-500/60"
-                    />
-                  </label>
-                </div>
-              </div>
             </>
           )}
         </div>
@@ -377,7 +336,6 @@ export default function Webhook() {
                   <option value="">All</option>
                   <option value="telegram">Telegram</option>
                   <option value="email">Email</option>
-                  <option value="webhook">Webhook</option>
                 </select>
               </label>
               <label className="space-y-1">
@@ -500,7 +458,6 @@ export default function Webhook() {
                 <option value="">All channels</option>
                 <option value="telegram">Telegram</option>
                 <option value="email">Email</option>
-                <option value="webhook">Generic Webhook</option>
               </select>
             </label>
             <div className="flex items-end">
