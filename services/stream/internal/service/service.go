@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -436,6 +437,9 @@ func (s *StreamService) CaptureSnapshot(ctx context.Context, id string, detect b
 		Classes:       string(classesJSON),
 		Detections:    string(detJSON),
 		ConfidenceAvg: result.ConfidenceAvg,
+		RootLengthCM:  result.RootLengthCM,
+		TuberSizeCM:   result.TuberSizeCM,
+		Condition:     result.Condition,
 	}
 	return &view, nil
 }
@@ -486,6 +490,9 @@ func (s *StreamService) writeToResultBucket(streamName string, data []byte, ct s
 		"classes":        result.Classes,
 		"detections":     result.Detections,
 		"confidence_avg": result.ConfidenceAvg,
+		"root_length_cm": result.RootLengthCM,
+		"tuber_size_cm":  result.TuberSizeCM,
+		"condition":      result.Condition,
 	}
 	record := map[string]any{
 		"captured_at": time.Now().UTC().Format(time.RFC3339),
@@ -507,7 +514,14 @@ func (s *StreamService) writeToResultBucket(streamName string, data []byte, ct s
 		srcBucket, srcKey := bucketAndKeyFromURL(result.AnnotatedURL)
 		if srcBucket != "" {
 			if annotated, rerr := s.minio.ReadObject(srcBucket, srcKey); rerr == nil {
-				if _, aerr := s.minio.UploadObjectToBucket(bucket, fmt.Sprintf("annotated/%s/%s.jpg", streamName, ts), "image/jpeg", annotated); aerr != nil {
+				meta := map[string]string{
+					"root_length_cm": floatPtrStr(result.RootLengthCM),
+					"tuber_size_cm":  floatPtrStr(result.TuberSizeCM),
+					"condition":      floatPtrStr(result.Condition),
+					"confidence":     floatStr(result.ConfidenceAvg),
+					"num_detections": strconv.Itoa(result.NumDetections),
+				}
+				if _, aerr := s.minio.UploadObjectToBucketWithMetadata(bucket, fmt.Sprintf("annotated/%s/%s.jpg", streamName, ts), "image/jpeg", annotated, meta); aerr != nil {
 					log.Printf("[result-bucket] annotated mirror failed: %v", aerr)
 				}
 			} else {
@@ -725,5 +739,20 @@ func toSnapshotView(s *model.Snapshot) *model.SnapshotView {
 		Detections:    s.Detections,
 		ConfidenceAvg: s.ConfidenceAvg,
 		Duration:      s.Duration,
+		RootLengthCM:  s.RootLengthCM,
+		TuberSizeCM:   s.TuberSizeCM,
+		Condition:     s.Condition,
 	}
 }
+
+func floatPtrStr(v *float64) string {
+	if v == nil {
+		return ""
+	}
+	return strconv.FormatFloat(*v, 'f', 2, 64)
+}
+
+func floatStr(v float64) string {
+	return strconv.FormatFloat(v, 'f', 4, 64)
+}
+

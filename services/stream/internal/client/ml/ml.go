@@ -62,6 +62,9 @@ type DetectResult struct {
 	Classes       []string    `json:"classes"`
 	Detections    []Detection `json:"detections"`
 	ConfidenceAvg float64     `json:"confidence_avg"`
+	RootLengthCM  *float64    `json:"root_length_cm"`
+	TuberSizeCM   *float64    `json:"tuber_size_cm"`
+	Condition     *float64    `json:"condition"`
 	OriginalURL   string      `json:"original_url"`
 	AnnotatedURL  string      `json:"annotated_url"`
 }

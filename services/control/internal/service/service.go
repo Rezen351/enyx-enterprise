@@ -155,8 +155,11 @@ func (s *ControlService) HandleManualCommand(ctx context.Context, req model.Comm
 	}
 	// Node-mode arbitration: in AUTOMATIC mode a manual override is
 	// rejected (schedules own the output); EMERGENCY_STOP always wins.
+	// Requests with Bypass=true are allowed even in AUTO mode so that
+	// automation services (e.g. PPO controller) can override specific
+	// outputs without requiring a manual mode switch.
 	nodeMode := s.GetNodeMode(ctx, req.NodeID)
-	if req.Type != model.TypeEmergencyStop {
+	if req.Type != model.TypeEmergencyStop && !req.Bypass {
 		if nodeMode == model.ModeEmergency {
 			return nil, ErrNodeEmergency
 		}

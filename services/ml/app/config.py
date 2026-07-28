@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     # Public base URL used to build shareable links (Kong / MinIO console).
     minio_public_url: str = "http://localhost:9000"
 
+    # ─── Vision calibration ────────────────────────────────────────────────
+    # Simple pixels-to-centimetres factor. 1.0 means 1 px == 1 cm.
+    pixels_per_cm: float = 10.0
+
     # ─── NATS (events) ────────────────────────────────────────────────────
     nats_url: str = "nats://nats:4222"
     nats_user: Optional[str] = None

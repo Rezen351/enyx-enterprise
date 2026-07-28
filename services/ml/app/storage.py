@@ -62,6 +62,25 @@ def upload_image(bucket: str, object_key: str, data: bytes, content_type: str = 
     return _public_url(bucket, object_key)
 
 
+def upload_image_with_metadata(
+    bucket: str,
+    object_key: str,
+    data: bytes,
+    metadata: dict[str, str],
+    content_type: str = "image/jpeg",
+) -> str:
+    client = get_client()
+    client.put_object(
+        bucket,
+        object_key,
+        io.BytesIO(data),
+        length=len(data),
+        content_type=content_type,
+        metadata=metadata,
+    )
+    return _public_url(bucket, object_key)
+
+
 def download_object(bucket: str, object_key: str) -> bytes:
     """Read an object (e.g. a frame from the stream bucket) as bytes."""
     client = get_client()

@@ -39,7 +39,7 @@ func New(cfg *config.Config, store *repository.Store, rdb *redis.Client, nc *nat
 		rdb:      rdb,
 		queue:    queue.New(rdb),
 		nc:       nc,
-		key:      []byte(cfg.WebhookSecret),
+		key:      crypto.DeriveKey(cfg.WebhookSecret),
 		settings: &model.WebhookSetting{ID: model.SettingsID},
 	}
 }
@@ -65,10 +65,19 @@ func (s *Service) Settings() *model.WebhookSetting {
 func (s *Service) GetSettingsDTO() model.SettingsDTO {
 	st := s.Settings()
 	return model.SettingsDTO{
-		Telegram: model.ChannelSettings{Enabled: st.TelegramEnabled, Target: st.TelegramTarget},
-		Email:    model.ChannelSettings{Enabled: st.EmailEnabled, Target: st.EmailTarget},
+		Telegram: model.ChannelSettings{Enabled: st.TelegramEnabled, Target: firstNonEmpty(st.TelegramTarget, s.cfg.TelegramChatID)},
+		Email:    model.ChannelSettings{Enabled: st.EmailEnabled, Target: firstNonEmpty(st.EmailTarget, s.cfg.SMTPFrom, s.cfg.SMTPUser)},
 		Webhook:  model.ChannelSettings{Enabled: st.WebhookEnabled, Target: st.WebhookURL},
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func (s *Service) SeedFromEnv(ctx context.Context, cfg *config.Config) error {

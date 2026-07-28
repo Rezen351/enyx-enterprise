@@ -42,6 +42,9 @@ type Snapshot struct {
 	Classes       string  `gorm:"column:classes;type:text"`          // JSON array string
 	Detections    string  `gorm:"column:detections;type:mediumtext"` // JSON array string
 	ConfidenceAvg float64 `gorm:"column:confidence_avg"`
+	RootLengthCM  *float64 `gorm:"column:root_length_cm"` // vision measurement in cm
+	TuberSizeCM   *float64 `gorm:"column:tuber_size_cm"`  // vision measurement in cm
+	Condition     *float64 `gorm:"column:condition"`      // vision condition score
 	Duration      float64 `gorm:"column:duration"` // recorded clip length in seconds (kind="recording")
 
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
@@ -61,13 +64,16 @@ type SnapshotView struct {
 	CreatedAt  time.Time `json:"created_at"`
 
 	// AI vision detection metadata (present when kind="detection").
-	ModelID       string  `json:"model_id,omitempty"`
-	ModelName     string  `json:"model_name,omitempty"`
-	NumDetections int     `json:"num_detections,omitempty"`
-	Classes       string  `json:"classes,omitempty"`    // JSON array string
-	Detections    string  `json:"detections,omitempty"` // JSON array string
-	ConfidenceAvg float64 `json:"confidence_avg,omitempty"`
-	Duration      float64 `json:"duration,omitempty"` // recorded clip length in seconds
+	ModelID       string   `json:"model_id,omitempty"`
+	ModelName     string   `json:"model_name,omitempty"`
+	NumDetections int      `json:"num_detections,omitempty"`
+	Classes       string   `json:"classes,omitempty"`    // JSON array string
+	Detections    string   `json:"detections,omitempty"` // JSON array string
+	ConfidenceAvg float64  `json:"confidence_avg,omitempty"`
+	RootLengthCM  *float64 `json:"root_length_cm,omitempty"` // vision measurement in cm
+	TuberSizeCM   *float64 `json:"tuber_size_cm,omitempty"`  // vision measurement in cm
+	Condition     *float64 `json:"condition,omitempty"`      // vision condition score
+	Duration      float64  `json:"duration,omitempty"` // recorded clip length in seconds
 }
 
 // ─── Request DTOs ─────────────────────────────────────────────────────────────

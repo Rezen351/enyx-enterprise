@@ -126,6 +126,10 @@ type CommandRequest struct {
 	// provided, manual commands use it directly instead of re-reading the
 	// Module Service tag-mapping — keeps the command consistent with the UI.
 	Targets []ControlTarget `json:"targets,omitempty"`
+	// Bypass allows the command to execute even when the node is in AUTO mode.
+	// This is intended for AI/automation services (e.g. PPO controller) that
+	// need to override specific outputs without requiring a manual mode switch.
+	Bypass bool `json:"bypass,omitempty"`
 }
 
 // ScheduleRequest is the create/update payload for automatic schedules.

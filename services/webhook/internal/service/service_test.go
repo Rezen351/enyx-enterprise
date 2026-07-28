@@ -52,3 +52,16 @@ func TestGetSettingsDTO(t *testing.T) {
 		t.Fatalf("unexpected webhook dto: %+v", dto.Webhook)
 	}
 }
+
+func TestGetSettingsDTOFallsBackToEnv(t *testing.T) {
+	cfg := &config.Config{WebhookSecret: "test-secret", TelegramChatID: "env-chat", SMTPFrom: "env-from", SMTPUser: "env-user"}
+	svc := New(cfg, nil, nil, nil)
+	svc.settings = &model.WebhookSetting{TelegramEnabled: true, TelegramTarget: "", EmailEnabled: true, EmailTarget: "", WebhookEnabled: false, WebhookURL: ""}
+	dto := svc.GetSettingsDTO()
+	if dto.Telegram.Target != "env-chat" {
+		t.Fatalf("expected telegram target from env, got %q", dto.Telegram.Target)
+	}
+	if dto.Email.Target != "env-from" {
+		t.Fatalf("expected email target from env SMTPFrom, got %q", dto.Email.Target)
+	}
+}

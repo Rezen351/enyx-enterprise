@@ -161,6 +161,12 @@ func (c *Client) UploadObject(key, contentType string, data []byte) (string, err
 // mlbucket bucket where both the cron capture job and the live "Capture
 // Detect AI" button land their results). Returns a same-origin /storage URL.
 func (c *Client) UploadObjectToBucket(bucket, key, contentType string, data []byte) (string, error) {
+	return c.UploadObjectToBucketWithMetadata(bucket, key, contentType, data, nil)
+}
+
+// UploadObjectToBucketWithMetadata is like UploadObjectToBucket but also
+// attaches user-defined metadata (e.g. vision measurements) to the object.
+func (c *Client) UploadObjectToBucketWithMetadata(bucket, key, contentType string, data []byte, metadata map[string]string) (string, error) {
 	if bucket == "" {
 		bucket = c.bucket
 	}
@@ -168,7 +174,10 @@ func (c *Client) UploadObjectToBucket(bucket, key, contentType string, data []by
 		return "", err
 	}
 	_, err := c.client.PutObject(context.Background(), bucket, key, bytes.NewReader(data), int64(len(data)),
-		minio.PutObjectOptions{ContentType: contentType})
+		minio.PutObjectOptions{
+			ContentType: contentType,
+			UserMetadata: metadata,
+		})
 	if err != nil {
 		return "", fmt.Errorf("minio put: %w", err)
 	}
@@ -203,6 +212,23 @@ func (c *Client) ReadObject(bucket, key string) ([]byte, error) {
 		return nil, fmt.Errorf("minio read: %w", err)
 	}
 	return data, nil
+}
+
+// StatObject returns object metadata (including user-defined metadata) for
+// the given bucket/key. Used to preserve metadata when mirroring annotated
+// images from the ML bucket.
+func (c *Client) StatObject(bucket, key string) (map[string]string, error) {
+	info, err := c.client.StatObject(context.Background(), bucket, key, minio.StatObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("minio stat: %w", err)
+	}
+	meta := make(map[string]string, len(info.Metadata))
+	for k, v := range info.Metadata {
+		if len(v) > 0 {
+			meta[k] = v[0]
+		}
+	}
+	return meta, nil
 }
 
 // DeleteObject removes an object (best-effort; ignores not-found).

@@ -110,6 +110,9 @@ class DetectResult(BaseModel):
     confidence_min: Optional[float] = None
     confidence_max: Optional[float] = None
     confidence_avg: Optional[float] = None
+    root_length_cm: Optional[float] = None
+    tuber_size_cm: Optional[float] = None
+    condition: Optional[float] = None
     execution_time_ms: float
     status: str = "success"
 

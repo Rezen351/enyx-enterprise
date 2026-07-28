@@ -424,6 +424,26 @@ def run_inference(
     Image.fromarray(annotated_rgb).save(annotated_buf, format="JPEG")
     annotated_bytes = annotated_buf.getvalue()
 
+    classes = sorted({d.class_name for d in detections})
+    confs = [d.confidence for d in detections]
+    conf_min = min(confs) if confs else None
+    conf_max = max(confs) if confs else None
+    conf_avg = round(sum(confs) / len(confs), 4) if confs else None
+    elapsed_ms = round((time.time() - start) * 1000, 2)
+
+    root_lengths_cm: list[float] = []
+    tuber_sizes_cm: list[float] = []
+    for det in detections:
+        name_lower = det.class_name.lower()
+        width_px = det.bbox.x2 - det.bbox.x1
+        height_px = det.bbox.y2 - det.bbox.y1
+        if "akar" in name_lower or "root" in name_lower:
+            root_lengths_cm.append(round(max(width_px, height_px) / settings.pixels_per_cm, 2))
+        elif "umbi" in name_lower or "tuber" in name_lower:
+            tuber_sizes_cm.append(round(min(width_px, height_px) / settings.pixels_per_cm, 2))
+    root_length_cm = max(root_lengths_cm) if root_lengths_cm else None
+    tuber_size_cm = max(tuber_sizes_cm) if tuber_sizes_cm else None
+
     original_url = annotated_url = None
     try:
         original_key = storage.safe_object_key(
@@ -435,18 +455,21 @@ def run_inference(
         annotated_key = storage.safe_object_key(
             settings.minio_annotated_prefix, source_ref or "image.jpg"
         )
-        annotated_url = storage.upload_image(
-            settings.minio_ml_bucket, annotated_key, annotated_bytes
+        annotated_metadata = {
+            "root_length_cm": str(root_length_cm) if root_length_cm is not None else "",
+            "tuber_size_cm": str(tuber_size_cm) if tuber_size_cm is not None else "",
+            "condition": str(round(conf_avg, 4)) if conf_avg is not None else "",
+            "confidence": str(round(conf_avg, 4)) if conf_avg is not None else "",
+            "num_detections": str(len(detections)),
+        }
+        annotated_url = storage.upload_image_with_metadata(
+            settings.minio_ml_bucket,
+            annotated_key,
+            annotated_bytes,
+            annotated_metadata,
         )
     except Exception as exc:  # pragma: no cover - depends on live MinIO
         logger.warning("MinIO upload failed: %s", exc)
-
-    classes = sorted({d.class_name for d in detections})
-    confs = [d.confidence for d in detections]
-    conf_min = min(confs) if confs else None
-    conf_max = max(confs) if confs else None
-    conf_avg = round(sum(confs) / len(confs), 4) if confs else None
-    elapsed_ms = round((time.time() - start) * 1000, 2)
 
     result = DetectResult(
         detection_uid=str(uuid.uuid4()),
@@ -462,6 +485,9 @@ def run_inference(
         confidence_min=conf_min,
         confidence_max=conf_max,
         confidence_avg=conf_avg,
+        root_length_cm=root_length_cm,
+        tuber_size_cm=tuber_size_cm,
+        condition=conf_avg,
         execution_time_ms=elapsed_ms,
         status="success",
     )
