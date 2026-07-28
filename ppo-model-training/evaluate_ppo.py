@@ -8,7 +8,7 @@ import sys
 import math
 import random
 
-sys.path.insert(0, '/home/almuzky/TA/Microservices/services/ml-control')
+sys.path.insert(0, '/home/almuzky/TA/Microservices/ppo-model-training')
 
 import numpy as np
 import matplotlib
@@ -23,7 +23,7 @@ from train_ppo import AeroponicGymnasiumEnv
 
 
 def load_model_and_env():
-    base_dir = '/home/almuzky/TA/Microservices/services/ml-control'
+    base_dir = '/home/almuzky/TA/Microservices/ppo-model-training'
     model_path = os.path.join(base_dir, 'models', 'aeroponic_ppo.zip')
     vec_norm_path = os.path.join(base_dir, 'models', 'vec_normalize.pkl')
 
@@ -37,7 +37,7 @@ def load_model_and_env():
     return model, vec_norm
 
 
-def evaluate_policy(model, vec_env, num_episodes=5):
+def evaluate_policy(model, vec_env, num_episodes=5, curriculum_weather_scale=1.0, domain_randomization=True):
     """
     Evaluate trained policy and collect metrics.
     """
@@ -49,7 +49,15 @@ def evaluate_policy(model, vec_env, num_episodes=5):
         while hasattr(raw, 'env'):
             raw = raw.env
         sim = raw.sim
-        sim.curriculum_weather_scale = 1.0
+        sim.curriculum_weather_scale = float(curriculum_weather_scale)
+
+        if not domain_randomization:
+            sim.sensor_noise_T = 0.0
+            sim.sensor_noise_H = 0.0
+            sim.sensor_noise_EC = 0.0
+            sim.sensor_noise_pH = 0.0
+            sim.actuator_noise_D_mist = 0.0
+            sim.actuator_noise_spray_delay = 0.0
 
         obs = vec_env.reset()
         terminated = False
@@ -74,8 +82,14 @@ def evaluate_policy(model, vec_env, num_episodes=5):
             'interval_sec': [],
             'A_valve': [],
             'captured': [],
+            'event_type': [],
+            'event_active': [],
+            'event_spans': [],
         }
         L_root_init = sim.state[0]
+
+        current_event_type = 'none'
+        current_event_start = None
 
         while not terminated and not truncated:
             action, _ = model.predict(obs, deterministic=False)
@@ -143,7 +157,59 @@ def evaluate_policy(model, vec_env, num_episodes=5):
             history['A_valve'].append(A_valve_phys)
             history['captured'].append(sim._captured_this_step)
 
+            event_active = False
+            event_type = 'none'
+            if hasattr(sim, 'extreme_heat_intensity') and sim.extreme_heat_intensity > 0:
+                if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
+                    if sim.event_start_time <= sim.current_time < sim.event_end_time:
+                        event_active = True
+                        event_type = 'extreme_heat'
+            if hasattr(sim, 'extreme_cold_intensity') and sim.extreme_cold_intensity > 0:
+                if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
+                    if sim.event_start_time <= sim.current_time < sim.event_end_time:
+                        event_active = True
+                        event_type = 'extreme_cold'
+            if hasattr(sim, 'drought_intensity') and sim.drought_intensity > 0:
+                if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
+                    if sim.event_start_time <= sim.current_time < sim.event_end_time:
+                        event_active = True
+                        event_type = 'drought'
+            if hasattr(sim, 'storm_intensity') and sim.storm_intensity > 0:
+                if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
+                    if sim.event_start_time <= sim.current_time < sim.event_end_time:
+                        event_active = True
+                        event_type = 'storm'
+            if hasattr(sim, 'heat_wave_intensity') and sim.heat_wave_intensity > 0:
+                if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
+                    if sim.event_start_time <= sim.current_time < sim.event_end_time:
+                        event_active = True
+                        event_type = 'heat_wave'
+            if hasattr(sim, 'cold_snap_intensity') and sim.cold_snap_intensity > 0:
+                if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
+                    if sim.event_start_time <= sim.current_time < sim.event_end_time:
+                        event_active = True
+                        event_type = 'cold_snap'
+            if hasattr(sim, 'rain_humidity_boost') and sim.rain_humidity_boost > 0:
+                if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
+                    if sim.event_start_time <= sim.current_time < sim.event_end_time:
+                        event_active = True
+                        event_type = 'rain'
+
+            if event_active and event_type != current_event_type:
+                current_event_start = log_time / 3600.0
+                current_event_type = event_type
+            elif not event_active and current_event_type != 'none' and current_event_start is not None:
+                history['event_spans'].append((current_event_type, current_event_start, log_time / 3600.0))
+                current_event_type = 'none'
+                current_event_start = None
+
+            history['event_type'].append(event_type)
+            history['event_active'].append(event_active)
+
             steps += 1
+
+        if current_event_type != 'none' and current_event_start is not None:
+            history['event_spans'].append((current_event_type, current_event_start, history['time_h'][-1]))
 
         all_histories.append(history)
         L_final = history['L_root'][-1]
@@ -152,6 +218,83 @@ def evaluate_policy(model, vec_env, num_episodes=5):
               f"final L_root={L_final:.4f}, growth={L_growth:.4f} cm, time={history['time_s'][-1]:.0f}s")
 
     return all_histories
+
+
+def evaluate_with_curriculum(model, vec_env, num_episodes=5):
+    """
+    Evaluate policy across multiple curriculum weather scales.
+    Tests: 0.0, 0.3, 0.5, 0.7, 1.0, 1.5
+    """
+    scales = [0.0, 0.3, 0.5, 0.7, 1.0, 1.5]
+    results = {}
+
+    for scale in scales:
+        print(f"\n{'='*80}")
+        print(f"CURRICULUM EVALUATION - weather_scale={scale}")
+        print(f"{'='*80}")
+
+        histories = evaluate_policy(model, vec_env, num_episodes=num_episodes, curriculum_weather_scale=scale)
+
+        growths = [hist['L_root'][-1] - 8.0 for hist in histories]
+        rewards = [sum(hist['total_reward']) for hist in histories]
+        event_counts = {}
+        for hist in histories:
+            for etype in hist['event_type']:
+                event_counts[etype] = event_counts.get(etype, 0) + 1
+
+        results[scale] = {
+            'growths': growths,
+            'rewards': rewards,
+            'event_counts': event_counts,
+            'mean_growth': np.mean(growths),
+            'std_growth': np.std(growths),
+            'mean_reward': np.mean(rewards),
+            'std_reward': np.std(rewards),
+        }
+
+        print(f"  Growth: {np.mean(growths):.4f} ± {np.std(growths):.4f} cm")
+        print(f"  Reward: {np.mean(rewards):.2f} ± {np.std(rewards):.2f}")
+        print(f"  Events: {event_counts}")
+
+    return results
+
+
+def evaluate_domain_randomization(model, vec_env, num_episodes=5):
+    """
+    Evaluate policy with different domain randomization levels.
+    Tests: no DR, partial DR, full DR
+    """
+    dr_levels = [
+        ('no_dr', False),
+        ('partial_dr', True),
+        ('full_dr', True),
+    ]
+
+    results = {}
+
+    for name, use_dr in dr_levels:
+        print(f"\n{'='*80}")
+        print(f"DOMAIN RANDOMIZATION EVALUATION - {name}")
+        print(f"{'='*80}")
+
+        histories = evaluate_policy(model, vec_env, num_episodes=num_episodes, domain_randomization=use_dr)
+
+        growths = [hist['L_root'][-1] - 8.0 for hist in histories]
+        rewards = [sum(hist['total_reward']) for hist in histories]
+
+        results[name] = {
+            'growths': growths,
+            'rewards': rewards,
+            'mean_growth': np.mean(growths),
+            'std_growth': np.std(growths),
+            'mean_reward': np.mean(rewards),
+            'std_reward': np.std(rewards),
+        }
+
+        print(f"  Growth: {np.mean(growths):.4f} ± {np.std(growths):.4f} cm")
+        print(f"  Reward: {np.mean(rewards):.2f} ± {np.std(rewards):.2f}")
+
+    return results
 
 
 def plot_action_histograms(histories, out_path):
@@ -249,8 +392,11 @@ def save_episode_summary(histories, out_path):
     out_path = os.path.join(out_path, 'episode_summary.csv')
     with open(out_path, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['episode', 'cycles', 'captures', 'final_L_root', 'final_time_s', 'final_time_h'])
+        writer.writerow(['episode', 'cycles', 'captures', 'final_L_root', 'final_time_s', 'final_time_h', 'events'])
         for i, hist in enumerate(histories):
+            event_counts = {}
+            for etype in hist.get('event_type', []):
+                event_counts[etype] = event_counts.get(etype, 0) + 1
             writer.writerow([
                 i + 1,
                 len(hist['cycle']),
@@ -258,6 +404,7 @@ def save_episode_summary(histories, out_path):
                 hist['L_root'][-1],
                 hist['time_s'][-1],
                 hist['time_h'][-1],
+                str(event_counts),
             ])
     print(f"Saved episode summary: {out_path}")
 
@@ -295,6 +442,67 @@ def plot_reward_curve(histories, out_path):
     out_path = os.path.join(out_path, 'ppo_reward_curve.png')
     plt.savefig(out_path, dpi=150)
     print(f"Saved reward curve: {out_path}")
+    plt.close()
+
+
+def plot_events(histories, out_path):
+    """
+    Plot extreme/normal weather events over episode time.
+    """
+    import os
+
+    event_colors = {
+        'extreme_heat': 'tab:red',
+        'extreme_cold': 'tab:blue',
+        'drought': 'tab:brown',
+        'storm': 'tab:purple',
+        'heat_wave': 'tab:orange',
+        'cold_snap': 'tab:cyan',
+        'rain': 'tab:green',
+        'none': 'tab:gray',
+    }
+
+    fig, axes = plt.subplots(len(histories), 1, figsize=(14, 4 * len(histories)), squeeze=False)
+    axes = axes.flatten()
+
+    for i, hist in enumerate(histories):
+        ax = axes[i]
+        times_h = np.array(hist['time_h'])
+        event_types = hist['event_type']
+        event_actives = hist['event_active']
+        event_spans = hist.get('event_spans', [])
+
+        for etype, start_h, end_h in event_spans:
+            color = event_colors.get(etype, 'tab:gray')
+            ax.axvspan(start_h, end_h, color=color, alpha=0.3, linewidth=0)
+
+        for j, (t, etype, active) in enumerate(zip(times_h, event_types, event_actives)):
+            color = event_colors.get(etype, 'tab:gray')
+            if active:
+                ax.plot(t, 0.5, marker='o', color=color, markersize=4)
+
+        ax.set_xlabel('Time (h)')
+        ax.set_ylabel('Event')
+        ax.set_title(f'Episode {i+1} - Weather Events')
+        ax.set_yticks([])
+        ax.set_ylim(0, 1)
+
+        legend_elements = [
+            plt.Line2D([0], [0], color=event_colors['extreme_heat'], lw=4, label='Extreme Heat'),
+            plt.Line2D([0], [0], color=event_colors['extreme_cold'], lw=4, label='Extreme Cold'),
+            plt.Line2D([0], [0], color=event_colors['drought'], lw=4, label='Drought'),
+            plt.Line2D([0], [0], color=event_colors['storm'], lw=4, label='Storm'),
+            plt.Line2D([0], [0], color=event_colors['heat_wave'], lw=4, label='Heat Wave'),
+            plt.Line2D([0], [0], color=event_colors['cold_snap'], lw=4, label='Cold Snap'),
+            plt.Line2D([0], [0], color=event_colors['rain'], lw=4, label='Rain'),
+        ]
+        ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
+        ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    out_path = os.path.join(out_path, 'ppo_events.png')
+    plt.savefig(out_path, dpi=150)
+    print(f"Saved events plot: {out_path}")
     plt.close()
 
 
@@ -440,9 +648,14 @@ def print_summary(histories):
         print(f"  Avg A_valve: {avg_valve:.3f}")
         print(f"  Valve usage: {sum(1 for v in hist['A_valve'] if v >= 0.5)} cycles")
 
+        event_counts = {}
+        for etype in hist['event_type']:
+            event_counts[etype] = event_counts.get(etype, 0) + 1
+        print(f"  Events: {event_counts}")
+
 
 def run_evaluation():
-    base_dir = '/home/almuzky/TA/Microservices/services/ml-control'
+    base_dir = '/home/almuzky/TA/Microservices/ppo-model-training'
     results_dir = os.path.join(base_dir, 'results')
     os.makedirs(results_dir, exist_ok=True)
 
@@ -455,6 +668,8 @@ def run_evaluation():
     plot_episode_comparison(histories, results_dir)
     plot_action_histograms(histories, results_dir)
     plot_reward_curve(histories, results_dir)
+    plot_events(histories, results_dir)
+    save_episode_summary(histories, results_dir)
     print_summary(histories)
 
     print("\n" + "=" * 80)

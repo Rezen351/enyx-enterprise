@@ -6,7 +6,7 @@ Plot TensorBoard training curves from PPO training events.
 import os
 import sys
 
-sys.path.insert(0, '/home/almuzky/TA/Microservices/services/ml-control')
+sys.path.insert(0, '/home/almuzky/TA/Microservices/ppo-model-training')
 
 from tensorboard.backend.event_processing import event_accumulator
 import matplotlib
@@ -52,6 +52,7 @@ def plot_training_curves(metrics, out_path):
         'rollout/reward_env': 'Reward Env',
         'rollout/reward_hypoxia': 'Reward Hypoxia',
         'rollout/reward_interval': 'Reward Interval',
+        'rollout/reward_efficiency': 'Reward Efficiency',
     }
 
     # Create subplots
@@ -157,6 +158,7 @@ def print_summary(metrics):
         'rollout/reward_env': 'Reward Env',
         'rollout/reward_hypoxia': 'Reward Hypoxia',
         'rollout/reward_interval': 'Reward Interval',
+        'rollout/reward_efficiency': 'Reward Efficiency',
     }
 
     for tag, name in key_metrics.items():
@@ -188,8 +190,8 @@ def get_latest_tensorboard_log_dir(tensorboard_base_dir):
 
 
 def main():
-    tensorboard_base_dir = '/home/almuzky/TA/Microservices/services/ml-control/aeroponic_ppo_tensorboard'
-    results_dir = '/home/almuzky/TA/Microservices/services/ml-control/results'
+    tensorboard_base_dir = '/home/almuzky/TA/Microservices/ppo-model-training/aeroponic_ppo_tensorboard'
+    results_dir = '/home/almuzky/TA/Microservices/ppo-model-training/results'
     os.makedirs(results_dir, exist_ok=True)
 
     log_dir = get_latest_tensorboard_log_dir(tensorboard_base_dir)

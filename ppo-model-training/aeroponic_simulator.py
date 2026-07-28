@@ -55,6 +55,7 @@ class AeroponicSimulatorEnv:
         self._last_P_env = 0.0
         self._last_P_hypoxia = 0.0
         self._last_P_interval = 0.0
+        self._last_R_efficiency = 0.0
 
         # Action history for diversity bonus
         self._action_history = []
@@ -130,6 +131,7 @@ class AeroponicSimulatorEnv:
         self._last_P_env = 0.0
         self._last_P_hypoxia = 0.0
         self._last_P_interval = 0.0
+        self._last_R_efficiency = 0.0
         self._action_history = []
         
         # Sensor noise parameters (realistic for greenhouse sensors)
@@ -146,6 +148,11 @@ class AeroponicSimulatorEnv:
         self.heat_wave_intensity = 0.0
         self.cold_snap_intensity = 0.0
         self.rain_humidity_boost = 0.0
+        self.extreme_heat_intensity = 0.0
+        self.extreme_cold_intensity = 0.0
+        self.drought_intensity = 0.0
+        self.storm_intensity = 0.0
+        self.storm_swing = 0.0
         
         # Generate random events for this episode
         self._generate_random_events()
@@ -153,41 +160,91 @@ class AeroponicSimulatorEnv:
         return self.state[:]
     
     def _generate_random_events(self):
-        """Generate realistic random events for this episode."""
-        # Reset events
+        """Generate realistic random events for this episode, including extreme weather."""
         self.heat_wave_intensity = 0.0
         self.cold_snap_intensity = 0.0
         self.rain_humidity_boost = 0.0
+        self.extreme_heat_intensity = 0.0
+        self.extreme_cold_intensity = 0.0
+        self.drought_intensity = 0.0
+        self.storm_intensity = 0.0
+        self.storm_swing = 0.0
         
-        # 10% chance of heat wave (T_in +3-5°C for 2-4 hours)
-        if random.random() < 0.10:
-            intensity = random.uniform(3.0, 5.0)
-            duration = random.uniform(2.0, 4.0) * 3600  # 2-4 hours in seconds
-            start_time = random.uniform(10.0, 14.0) * 3600  # 10:00-14:00
-            self.heat_wave_intensity = intensity
+        # Prioritize extreme events if they occur
+        has_extreme = False
+        
+        # 5% chance of extreme heat wave (T_in +6-10°C for 4-8 hours)
+        if random.random() < 0.05:
+            has_extreme = True
+            intensity = random.uniform(6.0, 10.0)
+            duration = random.uniform(4.0, 8.0) * 3600
+            start_time = random.uniform(9.0, 15.0) * 3600
+            self.extreme_heat_intensity = intensity
             self.event_start_time = start_time
             self.event_end_time = start_time + duration
         
-        # 15% chance of cold snap (T_in -3-5°C for 2-3 hours)
-        if random.random() < 0.15:
-            intensity = random.uniform(3.0, 5.0)
-            duration = random.uniform(2.0, 3.0) * 3600  # 2-3 hours
-            start_time = random.uniform(2.0, 5.0) * 3600  # 02:00-05:00
-            # Remove heat wave if cold snap overlaps (cold snap takes priority)
-            if hasattr(self, 'heat_wave_intensity'):
-                self.heat_wave_intensity = 0.0
-            self.cold_snap_intensity = intensity
+        # 5% chance of extreme cold snap (T_in -6-10°C for 3-6 hours)
+        if random.random() < 0.05:
+            has_extreme = True
+            intensity = random.uniform(6.0, 10.0)
+            duration = random.uniform(3.0, 6.0) * 3600
+            start_time = random.uniform(1.0, 5.0) * 3600
+            self.extreme_cold_intensity = intensity
             self.event_start_time = start_time
             self.event_end_time = start_time + duration
         
-        # 30% chance of rain (H_out +10-15% for 1-3 hours)
-        if random.random() < 0.30:
-            boost = random.uniform(10.0, 15.0)
-            duration = random.uniform(1.0, 3.0) * 3600  # 1-3 hours
-            start_time = random.uniform(8.0, 16.0) * 3600  # 08:00-16:00
-            self.rain_humidity_boost = boost
+        # 8% chance of drought (H_in drops to 40-55%, H_out drops to 30-45% for 6-12 hours)
+        if random.random() < 0.08:
+            has_extreme = True
+            intensity = random.uniform(0.4, 0.55)
+            duration = random.uniform(6.0, 12.0) * 3600
+            start_time = random.uniform(6.0, 12.0) * 3600
+            self.drought_intensity = intensity
             self.event_start_time = start_time
             self.event_end_time = start_time + duration
+        
+        # 6% chance of storm (H_out jumps to 95-100%, T_out swings ±3-5°C for 2-4 hours)
+        if random.random() < 0.06:
+            has_extreme = True
+            intensity = random.uniform(0.95, 1.0)
+            swing = random.uniform(3.0, 5.0)
+            duration = random.uniform(2.0, 4.0) * 3600
+            start_time = random.uniform(10.0, 18.0) * 3600
+            self.storm_intensity = intensity
+            self.storm_swing = swing
+            self.event_start_time = start_time
+            self.event_end_time = start_time + duration
+        
+        # If no extreme event, apply normal random events
+        if not has_extreme:
+            # 10% chance of heat wave (T_in +3-5°C for 2-4 hours)
+            if random.random() < 0.10:
+                intensity = random.uniform(3.0, 5.0)
+                duration = random.uniform(2.0, 4.0) * 3600
+                start_time = random.uniform(10.0, 14.0) * 3600
+                self.heat_wave_intensity = intensity
+                self.event_start_time = start_time
+                self.event_end_time = start_time + duration
+            
+            # 15% chance of cold snap (T_in -3-5°C for 2-3 hours)
+            if random.random() < 0.15:
+                intensity = random.uniform(3.0, 5.0)
+                duration = random.uniform(2.0, 3.0) * 3600
+                start_time = random.uniform(2.0, 5.0) * 3600
+                if self.heat_wave_intensity > 0:
+                    self.heat_wave_intensity = 0.0
+                self.cold_snap_intensity = intensity
+                self.event_start_time = start_time
+                self.event_end_time = start_time + duration
+            
+            # 30% chance of rain (H_out +10-15% for 1-3 hours)
+            if random.random() < 0.30:
+                boost = random.uniform(10.0, 15.0)
+                duration = random.uniform(1.0, 3.0) * 3600
+                start_time = random.uniform(8.0, 16.0) * 3600
+                self.rain_humidity_boost = boost
+                self.event_start_time = start_time
+                self.event_end_time = start_time + duration
 
     def _clip(self, val, lo, hi):
         return max(lo, min(hi, val))
@@ -218,6 +275,11 @@ class AeroponicSimulatorEnv:
                 T_evap_factor = max(0.0, (T_out - 20.0) / 15.0)  # 0 at 20C, 1.0 at 35C
                 lam = 0.02 + 0.03 * T_evap_factor
             H_in = H_target - (H_target - H_in) * math.exp(-lam)
+            
+            # Apply drought effect: H_in drops toward H_in_target
+            if hasattr(self, 'drought_intensity') and self.drought_intensity > 0:
+                H_in_target = max(40.0, H_in * 0.6)
+                H_in = H_in + (H_in_target - H_in) * 0.1
 
             # T_root dynamics (section 3.2)
             if is_misting_on:
@@ -281,7 +343,7 @@ class AeroponicSimulatorEnv:
             else:
                 H_out_base = 80.0 + self._normal(0.0, 2.0)
             
-            # Apply random events (heat waves, cold snaps, rain)
+            # Apply random events (heat waves, cold snaps, rain, extreme weather)
             event_multiplier = 1.0
             if hasattr(self, 'heat_wave_intensity') and self.heat_wave_intensity > 0:
                 T_out_base += self.heat_wave_intensity
@@ -291,6 +353,20 @@ class AeroponicSimulatorEnv:
                 T_in_base -= self.cold_snap_intensity * 0.8
             if hasattr(self, 'rain_humidity_boost') and self.rain_humidity_boost > 0:
                 H_out_base += self.rain_humidity_boost
+            
+            # Extreme weather events
+            if hasattr(self, 'extreme_heat_intensity') and self.extreme_heat_intensity > 0:
+                T_out_base += self.extreme_heat_intensity
+                T_in_base += self.extreme_heat_intensity * 0.9
+            if hasattr(self, 'extreme_cold_intensity') and self.extreme_cold_intensity > 0:
+                T_out_base -= self.extreme_cold_intensity
+                T_in_base -= self.extreme_cold_intensity * 0.9
+            if hasattr(self, 'drought_intensity') and self.drought_intensity > 0:
+                H_out_base = H_out_base * self.drought_intensity
+                H_in_target = max(40.0, H_in * 0.6)
+            if hasattr(self, 'storm_intensity') and self.storm_intensity > 0:
+                H_out_base = H_out_base + (self.storm_intensity * 100.0 - H_out_base) * 0.8
+                T_out_base += random.uniform(-self.storm_swing, self.storm_swing)
             
             T_out = self._clip(T_out_base, 15.0, 38.0)
             H_out = self._clip(H_out_base, 40.0, 100.0)
@@ -481,6 +557,7 @@ class AeroponicSimulatorEnv:
             'reward_env': self._last_P_env,
             'reward_hypoxia': self._last_P_hypoxia,
             'reward_interval': self._last_P_interval,
+            'reward_efficiency': self._last_R_efficiency,
             'captured': self._captured_this_step,
             'T_in': self.state[2],
             'T_out': self.state[4],
@@ -576,7 +653,16 @@ class AeroponicSimulatorEnv:
             if a_valve_toggles >= 2:
                 P_diversity += 0.5
 
-        R_total = R_growth + R_state + P_diversity - C_resource - P_env - P_hypoxia - P_interval
+        R_efficiency = 0.0
+        if P_env < 1.0 and P_hypoxia == 0.0:
+            if A_valve == 0.0:
+                R_efficiency += 0.05
+            if D_mist <= 150.0:
+                R_efficiency += 0.03
+            if interval_sec >= 480.0:
+                R_efficiency += 0.02
+
+        R_total = R_growth + R_state + P_diversity + R_efficiency - C_resource - P_env - P_hypoxia - P_interval
 
         self._last_R_growth = R_growth
         self._last_C_resource = C_resource
@@ -584,6 +670,7 @@ class AeroponicSimulatorEnv:
         self._last_P_env = P_env
         self._last_P_hypoxia = P_hypoxia
         self._last_P_interval = P_interval
+        self._last_R_efficiency = R_efficiency
 
         return R_total
 

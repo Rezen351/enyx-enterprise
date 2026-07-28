@@ -8,7 +8,7 @@ import os
 import sys
 
 # Add ml-control to path
-sys.path.insert(0, '/home/almuzky/TA/Microservices/services/ml-control')
+sys.path.insert(0, '/home/almuzky/TA/Microservices/ppo-model-training')
 
 import math
 import random
@@ -92,12 +92,13 @@ class AdaptiveEntropyCallback(BaseCallback):
     - Decays linearly to a minimum
     - Boosts temporarily when policy entropy drops too low
     """
-    def __init__(self, ent_start=0.2, ent_end=0.02, boost_factor=1.5, window_size=10):
+    def __init__(self, ent_start=0.2, ent_end=0.02, boost_factor=1.5, window_size=10, total_timesteps=300_000):
         super().__init__()
         self.ent_start = ent_start
         self.ent_end = ent_end
         self.boost_factor = boost_factor
         self.window_size = window_size
+        self.total_timesteps = total_timesteps
         self.entropy_window = []
         self.entropy_min = 0.3
         self.entropy_max = 2.5
@@ -123,7 +124,7 @@ class AdaptiveEntropyCallback(BaseCallback):
 
                 avg_ent = sum(self.entropy_window) / len(self.entropy_window)
 
-                progress = min(1.0, self.num_timesteps / 500000)
+                progress = min(1.0, self.num_timesteps / self.total_timesteps)
                 base_ent = self.ent_start + (self.ent_end - self.ent_start) * progress
 
                 if avg_ent < self.entropy_min:
@@ -176,19 +177,14 @@ class ValueNormalizationCallback(BaseCallback):
 class RewardLoggingCallback(BaseCallback):
     """
     Log reward component breakdown from environment info dict to TensorBoard.
-    Computes per-rollout averages for:
-      - reward_growth
-      - reward_resource
-      - reward_state
-      - reward_env
-      - reward_hypoxia
-      - reward_interval
-      - reward_diversity
+    Accumulates per-step component values across each episode and logs
+    the per-episode average at rollout end.
     """
     def __init__(self, window_size=10):
         super().__init__()
         self.window_size = window_size
         self.episode_rewards = []
+        self._current_episode = {}
 
     def _on_step(self):
         infos = self.locals.get("infos", [])
@@ -196,16 +192,31 @@ class RewardLoggingCallback(BaseCallback):
         if not infos or not dones:
             return True
 
+        keys = [
+            "reward_growth",
+            "reward_resource",
+            "reward_state",
+            "reward_env",
+            "reward_hypoxia",
+            "reward_interval",
+            "reward_efficiency",
+        ]
+
         for info, done in zip(infos, dones):
-            if done and isinstance(info, dict):
-                self.episode_rewards.append({
-                    "reward_growth": info.get("reward_growth", 0.0),
-                    "reward_resource": info.get("reward_resource", 0.0),
-                    "reward_state": info.get("reward_state", 0.0),
-                    "reward_env": info.get("reward_env", 0.0),
-                    "reward_hypoxia": info.get("reward_hypoxia", 0.0),
-                    "reward_interval": info.get("reward_interval", 0.0),
-                })
+            if isinstance(info, dict):
+                for key in keys:
+                    val = info.get(key, 0.0)
+                    self._current_episode[key] = self._current_episode.get(key, 0.0) + val
+                self._current_episode["_count"] = self._current_episode.get("_count", 0) + 1
+
+            if done and isinstance(info, dict) and self._current_episode.get("_count", 0) > 0:
+                episode_avg = {
+                    key: self._current_episode.get(key, 0.0) / self._current_episode["_count"]
+                    for key in keys
+                }
+                self.episode_rewards.append(episode_avg)
+                self._current_episode = {}
+
         return True
 
     def _on_rollout_end(self):
@@ -219,10 +230,12 @@ class RewardLoggingCallback(BaseCallback):
             "reward_env",
             "reward_hypoxia",
             "reward_interval",
+            "reward_efficiency",
         ]
 
+        recent = self.episode_rewards[-self.window_size:]
         for key in keys:
-            values = [ep[key] for ep in self.episode_rewards[-self.window_size:]]
+            values = [ep[key] for ep in recent]
             mean_value = float(np.mean(values))
             self.model.logger.record(f"rollout/{key}", mean_value)
 
@@ -239,6 +252,29 @@ def linear_schedule(initial_value: float, final_value: float = 1e-5):
     return func
 
 
+class CurriculumWeatherScaleCallback(BaseCallback):
+    """
+    Gradually increase curriculum_weather_scale from start_scale to end_scale
+    over total_timesteps. Logs the scale to TensorBoard for monitoring.
+    """
+    def __init__(self, start_scale=0.5, end_scale=1.0, total_timesteps=1_000_000):
+        super().__init__()
+        self.start_scale = start_scale
+        self.end_scale = end_scale
+        self.total_timesteps = total_timesteps
+
+    def _on_step(self):
+        progress = min(1.0, self.num_timesteps / self.total_timesteps)
+        scale = self.start_scale + (self.end_scale - self.start_scale) * progress
+
+        env = self.model.env.envs[0]
+        while hasattr(env, 'env'):
+            env = env.env
+        env.sim.curriculum_weather_scale = scale
+        self.model.logger.record("curriculum/weather_scale", scale)
+        return True
+
+
 def train_ppo():
     """
     Train PPO agent with optimized hyperparameters.
@@ -248,7 +284,7 @@ def train_ppo():
     - More timesteps for convergence
     - Linear LR schedule for fine-tuning
     """
-    base_dir = '/home/almuzky/TA/Microservices/services/ml-control'
+    base_dir = '/home/almuzky/TA/Microservices/ppo-model-training'
     models_dir = os.path.join(base_dir, 'models')
     tensorboard_dir = os.path.join(base_dir, 'aeroponic_ppo_tensorboard')
     os.makedirs(models_dir, exist_ok=True)
@@ -258,14 +294,15 @@ def train_ppo():
     vec_env = make_vec_env(AeroponicGymnasiumEnv, n_envs=1)
     vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
 
+    # Training hyperparameters
+    total_timesteps = 300_000
+    lr_schedule = linear_schedule(3e-4, 1e-5)
+
     # Adaptive entropy callback
-    entropy_callback = AdaptiveEntropyCallback(ent_start=0.2, ent_end=0.03)
+    entropy_callback = AdaptiveEntropyCallback(ent_start=0.2, ent_end=0.03, total_timesteps=total_timesteps)
     value_norm_callback = ValueNormalizationCallback()
     reward_log_callback = RewardLoggingCallback()
-
-    # Training hyperparameters
-    total_timesteps = 1_000_000
-    lr_schedule = linear_schedule(3e-4, 1e-5)
+    curriculum_callback = CurriculumWeatherScaleCallback(start_scale=0.3, end_scale=1.0, total_timesteps=total_timesteps)
 
     model = PPO(
         policy='MlpPolicy',
@@ -293,6 +330,8 @@ def train_ppo():
     print(f"  - Survival bonus (+0.5/step) + strong early termination penalty")
     print(f"  - EC correction during misting (dilution effect)")
     print(f"  - Linear LR schedule: 3e-4 -> 1e-5")
+    print(f"  - Efficiency reward when state healthy + resource-saving actions")
+    print(f"  - Curriculum weather scale: 0.3 -> 1.0")
     print(f"Hyperparameters:")
     print(f"  Total timesteps: {total_timesteps:,}")
     print(f"  Learning rate: 3e-4 -> 1e-5 (linear schedule)")
@@ -311,7 +350,7 @@ def train_ppo():
     print(f"  model save path: {os.path.join(models_dir, 'aeroponic_ppo.zip')}")
     print("=" * 80)
 
-    callback = [entropy_callback, value_norm_callback, reward_log_callback]
+    callback = [entropy_callback, value_norm_callback, reward_log_callback, curriculum_callback]
     model.learn(total_timesteps=total_timesteps, callback=callback)
 
     model_path = os.path.join(models_dir, 'aeroponic_ppo.zip')
