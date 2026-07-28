@@ -37,7 +37,7 @@ def load_model_and_env():
     return model, vec_norm
 
 
-def evaluate_policy(model, vec_env, num_episodes=5, curriculum_weather_scale=1.0, domain_randomization=True):
+def evaluate_policy(model, vec_env, num_episodes=5, curriculum_weather_scale=1.0, domain_randomization=True, dr_overrides=None):
     """
     Evaluate trained policy and collect metrics.
     """
@@ -58,6 +58,10 @@ def evaluate_policy(model, vec_env, num_episodes=5, curriculum_weather_scale=1.0
             sim.sensor_noise_pH = 0.0
             sim.actuator_noise_D_mist = 0.0
             sim.actuator_noise_spray_delay = 0.0
+        elif dr_overrides is not None:
+            for key, value in dr_overrides.items():
+                if hasattr(sim, key):
+                    setattr(sim, key, float(value))
 
         obs = vec_env.reset()
         terminated = False
@@ -85,6 +89,8 @@ def evaluate_policy(model, vec_env, num_episodes=5, curriculum_weather_scale=1.0
             'event_type': [],
             'event_active': [],
             'event_spans': [],
+            'reward_humidity_maintenance': [],
+            'reward_temperature_maintenance': [],
         }
         L_root_init = sim.state[0]
 
@@ -156,6 +162,8 @@ def evaluate_policy(model, vec_env, num_episodes=5, curriculum_weather_scale=1.0
             history['interval_sec'].append(interval_phys)
             history['A_valve'].append(A_valve_phys)
             history['captured'].append(sim._captured_this_step)
+            history['reward_humidity_maintenance'].append(info0.get('reward_humidity_maintenance', 0.0))
+            history['reward_temperature_maintenance'].append(info0.get('reward_temperature_maintenance', 0.0))
 
             event_active = False
             event_type = 'none'
@@ -265,19 +273,19 @@ def evaluate_domain_randomization(model, vec_env, num_episodes=5):
     Tests: no DR, partial DR, full DR
     """
     dr_levels = [
-        ('no_dr', False),
-        ('partial_dr', True),
-        ('full_dr', True),
+        ('no_dr', {'sensor_noise_T': 0.0, 'sensor_noise_H': 0.0, 'sensor_noise_EC': 0.0, 'sensor_noise_pH': 0.0, 'actuator_noise_D_mist': 0.0, 'actuator_noise_spray_delay': 0.0}),
+        ('partial_dr', {'actuator_noise_D_mist': 0.0, 'actuator_noise_spray_delay': 0.0}),
+        ('full_dr', None),
     ]
 
     results = {}
 
-    for name, use_dr in dr_levels:
+    for name, overrides in dr_levels:
         print(f"\n{'='*80}")
         print(f"DOMAIN RANDOMIZATION EVALUATION - {name}")
         print(f"{'='*80}")
 
-        histories = evaluate_policy(model, vec_env, num_episodes=num_episodes, domain_randomization=use_dr)
+        histories = evaluate_policy(model, vec_env, num_episodes=num_episodes, domain_randomization=True, dr_overrides=overrides)
 
         growths = [hist['L_root'][-1] - 8.0 for hist in histories]
         rewards = [sum(hist['total_reward']) for hist in histories]

@@ -35,7 +35,7 @@ class AeroponicSimulatorEnv:
         self.interval_max = 900.0  # 15 minutes maximum OFF
 
         # Reward weights (tuned for stable learning and growth dominance)
-        self.w_growth = 25.0
+        self.w_growth = 15.0
         self.w_mist_cost = 0.002
         self.w_valve_cost = 0.15
         self.w_env = 0.05
@@ -132,6 +132,8 @@ class AeroponicSimulatorEnv:
         self._last_P_hypoxia = 0.0
         self._last_P_interval = 0.0
         self._last_R_efficiency = 0.0
+        self._last_R_humidity_maintenance = 0.0
+        self._last_R_temperature_maintenance = 0.0
         self._action_history = []
         
         # Sensor noise parameters (realistic for greenhouse sensors)
@@ -558,6 +560,8 @@ class AeroponicSimulatorEnv:
             'reward_hypoxia': self._last_P_hypoxia,
             'reward_interval': self._last_P_interval,
             'reward_efficiency': self._last_R_efficiency,
+            'reward_humidity_maintenance': self._last_R_humidity_maintenance,
+            'reward_temperature_maintenance': self._last_R_temperature_maintenance,
             'captured': self._captured_this_step,
             'T_in': self.state[2],
             'T_out': self.state[4],
@@ -583,6 +587,7 @@ class AeroponicSimulatorEnv:
         pH = self.state[7]
         EC = self.state[6]
         H_in = self.state[3]
+        T_in = self.state[2]
         dev_pH = abs(pH - 6.0) if (pH < 5.5 or pH > 6.5) else 0.0
         dev_EC = abs(EC - 1.6) if (EC < 1.2 or EC > 2.0) else 0.0
         dev_Hin = max(0.0, 85.0 - H_in) if H_in < 85.0 else 0.0
@@ -610,16 +615,16 @@ class AeroponicSimulatorEnv:
             R_state -= 0.1 * (EC - 2.0)
 
         if H_in >= 85.0:
-            R_state += 0.05
+            R_state += 0.2
         else:
-            R_state -= 0.1 * (85.0 - H_in) / 10.0
+            R_state -= 0.5 * (85.0 - H_in) / 10.0
 
         if 10.0 <= T_root <= 20.0:
-            R_state += 0.1
+            R_state += 0.3
         elif T_root < 10.0:
-            R_state -= 0.2 * (10.0 - T_root)
+            R_state -= 0.5 * (10.0 - T_root)
         else:
-            R_state -= 0.1 * (T_root - 20.0)
+            R_state -= 0.3 * (T_root - 20.0)
 
         if O2_status >= 0.6:
             R_state += 0.05
@@ -653,6 +658,24 @@ class AeroponicSimulatorEnv:
             if a_valve_toggles >= 2:
                 P_diversity += 0.5
 
+        # Strong humidity maintenance reward/penalty (target: 98% in safe zone)
+        R_humidity_maintenance = 0.0
+        if 80.0 <= H_in <= 95.0:
+            R_humidity_maintenance += 1.5
+        elif H_in < 70.0:
+            R_humidity_maintenance -= 3.0
+        elif H_in > 97.0:
+            R_humidity_maintenance -= 2.0
+
+        # Strong temperature maintenance reward/penalty (target: 98% in safe zone)
+        R_temperature_maintenance = 0.0
+        if 18.0 <= T_in <= 28.0:
+            R_temperature_maintenance += 1.5
+        elif T_in < 15.0:
+            R_temperature_maintenance -= 3.0
+        elif T_in > 32.0:
+            R_temperature_maintenance -= 3.0
+
         R_efficiency = 0.0
         if P_env < 1.0 and P_hypoxia == 0.0:
             if A_valve == 0.0:
@@ -662,7 +685,7 @@ class AeroponicSimulatorEnv:
             if interval_sec >= 600.0:
                 R_efficiency += 0.02
 
-        R_total = R_growth + R_state + P_diversity + R_efficiency - C_resource - P_env - P_hypoxia - P_interval
+        R_total = R_growth + R_state + R_humidity_maintenance + R_temperature_maintenance + P_diversity + R_efficiency - C_resource - P_env - P_hypoxia - P_interval
 
         self._last_R_growth = R_growth
         self._last_C_resource = C_resource
@@ -671,6 +694,8 @@ class AeroponicSimulatorEnv:
         self._last_P_hypoxia = P_hypoxia
         self._last_P_interval = P_interval
         self._last_R_efficiency = R_efficiency
+        self._last_R_humidity_maintenance = R_humidity_maintenance
+        self._last_R_temperature_maintenance = R_temperature_maintenance
 
         return R_total
 

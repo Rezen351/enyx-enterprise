@@ -200,6 +200,8 @@ class RewardLoggingCallback(BaseCallback):
             "reward_hypoxia",
             "reward_interval",
             "reward_efficiency",
+            "reward_humidity_maintenance",
+            "reward_temperature_maintenance",
         ]
 
         for info, done in zip(infos, dones):
@@ -231,6 +233,8 @@ class RewardLoggingCallback(BaseCallback):
             "reward_hypoxia",
             "reward_interval",
             "reward_efficiency",
+            "reward_humidity_maintenance",
+            "reward_temperature_maintenance",
         ]
 
         recent = self.episode_rewards[-self.window_size:]
@@ -295,7 +299,7 @@ def train_ppo():
     vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
 
     # Training hyperparameters
-    total_timesteps = 300_000
+    total_timesteps = 500_000
     lr_schedule = linear_schedule(3e-4, 1e-5)
 
     # Adaptive entropy callback
@@ -304,23 +308,28 @@ def train_ppo():
     reward_log_callback = RewardLoggingCallback()
     curriculum_callback = CurriculumWeatherScaleCallback(start_scale=0.3, end_scale=1.0, total_timesteps=total_timesteps)
 
-    model = PPO(
-        policy='MlpPolicy',
-        env=vec_norm,
-        learning_rate=lr_schedule,
-        n_steps=4096,
-        batch_size=128,
-        n_epochs=10,
-        gamma=0.995,
-        ent_coef=0.05,
-        vf_coef=0.5,
-        max_grad_norm=1.0,
-        clip_range=0.1,
-        gae_lambda=0.95,
-        verbose=1,
-        tensorboard_log=tensorboard_dir,
-        device='cpu',
-    )
+    model_path = os.path.join(models_dir, 'aeroponic_ppo.zip')
+    if os.path.exists(model_path):
+        model = PPO.load(model_path, env=vec_norm)
+        print(f"Resumed existing model from {model_path} ({model.num_timesteps} timesteps)")
+    else:
+        model = PPO(
+            policy='MlpPolicy',
+            env=vec_norm,
+            learning_rate=lr_schedule,
+            n_steps=4096,
+            batch_size=128,
+            n_epochs=10,
+            gamma=0.995,
+            ent_coef=0.05,
+            vf_coef=0.5,
+            max_grad_norm=1.0,
+            clip_range=0.1,
+            gae_lambda=0.95,
+            verbose=1,
+            tensorboard_log=tensorboard_dir,
+            device='cpu',
+        )
 
     print("=" * 80)
     print("STARTING PPO TRAINING (FIXED CONFIG)")
@@ -351,7 +360,12 @@ def train_ppo():
     print("=" * 80)
 
     callback = [entropy_callback, value_norm_callback, reward_log_callback, curriculum_callback]
-    model.learn(total_timesteps=total_timesteps, callback=callback)
+    remaining_timesteps = max(0, total_timesteps - model.num_timesteps)
+    if remaining_timesteps <= 0:
+        print(f"Model already has {model.num_timesteps} timesteps, target is {total_timesteps}. No additional training needed.")
+    else:
+        print(f"Training for {remaining_timesteps:,} additional timesteps to reach {total_timesteps:,}")
+        model.learn(total_timesteps=remaining_timesteps, callback=callback)
 
     model_path = os.path.join(models_dir, 'aeroponic_ppo.zip')
     model.save(model_path)
