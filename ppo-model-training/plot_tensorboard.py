@@ -159,8 +159,6 @@ def print_summary(metrics):
         'rollout/reward_hypoxia': 'Reward Hypoxia',
         'rollout/reward_interval': 'Reward Interval',
         'rollout/reward_efficiency': 'Reward Efficiency',
-        'rollout/reward_humidity_maintenance': 'Reward Humidity Maint.',
-        'rollout/reward_temperature_maintenance': 'Reward Temp Maint.',
     }
 
     for tag, name in key_metrics.items():

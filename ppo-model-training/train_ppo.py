@@ -200,8 +200,6 @@ class RewardLoggingCallback(BaseCallback):
             "reward_hypoxia",
             "reward_interval",
             "reward_efficiency",
-            "reward_humidity_maintenance",
-            "reward_temperature_maintenance",
         ]
 
         for info, done in zip(infos, dones):
@@ -233,8 +231,6 @@ class RewardLoggingCallback(BaseCallback):
             "reward_hypoxia",
             "reward_interval",
             "reward_efficiency",
-            "reward_humidity_maintenance",
-            "reward_temperature_maintenance",
         ]
 
         recent = self.episode_rewards[-self.window_size:]

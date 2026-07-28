@@ -89,8 +89,6 @@ def evaluate_policy(model, vec_env, num_episodes=5, curriculum_weather_scale=1.0
             'event_type': [],
             'event_active': [],
             'event_spans': [],
-            'reward_humidity_maintenance': [],
-            'reward_temperature_maintenance': [],
         }
         L_root_init = sim.state[0]
 
@@ -162,8 +160,6 @@ def evaluate_policy(model, vec_env, num_episodes=5, curriculum_weather_scale=1.0
             history['interval_sec'].append(interval_phys)
             history['A_valve'].append(A_valve_phys)
             history['captured'].append(sim._captured_this_step)
-            history['reward_humidity_maintenance'].append(info0.get('reward_humidity_maintenance', 0.0))
-            history['reward_temperature_maintenance'].append(info0.get('reward_temperature_maintenance', 0.0))
 
             event_active = False
             event_type = 'none'
