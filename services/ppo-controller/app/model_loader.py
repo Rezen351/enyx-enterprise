@@ -64,8 +64,8 @@ class PPOModelLoader:
 
     def _map_action(self, action: np.ndarray) -> np.ndarray:
         a_01 = (action + 1.0) / 2.0
-        D_mist = 120.0 + a_01[0] * (240.0 - 120.0)
-        interval_sec = 360.0 + a_01[1] * (540.0 - 360.0)
+        D_mist = 60.0 + a_01[0] * (900.0 - 60.0)
+        interval_sec = 60.0 + a_01[1] * (900.0 - 60.0)
         A_valve = 1.0 if action[2] >= 0.0 else 0.0
         return np.array([D_mist, interval_sec, A_valve], dtype=np.float32)
 

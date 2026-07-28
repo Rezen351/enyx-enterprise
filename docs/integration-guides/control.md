@@ -131,7 +131,8 @@ All endpoints are mounted under `/control` (Kong strips `/v1`). All responses fo
   "type": "set_state",
   "value": 1,
   "duration_sec": 0,
-  "targets": []
+  "targets": [],
+  "bypass": false
 }
 ```
 
@@ -145,6 +146,7 @@ All endpoints are mounted under `/control` (Kong strips `/v1`). All responses fo
 | `value` | `int` | Yes (`set_state`, `set_level`) | 0–255. For `set_state` use `1` (ON) or `0` (OFF). |
 | `duration_sec` | `int` | No (for `pulse`) | Pulse duration in seconds. Default `5`. |
 | `targets` | `array` | No | Optional actuator tag set rendered by the dashboard (keeps command consistent with UI). |
+| `bypass` | `bool` | No | If `true`, command is allowed even when node is in `AUTO` mode. Intended for AI/automation services (e.g. PPO controller) that need to override specific outputs without switching the node to MANUAL. |
 
 **Response:**
 
@@ -177,7 +179,7 @@ All endpoints are mounted under `/control` (Kong strips `/v1`). All responses fo
 | HTTP Status | Error Code | Condition |
 |---|---|---|
 | `400` | `BAD_REQUEST` | `node_id` missing, `output` missing, `value` missing, value out of range (0–255), unknown type. |
-| `409` | `CONFLICT` | Node is in `AUTO` mode (manual override blocked) or `EMERGENCY` stop (resume required). |
+| `409` | `CONFLICT` | Node is in `AUTO` mode and request did not set `bypass: true`; or `EMERGENCY` stop (resume required). |
 | `502` | `UPSTREAM_ERROR` | Failed to verify node registration with Module Service. |
 | `503` | `INTERNAL_ERROR` | MQTT broker unavailable. |
 

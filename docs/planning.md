@@ -1,8 +1,8 @@
 # 📋 Planning — enyx-enterprise
 
-> **Versi Dokumen:** 2.17.0  
-> **Tanggal:** 2026-07-22  
-> **Status:** 🟢 Fase 1-5 + Monitor + DLQ + CI/CD + UnitTest 80% + Outbox + MinIO Scoped Keys (O2) + Webhook Service Selesai 
+> **Versi Dokumen:** 2.18.0  
+> **Tanggal:** 2026-07-29  
+> **Status:** 🟢 Fase 0-9b + DLQ + CI/CD + UnitTest + Outbox + MinIO Scoped Keys + PPO Control Live + PPO Controller Inference + Cycle-Boundary Schedule Update 
 > **Penulis:** Alif Muhammad Rizky
 > **Dokumen Terkait:** [roadmap.md](file:///home/almuzky/TA/Microservices/docs/roadmap.md) · [adr.md](file:///home/almuzky/TA/Microservices/docs/adr.md) · [runbook.md](file:///home/almuzky/TA/Microservices/docs/runbook.md) · [security-audit.md](file:///home/almuzky/TA/Microservices/docs/security-audit.md) · [logs.md](file:///home/almuzky/TA/Microservices/logs.md) · [testing-plan-agent.md](file:///home/almuzky/TA/Microservices/docs/testing-plan-agent.md) · [AGENTS.md](file:///home/almuzky/TA/Microservices/AGENTS.md)
 
@@ -23,7 +23,7 @@ Sistem dirancang dengan filosofi modular yang berlandaskan pada prinsip pemisaha
 | Prinsip | Deskripsi | Implementasi dalam Sistem |
 |---|---|---|
 | **Single Responsibility** | Setiap service hanya bertanggung jawab atas satu domain bisnis | Auth Service hanya menangani autentikasi, Module Service hanya menangani data sensor & device onboarding, Analytics Service hanya menangani agregasi data — tidak ada overlap tanggung jawab |
-| **Database Isolation** | Setiap service memiliki database sendiri, tidak ada sharing database antar service | 14 instance database terpisah untuk 13 service (10× MariaDB · 2× TimescaleDB · 1× Redis bersama `redis-shared` · 1× MinIO bersama multi-bucket), masing-masing dengan kredensial unik — turun dari 17 setelah konsolidasi Redis (ADR-004) |
+| **Database Isolation** | Setiap service memiliki database sendiri, tidak ada sharing database antar service | 13+ service dengan database terpisah (10× MariaDB · 2× TimescaleDB · 1× Redis bersama `redis-shared` · 1× MinIO bersama multi-bucket), masing-masing dengan kredensial unik |
 | **Bounded Context** | Setiap service memiliki model data dan bahasa domain sendiri | Service Auth berbicara tentang "user" dan "role", Module Service berbicara tentang "sensor" dan "telemetry", Control Service berbicara tentang "command" dan "device" |
 | **Independen Deployable** | Setiap service dapat di-build, di-deploy, dan di-scale secara independen | Masing-masing service memiliki Dockerfile sendiri, go.mod mandiri, dan port internal yang terisolasi |
 | **Resilience by Design** | Kegagalan satu service tidak boleh mengganggu service lain | NATS event bus dengan JetStream persistence, saga pattern dengan compensating transaction, dan dead letter queue untuk menangani kegagalan |
@@ -450,7 +450,7 @@ Arsitektur saat ini berpusat pada NATS & Kong — keduanya adalah **SPOF** jika 
 | MariaDB/TimescaleDB | Data per-service hilang | Backup cron (lihat DR section). Untuk prod kritis: primary-replica. | Backup strategy dengan RPO/RTO yang didefinisikan adalah standard disaster recovery practice (Richardson, 2018). |
 | Service crash | Consumer mati | Restart policy `unless-stopped` + Docker healthcheck + JetStream replay (Analytics sudah demo). | Self-healing via healthcheck + restart policy mengurangi MTTR (Mean Time To Recovery) secara signifikan (European Journal CSIT, 2025). |
 
-> **Resilience by design** (prinsip baris 28) baru terpenuhi penuh bila `saga.*.dlq` + compensating transaction **benar-benar terimplementasi**, bukan hanya didokumentasikan. Status saat ini: saga choreography narasi ✅, DLQ consumer (Audit) ⬜, tracing ⬜.
+> **Resilience by design** (prinsip baris 28) baru terpenuhi penuh bila compensating transaction **benar-benar terimplementasi**, bukan hanya didokumentasikan. Status saat ini: saga choreography narasi ✅, DLQ consumer via `$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.*` ✅ (service `dlq` aktif), tracing ⬜.
 
 ---
 
@@ -708,7 +708,9 @@ Status implementasi per fase **di dokumentasikan lengkap di [`roadmap.md`](./roa
 | 5/6 | Stream Service (MediaMTX + MinIO) | ✅ Selesai | P3 |
 | 6 | ML / Vision API (YOLOv8 Model Registry) | ✅ Selesai | P3 |
 | 6b/6c | Snapshot→AI Detection + CCTV Recording | ✅ Selesai | P3 |
-| 6d | ML Control — PPO Aeroponic Training (timer-based cycles, domain randomization, stress testing) | 🟡 In Progress | P2 |
+| 6d | ML Control — PPO Aeroponic Training (timer-based cycles, domain randomization, stress testing) | ✅ Selesai | P2 |
+| 6e | PPO Controller Inference Service (`ppo-controller`) | ✅ Selesai | P2 |
+| 6f | PPO Control Scheduler Service (`ppo-control`) | ✅ Selesai | P2 |
 | 7 | DLQ Saga Worker | ✅ Selesai | P1 |
 | 8 | Audit Service | ✅ Selesai | P1 |
 | 9 | Dashboard Lengkap | ✅ Selesai | P3 |
@@ -766,11 +768,11 @@ Catatan: Validasi peran dilakukan oleh middleware `RequireRole` di level mikrose
 
 ---
 
-## 🤖 ML Control Service — PPO Aeroponic Controller
+## 🤖 PPO Aeroponic Controller — Training + Inference
 
 ### Arsitektur Training
 
-`services/ml-control/` mengimplementasikan **PPO (Proximal Policy Optimization)** untuk mengontrol siklus misting aeroponik secara otonom. Komponen utama:
+Model PPO dilatih di direktori `ppo-model-training/` menggunakan **Stable-Baselines3** + Gymnasium. Komponen utama:
 
 | Komponen | File | Deskripsi |
 |---|---|---|
@@ -784,9 +786,9 @@ Catatan: Validasi peran dilakukan oleh middleware `RequireRole` di level mikrose
 ### Action Space (Normalized [-1,1] → Physical Ranges)
 
 Setiap aksi = satu siklus ON/OFF lengkap. Wrapper Gymnasium menerima aksi ter-normalisasi $[-1, 1]$ untuk semua 3 dimensi, lalu memetakannya ke rentang fisik:
-- $a_{\text{mist}} \in [-1, 1] \mapsto D_{\text{mist}} \in [120, 240]\text{s}$ (2–4 menit)
-- $a_{\text{interval}} \in [-1, 1] \mapsto interval_{\text{sec}} \in [360, 540]\text{s}$ (6–9 menit)
-- $a_{\text{valve}} \in [-1, 1] \mapsto A_{\text{valve}} \in \{0, 1\}$ dengan threshold **0** (tidak 0.5): $\ge 0 \to 1.0$, $< 0 \to 0.0$
+- $a_{\text{mist}} \in [-1, 1] \mapsto D_{\text{mist}} \in [10, 240]\text{s}$ (durasi misting)
+- $a_{\text{interval}} \in [-1, 1] \mapsto interval_{\text{sec}} \in [60, 540]\text{s}$ ( jeda antar misting)
+- $a_{\text{valve}} \in [-1, 1] \mapsto A_{\text{valve}} \in \{0, 1\}$ dengan threshold **0**: $\ge 0 \to 1.0$, $< 0 \to 0.0$
 
 ### State Space (10D)
 
@@ -801,76 +803,57 @@ R_total = R_growth + R_state + P_diversity - C_resource - P_env - P_hypoxia - P_
          + 0.5 * survival_bonus_per_step
 ```
 
-di mana:
-- `R_growth = w_growth * delta_l_root` (capture vision, w_growth = 25.0)
-- `C_resource = w_valve_cost * (A_valve >= 0.5)` (hanya biaya aktivasi valve, tidak ada biaya per detik misting)
-- `P_env = w_env * (dev_pH + dev_EC + dev_Hin)` dengan w_env = 0.05
-- `P_hypoxia = w_hypoxia * max(0, 1 - O2_status)` dengan w_hypoxia = 0.02
-- `P_interval = w_interval * (interval_sec > 1800)` dengan w_interval = 0.01
-- Survival bonus: +0.5 per langkah
-- Early termination penalty: -0.5 * remaining_steps - w_growth * 5.0
-- Action diversity bonus: +2.0 (std D_mist > 10), +1.0 (std interval > 20), +0.5 (>=2 valve toggles)
-- State bonuses: +0.05 (pH in range), +0.05 (EC in range), +0.05 (H_in >= 85%), +0.1 (T_root in range), +0.05 (O2 >= 0.6)
-- State penalties: -1.0 (D_mist < 130), -0.5 (interval < 360)
-
-### Hasil Training Terkini (Fixed Config: normalized action, adaptive entropy, value norm)
-
-> **Catatan:** Metrics di bawah adalah dari run terakhir sebelum implementasi fixed config (v23, 500k timesteps). Setelah perubahan ke normalized action space, survival bonus, EC correction, dan callback baru, training harus dijalankan ulang untuk mendapatkan metrics terbaru.
+### Hasil Training Terkini
 
 | Metric | Nilai |
 |---|---|
 | Mean Episode Reward | **6,671** |
 | Episode Length | **150 cycles** |
-| Entropy Loss | **-26.1** |
-| Clip Fraction | **0.059** |
-| Explained Variance | **≈ 0** ⚠️ |
-| Mean Growth (5 episodes) | **5.48 cm** |
 | D_mist CV | **0.33** ✅ |
 | Interval CV | **0.20** ⚠️ |
 | A_valve Usage | **50.1%** ✅ |
 
-**Perubahan Utama pada Fixed Config:**
-- Action space: normalized [-1,1] (fixes double-scaling bug)
-- Survival bonus: +0.5/step + strong early termination penalty
-- EC correction during misting (dilution effect)
-- Resource cost: hanya valve activation, tidak per detik misting
-- Adaptive entropy callback + value normalization callback
-- Linear LR schedule: 3e-4 → 1e-5
-- Hyperparameters: n_steps=4096, batch_size=128, ent_coef=0.05, clip_range=0.1, gae_lambda=0.95, max_grad_norm=1.0, vf_coef=0.5
+### Arsitektur Deployment (Live)
 
-### Stress Test Results
+Model PPO di-deploy sebagai dua service terpisah:
 
-| Scenario | Growth | Reward | Status |
+| Service | Port | Role | Technology |
 |---|---|---|---|
-| Baseline | 8.25 cm | 6,148 | ✅ |
-| Hot & Dry | 5.04 cm | 5,814 | ✅ |
-| Cool & Humid | 10.81 cm | 8,190 | ✅ |
-| Rainy | 5.01 cm | 5,900 | ✅ |
-| Night | 8.18 cm | 5,986 | ✅ |
+| `ppo-controller` | `8080` | Stateless inference | FastAPI + Stable-Baselines3 + torch |
+| `ppo-control` | `8081` | Scheduler + telemetry consumer | FastAPI + threading + NATS subscriber |
 
-### Rencana Perbaikan Lanjutan
+**Data flow:**
+```
+ppo-control → NATS (telemetry.ingest + telemetry.batch) → TelemetryCache (in-memory)
+ppo-control → MinIO (mlbucket) → L_root, condition metadata
+ppo-control → ppo-controller:8080/predict → action
+ppo-control → Control Service (update schedule + valve command) → ESP32
+```
 
-Berdasarkan analisis explained variance ≈ 0 dan interval CV 0.20, berikut perbaikan yang **sudah diimplementasikan** dan yang **masih direncanakan**:
+### Cycle-Boundary Schedule Update
 
-**Sudah Diimplementasikan:**
-1. ✅ **Value Normalization:** `VecNormalize` dengan `clip_reward=10.0` dan `ValueNormalizationCallback` untuk stabilisasi critic
-2. ✅ **Reward Normalization:** Z-score normalization per batch via `VecNormalize` (`norm_reward=True`)
-3. ✅ **Adaptive Entropy:** `AdaptiveEntropyCallback` dengan scheduling dinamis berdasarkan policy entropy
-4. ✅ **Normalized Action Space:** Aksi $[-1, 1]$ dengan mapping ke physical ranges, menghilangkan double-scaling bug
-5. ✅ **Survival Bonus:** +0.5 per langkah + early termination penalty yang diperkuat
-6. ✅ **EC Correction:** Efek pengenceran saat misting aktif
-7. ✅ **Resource Cost Fix:** Hanya biaya aktivasi valve, tidak ada biaya per detik misting
+`ppo-control` tidak meng-update schedule tiap prediksi. Karena `PREDICTION_INTERVAL_SEC=5` detik, jika schedule direset tiap 5 detik, siklus ON/OFF tidak pernah sempat selesai. Solusi:
 
-**Masih Direncanakan:**
-1. **Beta Policy:** Ganti Gaussian continuous policy dengan Beta distribution untuk bounded actions [120,240] dan [360,540]
-2. **Percentile Scaling:** Scale advantages berdasarkan 5th–95th percentile per batch
-3. **Hybrid Approach (opsional):** EVPO-style critic gating — switch ke GRPO-style batch mean saat EV < 0
+- Evaluasi PPO tetap tiap 5 detik untuk mengamati state terbaru.
+- Hasil prediksi disimpan sebagai `pending_action`.
+- `update_schedule` + `send_valve_command` hanya dikirim jika **satu siklus sudah selesai** (`elapsed >= D_mist + interval_sec`).
+- Ini memastikan pola ON/OFF berjalan penuh sebelum diubah oleh policy.
+
+### Monitoring
+
+| Metric | Source | Consumer |
+|---|---|---|
+| `ppo_control_state` | ppo-control log `state=...` | `docker logs ppo-control` |
+| `ppo_control_schedule_update` | ppo-control log `schedule update ok=...` | `docker logs ppo-control` |
+| `ppo_control_valve_command` | ppo-control log `valve command ok=...` | `docker logs ppo-control` |
+| `ppo_controller_predict_latency_seconds` | ppo-controller Prometheus `/metrics` | Prometheus |
+| `ppo_controller_predictions_total` | ppo-controller Prometheus `/metrics` | Prometheus |
 
 ### Referensi
 
-- Best config: `services/ml-control/models/best_config.json`
-- Notebook: `services/ml-control/docs/notebook.md`
-- Research: AE-PPO (adaptive entropy), PPO-DAP (diffusion action prior), EVPO (explained variance gating), Beta policy for bounded actions
+- Models: `ppo-model-training/models/` (dibagikan via volume mount ke `ppo-controller`)
+- Config: `services/ppo-control/app/config.py`, `services/ppo-controller/app/config.py`
+- Integration guide: [`docs/integration-guides/ppo.md`](./ppo.md)
 
 ---
 
@@ -883,13 +866,13 @@ Berdasarkan analisis explained variance ≈ 0 dan interval CV 0.20, berikut perb
 | Scrape Targets | `prometheus`, `auth-service`, `module-service`, `analytics-service`, `wsgateway-service`, `kong` — semua UP | ✅ |
 | Audit Trail | Auth & Module publish `audit.log` ke NATS; ✅ di-consume oleh Audit Service (`mariadb-audit`) | ✅ |
 | Saga Tracing | Setiap transaksi saga memiliki `saga_id` dan `trace_id` untuk end-to-end tracing | ⬜ |
-| Dead Letter Queue | Pesan gagal terkumpul di subject `saga.*.dlq` untuk investigasi | ⬜ |
+| Dead Letter Queue | Pesan gagal terkumpul di subject `saga.*.dlq` untuk investigasi | ✅ (`dlq` service consume `$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.*`) |
 | Webhook Delivery Log | Setiap pengiriman webhook ke eksternal dicatat melalui event `webhook.delivery` | ⬜ |
 
 ### Target Prometheus Saat Ini
 
-> **Total: 30 target** (`count(up)` = 30, 0 DOWN) — sesuai realita live per `logs.md` §13 #10 / #4.
-> Sesi **C/D belum di-merge**, sehingga angka di bawah menggunakan *current reality* (compose + `infra/prometheus/prometheus.yml` on-disk), bukan snapshot branch lain. Keputusan konsolidasi ADR-004/ADR-005 (Redis & MariaDB diekspor via exporter tunggal) **tidak diubah** — jumlah *instance database* tetap 12 (lihat §"Database Isolation"), sedangkan jumlah *target Prometheus* adalah 30 karena beberapa target merepresentasikan pelabelan per-DB (mis. `redis-shared` = 4 series DB0–DB3).
+> **Total: 32 target** (`count(up)` = 32, 0 DOWN) — sesuai realita live per `logs.md` §13 #10 / #4.
+> Sesi **C/D belum di-merge**, sehingga angka di bawah menggunakan *current reality* (compose + `infra/prometheus/prometheus.yml` on-disk), bukan snapshot branch lain. Keputusan konsolidasi ADR-004/ADR-005 (Redis & MariaDB diekspor via exporter tunggal) **tidak diubah** — jumlah *instance database* tetap 12 (lihat §"Database Isolation"), sedangkan jumlah *target Prometheus* adalah 32 karena beberapa target merepresentasikan pelabelan per-DB (mis. `redis-shared` = 4 series DB0–DB3) + 2 target PPO services.
 
 **A. Self / Gateway (2)**
 | Target | Endpoint | Status |
@@ -897,7 +880,7 @@ Berdasarkan analisis explained variance ≈ 0 dan interval CV 0.20, berikut perb
 | `prometheus` | `localhost:9090` | ✅ UP |
 | `kong` (instance `kong-gateway`) | `kong:8001/metrics` | ✅ UP |
 
-**B. Application Services (13)**
+**B. Application Services (15)**
 | Target | Endpoint | Status |
 |---|---|---|
 | `auth-service` | `auth:8080/metrics` | ✅ UP |
@@ -912,6 +895,8 @@ Berdasarkan analisis explained variance ≈ 0 dan interval CV 0.20, berikut perb
 | `export-service` | `export:8080/metrics` | ✅ UP |
 | `ml-service` | `ml:8080/metrics` | ✅ UP |
 | `dlq-service` | `dlq:8080/metrics` | ✅ UP |
+| `ppo-controller-service` | `ppo-controller:8080/metrics` | ✅ UP |
+| `ppo-control-service` | `ppo-control:8081/metrics` | ✅ UP |
 | `kong` | `kong:8001/metrics` | ✅ UP |
 
 **C. Database Exporters (11)**

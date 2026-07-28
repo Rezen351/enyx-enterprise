@@ -157,6 +157,17 @@ scrape_configs:
         target_label: instance
         replacement: "ml-service"
 
+  # PPO Controller Service — pure PPO inference metrics
+  - job_name: "ppo-controller-service"
+    metrics_path: /metrics
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["ppo-controller:8080"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: "ppo-controller-service"
+
   # Kong API Gateway — exposes metrics on port 8001 (admin API)
   - job_name: "kong"
     metrics_path: /metrics

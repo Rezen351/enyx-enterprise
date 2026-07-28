@@ -24,8 +24,8 @@ Lightweight inference service that wraps the trained PPO aeroponic model and exp
 {
   "success": true,
   "data": {
-    "D_mist": 240.0,
-    "interval_sec": 360.0,
+    "D_mist": 180.0,
+    "interval_sec": 600.0,
     "A_valve": 1.0
   }
 }

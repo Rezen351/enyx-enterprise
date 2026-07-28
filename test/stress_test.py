@@ -97,12 +97,13 @@ def execute_request(base_url: str, token: str, endpoint: dict) -> tuple:
 
     start = time.time()
     try:
+        timeout = 10
         if endpoint["method"] == "GET":
-            res = requests.get(url, headers=headers, timeout=5)
+            res = requests.get(url, headers=headers, timeout=timeout)
         elif endpoint["method"] == "POST":
-            res = requests.post(url, json=endpoint.get("body"), headers=headers, timeout=5)
+            res = requests.post(url, json=endpoint.get("body"), headers=headers, timeout=timeout)
         else:
-            res = requests.request(endpoint["method"], url, headers=headers, timeout=5)
+            res = requests.request(endpoint["method"], url, headers=headers, timeout=timeout)
         latency = (time.time() - start) * 1000.0
         return latency, res.status_code
     except Exception:

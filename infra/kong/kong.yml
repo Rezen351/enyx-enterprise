@@ -263,6 +263,36 @@ upstreams:
       - target: export-service:8080
         weight: 100
 
+  - name: ppo-control-upstream
+    algorithm: round-robin
+    healthchecks:
+      active:
+        http_path: /health
+        healthy:
+          interval: 10
+          successes: 1
+        unhealthy:
+          interval: 5
+          http_failures: 2
+    targets:
+      - target: ppo-control:8081
+        weight: 100
+
+  - name: ppo-controller-upstream
+    algorithm: round-robin
+    healthchecks:
+      active:
+        http_path: /health
+        healthy:
+          interval: 10
+          successes: 1
+        unhealthy:
+          interval: 5
+          http_failures: 2
+    targets:
+      - target: ppo-controller:8080
+        weight: 100
+
   # MediaMTX HLS — proxied through Kong
   # /hls is the dashboard-facing entrypoint; MediaMTX may redirect to
   # /<stream>/index.m3u8?cookieCheck=1 during the HLS cookie check, so we
@@ -893,6 +923,78 @@ services:
           - GET
           - OPTIONS
         strip_path: false
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 300
+              hour: 8000
+              policy: local
+              fault_tolerant: true
+
+  # PPO Control Service — PPO-based aeroponic control scheduler
+  - name: ppo-control-service
+    host: ppo-control-upstream
+    port: 8081
+    protocol: http
+    connect_timeout: 5000
+    write_timeout: 10000
+    read_timeout: 10000
+    routes:
+      - name: ppo-control-routes-v1
+        paths:
+          - ~/v1/ppo(?<rel_uri>/.*)
+        strip_path: false
+        plugins:
+          - name: request-transformer
+            config:
+              replace:
+                uri: $(uri_captures['rel_uri'])
+          - name: rate-limiting
+            config:
+              minute: 60
+              hour: 1000
+              policy: local
+              fault_tolerant: true
+      - name: ppo-control-routes
+        paths:
+          - /ppo
+        strip_path: true
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 60
+              hour: 1000
+              policy: local
+              fault_tolerant: true
+
+  # PPO Controller Service — pure PPO inference (state 10D → action)
+  - name: ppo-controller-service
+    host: ppo-controller-upstream
+    port: 8080
+    protocol: http
+    connect_timeout: 5000
+    write_timeout: 30000
+    read_timeout: 30000
+    routes:
+      - name: ppo-controller-routes-v1
+        paths:
+          - ~/v1/ppo_controller(?<rel_uri>/.*)
+        strip_path: false
+        plugins:
+          - name: request-transformer
+            config:
+              replace:
+                uri: $(uri_captures['rel_uri'])
+          - name: rate-limiting
+            config:
+              minute: 300
+              hour: 8000
+              policy: local
+              fault_tolerant: true
+      - name: ppo-controller-routes
+        paths:
+          - /ppo_controller
+        strip_path: true
         plugins:
           - name: rate-limiting
             config:

@@ -903,7 +903,7 @@ class TestControlService(ServiceTestCase):
             self.skipTest("No auth token")
         url = f"{BASE_URL}/v1/control/command"
         headers = {"Authorization": f"Bearer {self.token}"}
-        payload = {"node_id": TEST_NODE_ID, "output": "fan", "action": "ON"}
+        payload = {"node_id": TEST_NODE_ID, "type": "set_state", "output": "valve", "value": 1}
         res = requests.post(url, json=payload, headers=headers, timeout=5)
         self.assertIn(res.status_code, [200, 202, 400], f"Expected response for manual command, got {res.status_code}: {res.text}")
 
@@ -1560,12 +1560,48 @@ class TestDLQService(ServiceTestCase):
             self.skipTest("No auth token")
         url = f"{BASE_URL}/v1/dlq/messages?source_stream=test-stream"
         headers = {"Authorization": f"Bearer {self.token}"}
-        res = requests.get(url, headers=headers, timeout=5)
+        res = requests.get(url, json=payload, headers=headers, timeout=5)
         self.assertIn(res.status_code, [200, 404, 500], f"Expected 200/404/500 for DLQ filter, got {res.status_code}: {res.text}")
 
 
+class TestPPOService(ServiceTestCase):
+    """15. PPO Service Features (ppo-controller inference + ppo-control scheduler)."""
+
+    def test_01_ppo_controller_health(self):
+        url = f"{BASE_URL}/v1/ppo_controller/health"
+        res = requests.get(url, timeout=5)
+        self.assertEqual(res.status_code, 200, f"Expected 200 OK for ppo-controller health, got {res.status_code}: {res.text}")
+        data = res.json().get("data", {})
+        self.assertIn("status", data)
+
+    def test_02_ppo_controller_predict(self):
+        url = f"{BASE_URL}/v1/ppo_controller/predict"
+        payload = {"state": [10.0, 0.5, 25.0, 70.0, 28.0, 65.0, 1.5, 6.5, 25.0, 0.9]}
+        res = requests.post(url, json=payload, timeout=10)
+        self.assertEqual(res.status_code, 200, f"Expected 200 OK for ppo-controller predict, got {res.status_code}: {res.text}")
+        data = res.json().get("data", {})
+        self.assertIn("D_mist", data)
+        self.assertIn("interval_sec", data)
+        self.assertIn("A_valve", data)
+        self.assertIsInstance(data["D_mist"], (int, float))
+        self.assertIsInstance(data["interval_sec"], (int, float))
+        self.assertIn(data["A_valve"], [0, 1])
+
+    def test_03_ppo_control_health(self):
+        url = f"{BASE_URL}/v1/ppo/health"
+        res = requests.get(url, timeout=5)
+        self.assertEqual(res.status_code, 200, f"Expected 200 OK for ppo-control health, got {res.status_code}: {res.text}")
+        data = res.json()
+        self.assertEqual(data.get("status"), "ok")
+
+    def test_04_ppo_control_trigger_predict(self):
+        url = f"{BASE_URL}/v1/ppo/trigger-predict"
+        res = requests.post(url, timeout=10)
+        self.assertIn(res.status_code, [200, 503], f"Expected 200/503 for ppo-control trigger-predict, got {res.status_code}: {res.text}")
+
+
 def run_unit_tests():
-    """Run all unit & feature test cases across 13 microservices."""
+    """Run all unit & feature test cases across 14 microservices + PPO subsystem."""
     clean_all_test_results()
     try:
         cleanup_test_data()
@@ -1589,6 +1625,7 @@ def run_unit_tests():
     suite.addTest(loader.loadTestsFromTestCase(TestExportService))
     suite.addTest(loader.loadTestsFromTestCase(TestWSGateway))
     suite.addTest(loader.loadTestsFromTestCase(TestDLQService))
+    suite.addTest(loader.loadTestsFromTestCase(TestPPOService))
 
     runner = TimedTestRunner(verbosity=2)
     result = runner.run(suite)
@@ -1596,7 +1633,7 @@ def run_unit_tests():
     # Build service names list aligned with test classes
     service_names = [
         "SystemHealth", "Auth", "Module", "Analytics", "Control",
-        "Alert", "Audit", "Notification", "Webhook", "Stream", "ML", "Export", "WSGateway", "DLQ"
+        "Alert", "Audit", "Notification", "Webhook", "Stream", "ML", "Export", "WSGateway", "DLQ", "PPO"
     ]
 
     pass_counts = []
@@ -1619,6 +1656,7 @@ def run_unit_tests():
         TestExportService: "Export",
         TestWSGateway: "WSGateway",
         TestDLQService: "DLQ",
+        TestPPOService: "PPO",
     }
 
     class_stats = {name: {"skip": 0, "fail": 0} for name in service_names}
@@ -1634,7 +1672,7 @@ def run_unit_tests():
     known_totals = {
         "SystemHealth": 1, "Auth": 13, "Module": 16, "Analytics": 6,
         "Control": 15, "Alert": 6, "Audit": 5, "Notification": 5,
-        "Webhook": 5, "Stream": 12, "ML": 10, "Export": 4, "WSGateway": 2, "DLQ": 2,
+        "Webhook": 5, "Stream": 12, "ML": 10, "Export": 4, "WSGateway": 2, "DLQ": 2, "PPO": 4,
     }
 
     for name in service_names:

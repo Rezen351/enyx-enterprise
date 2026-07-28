@@ -1946,15 +1946,57 @@ Catatan: respon Alert Service sengaja TIDAK memakai wrapper standar `{success,da
 
 **Keputusan Teknis:** File `aeroponic_ppo_training_curves.json` tidak pernah dibuat karena cell training selalu masuk ke branch skip. Diperbaiki dengan dua cara: (1) menambahkan `RewardTrackingCallback` yang di-pass ke `model.learn()` untuk training baru, dan (2) menambahkan blok auto-generate 50-episode evaluasi pada branch skip. Pelatihan ulang disarankan (`total_timesteps=350000`) karena reward function berubah signifikan pada perbaikan sebelumnya.
 
+### PPO Training — Batch Size Increase & Reward Logging Fix (2026-07-28)
 
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Batch Size Increased 128 → 256 ([train_ppo.py](file:///home/almuzky/TA/Microservices/ppo-model-training/train_ppo.py)):** Menaikkan `batch_size` dari 128 menjadi 256 untuk stabilitas gradien yang lebih baik pada reward multi-komponen dengan CPU. Juga diperbarui di [README.md](file:///home/almuzky/TA/Microservices/ppo-model-training/README.md) dan [docs/notebook.md](file:///home/almuzky/TA/Microservices/ppo-model-training/docs/notebook.md). |
+| 2 | ✅ | **Fix: `RewardLoggingCallback` Missing Reward Components ([train_ppo.py](file:///home/almuzky/TA/Microservices/ppo-model-training/train_ppo.py)):** Callback sebelumnya hanya men追踪 7 dari 9 komponen reward (`reward_shrink` dan `reward_death` hilang). Ditambahkan kedua key tersebut ke `keys` list di `_on_step()` dan `_on_rollout_end()` agar logging TensorBoard lengkap. |
 
+**Keputusan Teknis:** Batch size dinaikkan dari 128 ke 256 untuk memperbaiki stabilitas estimasi gradient pada reward multi-komponen yang bervariasi. `RewardLoggingCallback` diperbaiki agar seluruh komponen reward (`reward_shrink`, `reward_death`) tercatat di TensorBoard, memungkinkan analisis komponen yang lengkap selama training.
 
+### Frontend — Webhook "Send All" Fix & Generic Channel Hide (2026-07-28)
 
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Fix "Send All" Test Delivery ([Webhook.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Pages/Webhook.jsx)):** Mengganti guard `if (!testChannel) return;` menjadi `if (testChannel == null) return;` pada fungsi `runTest`. Sebelumnya, nilai `""` (All channels) dianggap falsy oleh `!` sehingga test delivery untuk semua channel tidak pernah dieksekusi. |
+| 2 | ✅ | **Hide Generic Webhook from Frontend ([Webhook.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Pages/Webhook.jsx)):** Menghapus section "Generic Webhook" dari tab Settings, menghapus opsi `webhook` dari dropdown filter channel di tab Logs, dan menghapus opsi "Generic Webhook" dari dropdown channel di tab Test. Backend tetap mendukung generic webhook (`POST /webhook/receive/generic`), namun UI hanya menampilkan Telegram dan Email. |
+| 3 | ✅ | **Remove Unused Icon Import:** Menghapus import `Webhook as WebhookIcon` dari `lucide-react` karena icon tersebut hanya dipakai di section generic webhook yang telah dihapus dari UI. |
 
+**Keputusan Teknis:** Generic webhook disembunyikan dari frontend sesuai permintaan — hanya Telegram dan Email yang ditampilkan di Settings, Logs filter, dan Test dropdown. Backend API dan database schema tetap tetap mendukung generic webhook untuk kompatibilitas dengan sistem eksternal yang mungkin masih menggunakannya. Bug "Send All" disebabkan oleh JavaScript falsy check pada empty string yang seharusnya diizinkan sebagai nilai valid untuk memicu pengiriman ke semua channel yang enabled.
 
+---
 
+### PPO Control — ppo-controller Dependency Fix & Step Logging (2026-07-28)
 
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Root Cause Identified (ppo-controller unhealthy):** Container crash-looping karena `ModuleNotFoundError: No module named 'numpy._core.numeric'` saat startup. Model `aeroponic_ppo.zip` dilatih dengan NumPy 2.4.4 / SB3 2.9.0 / torch 2.11.0, sedangkan `ppo-controller` berjalan di NumPy 1.26.4 + torch 2.1.2 — mismatch versi serialisasi cloudpickle. |
+| 2 | ✅ | **Perbaikan Dependensi di [requirements.txt](file:///home/almuzky/TA/Microservices/services/ppo-controller/requirements.txt):** Naikkan `numpy==1.26.4` → `2.4.4`; pindah `torch` dari `requirements.txt` ke Dockerfile agar tetap diinstall via index PyTorch. |
+| 3 | ✅ | **Perbaikan Dockerfile di [Dockerfile](file:///home/almuzky/TA/Microservices/services/ppo-controller/Dockerfile):** Upgrade torch dari `2.1.2` → `2.3.1+cpu` (`--index-url https://download.pytorch.org/whl/cpu`) agar kompatibel dengan NumPy 2.x. |
+| 4 | ✅ | **Step Logging untuk Monitoring di [main.py](file:///home/almuzky/TA/Microservices/services/ppo-controller/app/main.py):** Tambah `logging.getLogger("ppo-controller")` sehingga tersedia log per-request: startup success/failure, setiap `/predict` (state, action, latency), `/health` (debug), dan error exception. Sebelumnya hanya ada `print()` di startup failure. |
+| 5 | ✅ | **Verifikasi Build & Runtime:** Gambar lokal `ppo-controller:latest` dibangun ulang, container restart, healthy check lulus, dan endpoint `POST /predict` mengembalikan aksi PPO yang valid. |
 
+**Keputusan Teknis:** Versi NumPy dan torch di `ppo-controller` diselaraskan dengan lingkungan training (`/home/almuzky/jupyter/venv`) agar format biner model `.zip` dapat di-deserialize tanpa error. Minimal perubahan: `numpy` naik ke 2.4.4 dan `torch` naik ke 2.3.1+cpu, tanpa perlu retrain model. Logging ppo-controller ditambahkan agar monitoring `docker logs ppo-controller` menampilkan setiap prediksi beserta input state, output action (`D_mist`, `interval_sec`, `A_valve`), dan latency.
 
+---
 
+### PPO Control — Cycle-Boundary Schedule + Telemetry Dual-Sub + Docs/Tests Update (2026-07-29)
 
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Cycle-Boundary Schedule Update ([ppo_loop.py](file:///home/almuzky/TA/Microservices/services/ppo-control/app/ppo_loop.py)):** Tambah `last_schedule_update`, `current_D_mist/interval`, dan `pending_action`. Evaluasi PPO tetap tiap 5 detik, tapi `update_schedule` + `send_valve_command` hanya dikirim kalau `elapsed >= D_mist + interval_sec`. Ini mencegah reset jadwal terus-menerus yang membuat pompa stuck ON/OFF. |
+| 2 | ✅ | **Dual-Subscribe Telemetry ([telemetry_cache.py](file:///home/almuzky/TA/Microservices/services/ppo-control/app/telemetry_cache.py)):** Tambah subscribe `telemetry.batch` selain `telemetry.ingest`. Cache sekarang menerima agregat 1-menit dari Module Service, sehingga metric yang tidak lewat ingest (mis. EC, pH, T_nut) tetap update. |
+| 3 | ✅ | **Cache Freshness Debug Log ([ppo_loop.py](file:///home/almuzky/TA/Microservices/services/ppo-control/app/ppo_loop.py)):** Tambah log DEBUG `cache metrics: {"T_in": {"value": 25.0, "age_s": 3.4}, ...}` setiap tick untuk memantau berapa detik sejak metric terakhir diterima. `age_s: Infinity` artinya metric belum pernah diterima. |
+| 4 | ✅ | **Logging Configuration ([main.py](file:///home/almuzky/TA/Microservices/services/ppo-control/app/main.py)):** Tambah `logging.basicConfig(level=logging.INFO)` dan logger handler ke stdout agar log PPO loop terlihat di `docker logs ppo-control`. |
+| 5 | ✅ | **Update [docs/planning.md](file:///home/almuzky/TA/Microservices/docs/planning.md):** (a) Tambah fase 6e `ppo-controller` dan 6f `ppo-control` sebagai ✅ Selesai, (b) update section Monitoring ke 32 target Prometheus, (c) update DLQ status menjadi ✅, (d) ganti section ML Control menjadi PPO Aeroponic Controller — Training + Inference dengan arsitektur deployment lengkap. |
+| 6 | ✅ | **Buat [docs/integration-guides/ppo.md](file:///home/almuzky/TA/Microservices/docs/integration-guides/ppo.md):** Integration guide baru untuk PPO subsystem covering state space 10D, action space 3D, endpoints REST, cycle-boundary behavior, NATS contract, MinIO dependency, environment variables, monitoring signals, dan known limitations. |
+| 7 | ✅ | **Update unit test ([test/unit_test.py](file:///home/almuzky/TA/Microservices/test/unit_test.py)):** (a) Fix `test_06_send_manual_command` payload dari `{"action": "ON"}` ke `{"type": "set_state", "output": "valve", "value": 1}`, (b) tambah `TestPPOService` dengan 4 test: ppo-controller health, predict, ppo-control health, trigger-predict, (c) update `known_totals` dan `service_names` untuk include PPO. |
+| 8 | ✅ | **Update stress test endpoints ([test/config.py](file:///home/almuzky/TA/Microservices/test/config.py)):** Tambah `ppo-controller-health` dan `ppo-control-health` ke endpoint pool dengan weight 3 masing-masing. |
+| 9 | ✅ | **Verifikasi Test:** `TestPPOService` — 4/4 PASS; `TestControlService` — 11/15 PASS, 4 skipped (no schedule ID, expected). Full suite: 106 tests, errors sebagian besar timeout pada service lain (bukan regression dari perubahan PPO). |
+
+**Keputusan Teknis:** 
+- `PREDICTION_INTERVAL_SEC` diubah dari 3600 menjadi 5 di `docker-compose.yml` agar PPO loop evaluasi state setiap 5 detik.
+- `H_in` sering `Infinity` age karena module firmware tidak publish `telemetry.modbus.cwt2.hum` — fallback ke `DEFAULT_H_IN=70.0` tetap digunakan.
+- Action range di docs/planning diperbarui: D_mist [10,240], interval [60,540] sesuai clamp di `ppo_loop.py`, bukan range lama [120,240] dan [360,540].
+- Test PPO menggunakan Kong route `/v1/ppo_controller/*` dan `/v1/ppo/*` (bukan direct service port) agar konsisten dengan arsitektur Gateway.

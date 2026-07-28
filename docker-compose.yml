@@ -1009,6 +1009,7 @@ services:
       MINIO_ML_BUCKET: mlbucket
       MINIO_STREAM_BUCKET: stream
       MINIO_PUBLIC_URL: http://localhost:8000/minio
+      PIXELS_PER_CM: "10.0"
       NATS_URL: "nats://nats:4222"
       NATS_SUBJECT_DETECTION: "detection.result"
     volumes:
@@ -1067,6 +1068,83 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - iot-net
+
+  # ──────────────────────────────────────
+  # PPO CONTROLLER — pure inference service
+  # ──────────────────────────────────────
+  ppo-controller:
+    build:
+      context: ./services/ppo-controller
+      dockerfile: Dockerfile
+    image: ghcr.io/rezen351/enyx-enterprise/ppo-controller:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      DEVICE: "cpu"
+      NATS_URL: "nats://nats:4222"
+      JWT_SECRET: "${JWT_SECRET}"
+    volumes:
+      - ./ppo-model-training/models:/app/models:ro
+    depends_on:
+      nats:
+        condition: service_started
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health').status==200 else 1)" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    networks:
+      - iot-net
+
+  # ──────────────────────────────────────
+  # PPO CONTROL — scheduler/cron loop
+  # ──────────────────────────────────────
+  ppo-control:
+    build:
+      context: ./services/ppo-control
+      dockerfile: Dockerfile
+    image: ghcr.io/rezen351/enyx-enterprise/ppo-control:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: "8081"
+      NODE_ID: "node-00"
+      OUTPUT_NAME: "load1"
+      VALVE_OUTPUT_NAME: "load2"
+      MODULE_ID: "ee8831ff-c2dd-45c9-abb6-fb3def8fd513"
+      PUMP_SCHEDULE_ID: "35461f5f-d6ef-4c30-abfc-9eb680b5dfe7"
+      PREDICTION_INTERVAL_SEC: "5"
+      CONTROL_URL: "http://control:8080"
+      PPO_CONTROLLER_URL: "http://ppo-controller:8080"
+      NATS_URL: "nats://nats:4222"
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY}"
+      MINIO_USE_SSL: "false"
+      MINIO_BUCKET: "mlbucket"
+      MINIO_PREFIX: "results"
+      CONTROL_USER: "admin"
+      CONTROL_PASS: "${ADMIN_PASSWORD}"
+      JWT_SECRET: "${JWT_SECRET}"
+    depends_on:
+      ppo-controller:
+        condition: service_healthy
+      control:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8081/health').status==200 else 1)" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - iot-net
 
