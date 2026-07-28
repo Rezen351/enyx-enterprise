@@ -5,9 +5,9 @@ Run 7-day PPO continuous simulation for weekly validation.
 import sys
 import os
 
-sys.path.insert(0, '/home/almuzky/TA/Microservices/services/ml-control')
+sys.path.insert(0, '/home/almuzky/TA/Microservices/ppo-model-training')
 
-from aeroponic_simulator import run_ppo_multi_day_simulation, plot_multi_day
+from aeroponic_simulator_analysis import run_ppo_multi_day_simulation, plot_multi_day
 
 base_dir = '/home/almuzky/TA/Microservices/services/ml-control'
 results_dir = os.path.join(base_dir, 'results')

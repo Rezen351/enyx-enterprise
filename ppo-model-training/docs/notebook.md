@@ -541,7 +541,7 @@ model = PPO(
     env=vec_norm,
     learning_rate=linear_schedule(3e-4, 1e-5),
     n_steps=4096,
-    batch_size=128,
+    batch_size=256,
     n_epochs=10,
     gamma=0.995,
     ent_coef=0.05,
@@ -658,7 +658,7 @@ Berdasarkan SB3 RL Zoo, best practices untuk continuous control, dan perbaikan t
 |----------------|-------|-------------|
 | `learning_rate` | 3e-4 → 1e-5 (linear schedule) | Default PPO; diikuti linear decay untuk fine-tuning di akhir training |
 | `n_steps` | 4096 | Batch size besar untuk stabilitas gradien pada reward multi-komponen |
-| `batch_size` | 128 | Mini-batch untuk penggunaan CPU yang efisien |
+| `batch_size` | 256 | Mini-batch balanced untuk stabilitas gradien dan kecepatan training di CPU |
 | `n_epochs` | 10 | Jumlah epoch per update; cukup untuk konvergensi |
 | `gamma` | 0.995 | Episode 24 jam timer-based; diskon tinggi untuk reward jangka panjang |
 | `ent_coef` | 0.05 (adaptive) | Eksplorasi lebih tinggi; diadaptasi secara dinamis berdasarkan entropy policy |

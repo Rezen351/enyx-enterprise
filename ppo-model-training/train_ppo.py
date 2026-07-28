@@ -39,8 +39,8 @@ class AeroponicGymnasiumEnv(gym.Env):
         # Observation space: 10D
         # [L_root, U_status, T_in, H_in, T_out, H_out, EC, pH, T_nut, I_day]
         # T_root is internal only (no sensor in real hardware), used for dynamics/reward
-        low_obs = np.array([0.0, 0.0, 15.0, 20.0, 15.0, 20.0, 0.5, 4.0, 18.0, 0.0], dtype=np.float32)
-        high_obs = np.array([300.0, 1.0, 30.0, 100.0, 30.0, 100.0, 3.5, 9.0, 25.0, 1.0], dtype=np.float32)
+        low_obs = np.array([0.0, 0.0, 15.0, 15.0, 15.0, 20.0, 0.5, 4.0, 15.0, 0.0], dtype=np.float32)
+        high_obs = np.array([300.0, 1.0, 38.0, 100.0, 42.0, 100.0, 3.5, 9.0, 35.0, 1.0], dtype=np.float32)
         self.observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
 
         # Normalized action space: [-1, 1] for all 3 dimensions
@@ -63,12 +63,12 @@ class AeroponicGymnasiumEnv(gym.Env):
         a_01 = (action + 1.0) / 2.0
         D_mist = self.D_mist_min + a_01[0] * (self.D_mist_max - self.D_mist_min)
         interval = self.interval_min + a_01[1] * (self.interval_max - self.interval_min)
-        A_valve = 1.0 if action[2] >= 0.0 else 0.0  # threshold at 0 in normalized space
+        A_valve = 1.0 if action[2] >= 0.5 else 0.0  # threshold at 0.5 for symmetric exploration
         return [D_mist, interval, A_valve]
 
-    def reset(self, seed=None, options=None, L_root=None):
+    def reset(self, seed=None, options=None, L_root=None, continuous=False, mode='training'):
         super().reset(seed=seed)
-        state = self.sim.reset(L_root=L_root)
+        state = self.sim.reset(L_root=L_root, continuous=continuous, mode=mode)
         return np.array(state, dtype=np.float32), {}
 
     def step(self, action):
@@ -200,6 +200,8 @@ class RewardLoggingCallback(BaseCallback):
             "reward_hypoxia",
             "reward_interval",
             "reward_efficiency",
+            "reward_shrink",
+            "reward_death",
         ]
 
         for info, done in zip(infos, dones):
@@ -231,6 +233,8 @@ class RewardLoggingCallback(BaseCallback):
             "reward_hypoxia",
             "reward_interval",
             "reward_efficiency",
+            "reward_shrink",
+            "reward_death",
         ]
 
         recent = self.episode_rewards[-self.window_size:]
@@ -267,10 +271,14 @@ class CurriculumWeatherScaleCallback(BaseCallback):
         progress = min(1.0, self.num_timesteps / self.total_timesteps)
         scale = self.start_scale + (self.end_scale - self.start_scale) * progress
 
-        env = self.model.env.envs[0]
-        while hasattr(env, 'env'):
-            env = env.env
-        env.sim.curriculum_weather_scale = scale
+        try:
+            vec_env = self.model.env.venv
+            base_env = vec_env.envs[0]
+            while hasattr(base_env, 'env'):
+                base_env = base_env.env
+            base_env.sim.curriculum_weather_scale = scale
+        except Exception:
+            pass
         self.model.logger.record("curriculum/weather_scale", scale)
         return True
 
@@ -295,7 +303,7 @@ def train_ppo():
     vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
 
     # Training hyperparameters
-    total_timesteps = 500_000
+    total_timesteps = 300_000
     lr_schedule = linear_schedule(3e-4, 1e-5)
 
     # Adaptive entropy callback
@@ -314,7 +322,7 @@ def train_ppo():
             env=vec_norm,
             learning_rate=lr_schedule,
             n_steps=4096,
-            batch_size=128,
+            batch_size=256,
             n_epochs=10,
             gamma=0.995,
             ent_coef=0.05,
@@ -341,7 +349,7 @@ def train_ppo():
     print(f"  Total timesteps: {total_timesteps:,}")
     print(f"  Learning rate: 3e-4 -> 1e-5 (linear schedule)")
     print(f"  n_steps: 4096")
-    print(f"  batch_size: 128")
+    print(f"  batch_size: 256")
     print(f"  n_epochs: 10")
     print(f"  gamma: 0.995")
     print(f"  ent_coef: 0.05 (adaptive)")

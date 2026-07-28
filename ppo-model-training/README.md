@@ -49,7 +49,7 @@ ppo-model-training/
 | Total timesteps | 500,000 |
 | Learning rate | 3e-4 → 1e-5 (linear schedule) |
 | `n_steps` | 4096 |
-| `batch_size` | 128 |
+| `batch_size` | 256 |
 | `n_epochs` | 10 |
 | `gamma` | 0.995 |
 | `clip_range` | 0.1 |

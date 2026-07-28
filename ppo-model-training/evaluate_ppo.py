@@ -163,41 +163,22 @@ def evaluate_policy(model, vec_env, num_episodes=5, curriculum_weather_scale=1.0
 
             event_active = False
             event_type = 'none'
-            if hasattr(sim, 'extreme_heat_intensity') and sim.extreme_heat_intensity > 0:
-                if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
-                    if sim.event_start_time <= sim.current_time < sim.event_end_time:
-                        event_active = True
-                        event_type = 'extreme_heat'
-            if hasattr(sim, 'extreme_cold_intensity') and sim.extreme_cold_intensity > 0:
-                if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
-                    if sim.event_start_time <= sim.current_time < sim.event_end_time:
-                        event_active = True
-                        event_type = 'extreme_cold'
-            if hasattr(sim, 'drought_intensity') and sim.drought_intensity > 0:
-                if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
-                    if sim.event_start_time <= sim.current_time < sim.event_end_time:
-                        event_active = True
-                        event_type = 'drought'
-            if hasattr(sim, 'storm_intensity') and sim.storm_intensity > 0:
-                if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
-                    if sim.event_start_time <= sim.current_time < sim.event_end_time:
-                        event_active = True
-                        event_type = 'storm'
-            if hasattr(sim, 'heat_wave_intensity') and sim.heat_wave_intensity > 0:
-                if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
-                    if sim.event_start_time <= sim.current_time < sim.event_end_time:
-                        event_active = True
-                        event_type = 'heat_wave'
-            if hasattr(sim, 'cold_snap_intensity') and sim.cold_snap_intensity > 0:
-                if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
-                    if sim.event_start_time <= sim.current_time < sim.event_end_time:
-                        event_active = True
-                        event_type = 'cold_snap'
-            if hasattr(sim, 'rain_humidity_boost') and sim.rain_humidity_boost > 0:
-                if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
-                    if sim.event_start_time <= sim.current_time < sim.event_end_time:
-                        event_active = True
-                        event_type = 'rain'
+            event_checks = [
+                ('extreme_heat', 'extreme_heat_intensity'),
+                ('extreme_cold', 'extreme_cold_intensity'),
+                ('drought', 'drought_intensity'),
+                ('storm', 'storm_intensity'),
+                ('heat_wave', 'heat_wave_intensity'),
+                ('cold_snap', 'cold_snap_intensity'),
+                ('rain', 'rain_humidity_boost'),
+            ]
+            for etype, attr in event_checks:
+                if hasattr(sim, attr) and getattr(sim, attr) > 0:
+                    if hasattr(sim, 'event_start_time') and hasattr(sim, 'event_end_time'):
+                        if sim.event_start_time <= sim.current_time < sim.event_end_time:
+                            event_active = True
+                            event_type = etype
+                            break
 
             if event_active and event_type != current_event_type:
                 current_event_start = log_time / 3600.0
