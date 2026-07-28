@@ -327,7 +327,7 @@ def train_ppo():
             batch_size=256,
             n_epochs=10,
             gamma=0.995,
-            ent_coef=0.05,
+            ent_coef=0.1,
             vf_coef=0.5,
             max_grad_norm=1.0,
             clip_range=0.1,
