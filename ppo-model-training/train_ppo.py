@@ -305,7 +305,7 @@ def train_ppo():
     vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
 
     # Training hyperparameters
-    total_timesteps = 300_000
+    total_timesteps = 500_000
     lr_schedule = linear_schedule(3e-4, 1e-5)
 
     # Adaptive entropy callback
