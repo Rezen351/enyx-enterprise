@@ -28,8 +28,8 @@ class AeroponicGymnasiumEnv(gym.Env):
     Gymnasium wrapper for AeroponicSimulatorEnv.
     Observation: 10D continuous
     Action: 3D continuous [-1, 1] normalized, mapped to physical ranges:
-      - D_mist: [120, 240] seconds (2-4 minutes ON)
-      - interval_sec: [360, 540] seconds (6-9 minutes OFF)
+      - D_mist: [60, 900] seconds (1-15 minutes ON)
+      - interval_sec: [60, 900] seconds (1-15 minutes OFF)
       - A_valve: [0, 1] (threshold at 0)
     """
     def __init__(self):
@@ -51,11 +51,11 @@ class AeroponicGymnasiumEnv(gym.Env):
             dtype=np.float32,
         )
 
-        # Physical action bounds for mapping
-        self.D_mist_min = 120.0
-        self.D_mist_max = 240.0
-        self.interval_min = 360.0
-        self.interval_max = 540.0
+        # Physical action bounds for mapping (expanded to 1-15 minutes)
+        self.D_mist_min = 60.0
+        self.D_mist_max = 900.0
+        self.interval_min = 60.0
+        self.interval_max = 900.0
 
     def _map_action(self, action):
         """Map normalized [-1, 1] actions to physical ranges."""

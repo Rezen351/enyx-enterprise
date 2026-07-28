@@ -28,11 +28,11 @@ class AeroponicSimulatorEnv:
         self.max_steps = 180
         self._step_count = 0
 
-        # Action space bounds (timer-based cycles)
-        self.D_mist_min = 120.0   # 2 minutes minimum ON
-        self.D_mist_max = 240.0   # 4 minutes maximum ON
-        self.interval_min = 360.0   # 6 minutes minimum OFF
-        self.interval_max = 540.0   # 9 minutes maximum OFF
+        # Action space bounds (expanded to 1-15 minutes)
+        self.D_mist_min = 60.0   # 1 minute minimum ON
+        self.D_mist_max = 900.0  # 15 minutes maximum ON
+        self.interval_min = 60.0   # 1 minute minimum OFF
+        self.interval_max = 900.0  # 15 minutes maximum OFF
 
         # Reward weights (tuned for stable learning and growth dominance)
         self.w_growth = 25.0
@@ -627,17 +627,17 @@ class AeroponicSimulatorEnv:
             R_state -= 0.2 * (0.6 - O2_status)
 
         # Action shaping: reward effective misting duration, penalize too-short intervals
-        if D_mist >= 150.0:
+        if D_mist >= 180.0:
             R_state += 0.3
-        elif D_mist < 130.0:
+        elif D_mist < 120.0:
             R_state -= 1.0
 
-        if 390.0 <= interval_sec <= 480.0:
+        if 300.0 <= interval_sec <= 600.0:
             R_state += 0.2
-        elif interval_sec < 360.0:
+        elif interval_sec < 180.0:
             R_state -= 0.5
 
-        P_interval = self.w_interval * (1.0 if interval_sec > 520 else 0.0)
+        P_interval = self.w_interval * (1.0 if interval_sec > 720.0 else 0.0)
 
         P_diversity = 0.0
         if len(self._action_history) >= 5:
@@ -646,9 +646,9 @@ class AeroponicSimulatorEnv:
             interval_std = np.std(recent_actions[:, 1])
             a_valve_toggles = sum(1 for i in range(1, len(recent_actions)) if recent_actions[i, 2] != recent_actions[i-1, 2])
 
-            if d_mist_std > 10.0:
+            if d_mist_std > 30.0:
                 P_diversity += 2.0
-            if interval_std > 20.0:
+            if interval_std > 40.0:
                 P_diversity += 1.0
             if a_valve_toggles >= 2:
                 P_diversity += 0.5
@@ -657,9 +657,9 @@ class AeroponicSimulatorEnv:
         if P_env < 1.0 and P_hypoxia == 0.0:
             if A_valve == 0.0:
                 R_efficiency += 0.05
-            if D_mist <= 150.0:
+            if D_mist <= 180.0:
                 R_efficiency += 0.03
-            if interval_sec >= 480.0:
+            if interval_sec >= 600.0:
                 R_efficiency += 0.02
 
         R_total = R_growth + R_state + P_diversity + R_efficiency - C_resource - P_env - P_hypoxia - P_interval
