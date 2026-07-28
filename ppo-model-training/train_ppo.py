@@ -307,7 +307,7 @@ def train_ppo():
     lr_schedule = linear_schedule(3e-4, 1e-5)
 
     # Adaptive entropy callback
-    entropy_callback = AdaptiveEntropyCallback(ent_start=0.2, ent_end=0.03, total_timesteps=total_timesteps)
+    entropy_callback = AdaptiveEntropyCallback(ent_start=0.2, ent_end=0.05, total_timesteps=total_timesteps)
     value_norm_callback = ValueNormalizationCallback()
     reward_log_callback = RewardLoggingCallback()
     curriculum_callback = CurriculumWeatherScaleCallback(start_scale=0.3, end_scale=1.0, total_timesteps=total_timesteps)
