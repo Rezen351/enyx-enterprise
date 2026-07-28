@@ -89,7 +89,7 @@ The Webhook Service is a delivery dispatcher that receives webhook payloads (via
 | Attribute | Value |
 |---|---|
 | **Auth** | Admin role required (`Bearer` token + `roles` containing `admin`) |
-| **Response** | `200 OK` — public view (no secrets) |
+| **Response** | `200 OK` — public view (no secrets); empty `target` fields fall back to env defaults (`TELEGRAM_CHAT_ID`, `SMTP_FROM`/`SMTP_USER`) |
 
 ```json
 {
