@@ -202,6 +202,7 @@ class RewardLoggingCallback(BaseCallback):
             "reward_efficiency",
             "reward_shrink",
             "reward_death",
+            "reward_extreme",
         ]
 
         for info, done in zip(infos, dones):
@@ -235,6 +236,7 @@ class RewardLoggingCallback(BaseCallback):
             "reward_efficiency",
             "reward_shrink",
             "reward_death",
+            "reward_extreme",
         ]
 
         recent = self.episode_rewards[-self.window_size:]
