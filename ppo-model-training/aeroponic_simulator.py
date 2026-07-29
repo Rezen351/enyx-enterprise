@@ -38,7 +38,6 @@ class AeroponicSimulatorEnv:
         self.w_valve_cost = 0.15
         self.w_env = 0.05
         self.w_hypoxia = 5.0
-        self.w_interval = 1.0
         self.w_status = 10.0
 
         # Reward tracking for info dict
@@ -52,7 +51,6 @@ class AeroponicSimulatorEnv:
         self._last_R_state = 0.0
         self._last_P_env = 0.0
         self._last_P_hypoxia = 0.0
-        self._last_P_interval = 0.0
         self._last_R_efficiency = 0.0
         self._last_P_shrink = 0.0
         self._last_P_death = 0.0
@@ -215,7 +213,6 @@ class AeroponicSimulatorEnv:
         self._last_R_state = 0.0
         self._last_P_env = 0.0
         self._last_P_hypoxia = 0.0
-        self._last_P_interval = 0.0
         self._last_R_efficiency = 0.0
         self._last_P_shrink = 0.0
         self._last_P_death = 0.0
@@ -729,7 +726,6 @@ class AeroponicSimulatorEnv:
             'reward_state': self._last_R_state,
             'reward_env': self._last_P_env,
             'reward_hypoxia': self._last_P_hypoxia,
-            'reward_interval': self._last_P_interval,
             'reward_efficiency': self._last_R_efficiency,
             'reward_shrink': self._last_P_shrink,
             'reward_death': self._last_P_death,
@@ -809,8 +805,6 @@ class AeroponicSimulatorEnv:
         # Action shaping: gradual reward for effective misting duration
         if D_mist >= 120.0:
             R_state += 0.3 * min(1.0, (D_mist - 120.0) / 180.0)
-        else:
-            R_state -= 1.0
 
         if interval_sec >= 180.0:
             R_state += 0.2 * min(1.0, (interval_sec - 180.0) / 420.0)
@@ -853,10 +847,6 @@ class AeroponicSimulatorEnv:
         # Action regularization: penalize extreme actions to prevent mode collapse
         # This encourages the agent to use actions within sensible ranges
         P_extreme = 0.0
-        if D_mist >= 850.0 or D_mist <= 70.0:
-            P_extreme += 0.5
-        if interval_sec <= 70.0 or interval_sec >= 850.0:
-            P_extreme += 0.5
         if A_valve >= 0.5 and (D_mist <= 120.0 or interval_sec <= 120.0):
             P_extreme += 0.5
         
