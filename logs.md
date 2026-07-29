@@ -2000,3 +2000,16 @@ Catatan: respon Alert Service sengaja TIDAK memakai wrapper standar `{success,da
 - `H_in` sering `Infinity` age karena module firmware tidak publish `telemetry.modbus.cwt2.hum` — fallback ke `DEFAULT_H_IN=70.0` tetap digunakan.
 - Action range di docs/planning diperbarui: D_mist [10,240], interval [60,540] sesuai clamp di `ppo_loop.py`, bukan range lama [120,240] dan [360,540].
 - Test PPO menggunakan Kong route `/v1/ppo_controller/*` dan `/v1/ppo/*` (bukan direct service port) agar konsisten dengan arsitektur Gateway.
+
+---
+
+### ML Control — Efficiency Reward Refactor: Conditional + Gradual (2026-07-29)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Conditional Stability Check ([aeroponic_simulator.py](file:///home/almuzky/TA/Microservices/ppo-model-training/aeroponic_simulator.py)):** Agent hanya dapat efficiency reward jika semua kondisi stability terjaga: `1.2 ≤ EC ≤ 2.0`, `5.5 ≤ pH ≤ 6.5`, `H_in ≥ 80.0`, `24.0 ≤ T_in ≤ 30.0`. |
+| 2 | ✅ | **Gradual Efficiency Reward ([aeroponic_simulator.py](file:///home/almuzky/TA/Microservices/ppo-model-training/aeroponic_simulator.py)):** Ganti binary reward (+0.05/+0.03/+0.02) dengan gradual scaling: `D_mist < 300s` → `0.1 * (300-D_mist)/180`, `interval > 300s` → `0.1 * (interval-300)/300`, valve bonus `+0.2` jika `A_valve < 0.5` dan kedua kondisi terpenuhi. Max efficiency reward ≈ +0.369. |
+| 3 | ✅ | **Validation:** 4 test cases PASS — (1) efficient+stable → 0.2747, (2) efficient+unstable → 0.0000, (3) inefficient+stable → 0.0000, (4) medium+stable → 0.2881. Breakdown Test 4: D_mist=0.033 + interval=0.050 + valve=0.2 = 0.283 ✓ |
+| 4 | ✅ | **Documentation Sync ([README.md](file:///home/almuzky/TA/Microservices/ppo-model-training/README.md)):** Update reward table dan action space bounds `[120, 600]` untuk D_mist dan interval. |
+
+**Keputusan Teknis:** Efficiency reward diubah dari binary fixed bonuses menjadi gradual conditional reward agar agent tidak mendapatkan bonus efisiensi saat kondisi lingkungan tidak stabil. Pendekatan conditional mencegah agent mempelajari strategi hemat air yang merusak tanaman (mis. D_mist sangat pendek membuat H_in drop). Gradual scaling memberikan sinyal lebih kaya tentang seberapa efisien suatu aksi, bukan hanya apakah aksi masuk kategori efisien atau tidak. Agent akan belajar: "stability dahulu, efisiensi kedua".

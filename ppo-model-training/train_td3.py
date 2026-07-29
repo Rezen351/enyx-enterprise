@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """
-Train PPO agent for Aeroponic Simulator
-Configuration follows notebook.md section 4.5.6
+Train TD3 agent for Aeroponic Simulator.
+
+TD3 (Twin Delayed DDPG) is chosen over PPO because:
+- Off-policy: replay buffer enables data reuse in deterministic environment
+- Twin critics: min(Q1,Q2) reduces overestimation bias
+- Delayed policy + target updates: decouples actor/critic updates
+- Target policy smoothing: smooths learning target
+- Deterministic policy + action noise: more suitable for valve threshold control
 """
 
 import os
 import sys
 
-# Add ml-control to path
 sys.path.insert(0, '/home/almuzky/TA/Microservices/ppo-model-training')
 
 import math
@@ -15,9 +20,10 @@ import random
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
-from stable_baselines3 import PPO
+from stable_baselines3 import TD3
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.callbacks import BaseCallback
 
 from aeroponic_simulator import AeroponicSimulatorEnv
@@ -30,7 +36,7 @@ class AeroponicGymnasiumEnv(gym.Env):
     Action: 3D continuous [-1, 1] normalized, mapped to physical ranges:
       - D_mist: [60, 900] seconds (1-15 minutes ON)
       - interval_sec: [60, 900] seconds (1-15 minutes OFF)
-      - A_valve: [0, 1] (threshold at 0)
+      - A_valve: [0, 1] (threshold at 0.0 for TD3 deterministic policy)
     """
     def __init__(self):
         super().__init__()
@@ -44,37 +50,33 @@ class AeroponicGymnasiumEnv(gym.Env):
         self.observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
 
         # Normalized action space: [-1, 1] for all 3 dimensions
-        # PPO samples from this range; we map to physical values in step()
         self.action_space = spaces.Box(
             low=np.array([-1.0, -1.0, -1.0], dtype=np.float32),
             high=np.array([1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32,
         )
 
-        # Physical action bounds for mapping (realistic ranges: 2-10 minutes)
-        self.D_mist_min = 120.0
-        self.D_mist_max = 600.0
-        self.interval_min = 120.0
-        self.interval_max = 600.0
+        # Physical action bounds for mapping (expanded to 1-15 minutes)
+        self.D_mist_min = 60.0
+        self.D_mist_max = 900.0
+        self.interval_min = 60.0
+        self.interval_max = 900.0
 
     def _map_action(self, action):
         """Map normalized [-1, 1] actions to physical ranges."""
-        # Scale from [-1, 1] to [0, 1] first
         a_01 = (action + 1.0) / 2.0
         D_mist = self.D_mist_min + a_01[0] * (self.D_mist_max - self.D_mist_min)
         interval = self.interval_min + a_01[1] * (self.interval_max - self.interval_min)
-        A_valve = 1.0 if action[2] >= 0.5 else 0.0  # threshold at 0.5 for symmetric exploration
+        A_valve = 1.0 if action[2] >= 0.0 else 0.0
         return [D_mist, interval, A_valve]
 
-    def reset(self, seed=None, options=None, L_root=None, continuous=False, mode='training'):
+    def reset(self, seed=None, options=None, L_root=None, continuous=False, mode='training', episode_duration=None, max_steps=None):
         super().reset(seed=seed)
-        state = self.sim.reset(L_root=L_root, continuous=continuous, mode=mode)
+        state = self.sim.reset(L_root=L_root, continuous=continuous, mode=mode, episode_duration=episode_duration, max_steps=max_steps)
         return np.array(state, dtype=np.float32), {}
 
     def step(self, action):
-        # Clip normalized action to [-1, 1]
         action = np.clip(action, -1.0, 1.0)
-        # Map to physical values
         physical_action = self._map_action(action)
         state, reward, terminated, truncated, info = self.sim.step(physical_action)
         return np.array(state, dtype=np.float32), float(reward), terminated, truncated, info
@@ -84,61 +86,6 @@ class AeroponicGymnasiumEnv(gym.Env):
 
     def render(self):
         pass
-
-class AdaptiveEntropyCallback(BaseCallback):
-    """
-    Adaptive entropy coefficient:
-    - Starts high for exploration
-    - Decays linearly to a minimum
-    - Boosts temporarily when policy entropy drops too low
-    """
-    def __init__(self, ent_start=0.2, ent_end=0.02, boost_factor=1.5, window_size=10, total_timesteps=300_000):
-        super().__init__()
-        self.ent_start = ent_start
-        self.ent_end = ent_end
-        self.boost_factor = boost_factor
-        self.window_size = window_size
-        self.total_timesteps = total_timesteps
-        self.entropy_window = []
-        self.entropy_min = 0.3
-        self.entropy_max = 2.5
-
-    def _on_step(self):
-        # No-op: entropy adjustment happens in _on_rollout_end
-        return True
-
-    def _on_rollout_end(self):
-        # Compute entropy from the rollout buffer's log probs
-        if hasattr(self.model, 'rollout_buffer') and self.model.rollout_buffer is not None:
-            buf = self.model.rollout_buffer
-            if hasattr(buf, 'old_log_prob') and buf.old_log_prob is not None:
-                log_probs = buf.old_log_prob
-                if hasattr(log_probs, 'mean'):
-                    ent_val = float(-log_probs.mean())
-                else:
-                    ent_val = float(-np.mean(log_probs))
-                
-                self.entropy_window.append(ent_val)
-                if len(self.entropy_window) > self.window_size:
-                    self.entropy_window.pop(0)
-
-                avg_ent = sum(self.entropy_window) / len(self.entropy_window)
-
-                progress = min(1.0, self.num_timesteps / self.total_timesteps)
-                base_ent = self.ent_start + (self.ent_end - self.ent_start) * progress
-
-                if avg_ent < self.entropy_min:
-                    new_ent = min(base_ent * self.boost_factor, self.entropy_max)
-                elif avg_ent > self.entropy_max:
-                    new_ent = max(base_ent * 0.7, self.entropy_min)
-                else:
-                    new_ent = base_ent
-
-                self.model.ent_coef = new_ent
-                
-                if self.verbose > 0 and self.num_timesteps % 50000 < self.n_steps:
-                    print(f"  [EntropyAdaptive] avg_ent={avg_ent:.3f}, ent_coef={new_ent:.4f}")
-        return True
 
 
 class ValueNormalizationCallback(BaseCallback):
@@ -154,21 +101,18 @@ class ValueNormalizationCallback(BaseCallback):
         self.count = 0
 
     def _on_step(self):
-        # Update running statistics from recent rewards
-        if hasattr(self.model, 'rollout_buffer'):
-            buf = self.model.rollout_buffer
+        if hasattr(self.model, 'replay_buffer') and self.model.replay_buffer is not None:
+            buf = self.model.replay_buffer
             if buf is not None and hasattr(buf, 'rewards'):
                 rewards = buf.rewards
                 if len(rewards) > 0:
-                    batch_mean = np.mean(rewards)
-                    batch_std = np.std(rewards) + 1e-8
-                    
-                    # Update running stats
+                    batch_mean = float(np.mean(rewards))
+                    batch_std = float(np.std(rewards)) + 1e-8
+
                     self.count += len(rewards)
                     self.reward_mean = self.alpha * self.reward_mean + (1 - self.alpha) * batch_mean
                     self.reward_std = self.alpha * self.reward_std + (1 - self.alpha) * batch_std
-                    
-                    # Log for monitoring
+
                     if self.num_timesteps % 10000 == 0:
                         print(f"  [ValueNorm] reward_mean={self.reward_mean:.2f}, reward_std={self.reward_std:.2f}")
         return True
@@ -206,6 +150,8 @@ class RewardLoggingCallback(BaseCallback):
             "reward_smooth",
             "reward_stability",
             "reward_anti_extreme",
+            "reward_humidity_proxy",
+            "reward_low_humidity_penalty",
         ]
 
         for info, done in zip(infos, dones):
@@ -221,6 +167,13 @@ class RewardLoggingCallback(BaseCallback):
                     for key in keys
                 }
                 self.episode_rewards.append(episode_avg)
+                
+                # Track episode-level metrics
+                elapsed_time = info.get("elapsed_time_seconds", 0.0)
+                cycle_count = info.get("cycle_count", 0)
+                self.model.logger.record("rollout/episode_duration_seconds", elapsed_time)
+                self.model.logger.record("rollout/cycle_count_mean", float(cycle_count))
+                
                 self._current_episode = {}
 
         return True
@@ -243,6 +196,8 @@ class RewardLoggingCallback(BaseCallback):
             "reward_smooth",
             "reward_stability",
             "reward_anti_extreme",
+            "reward_humidity_proxy",
+            "reward_low_humidity_penalty",
         ]
 
         recent = self.episode_rewards[-self.window_size:]
@@ -255,62 +210,6 @@ class RewardLoggingCallback(BaseCallback):
             self.episode_rewards = self.episode_rewards[-self.window_size:]
 
         return True
-
-
-class CycleCountCallback(BaseCallback):
-    """
-    Log cycle count and episode duration.
-    In this simulator each env step is one misting cycle, so:
-    - cycle_count_mean = number of cycles per episode
-    - episode_duration_seconds = actual simulated seconds survived
-    """
-    def __init__(self, window_size=10):
-        super().__init__()
-        self.window_size = window_size
-        self.episode_cycle_counts = []
-        self.episode_durations = []
-
-    def _on_step(self):
-        dones = self.locals.get("dones", [])
-        infos = self.locals.get("infos", [])
-        if not dones or not infos:
-            return True
-
-        for done, info in zip(dones, infos):
-            if done and isinstance(info, dict):
-                self.episode_cycle_counts.append(info.get('cycle_count', 0))
-                self.episode_durations.append(info.get('elapsed_time_seconds', 0.0))
-
-        if len(self.episode_cycle_counts) > self.window_size:
-            self.episode_cycle_counts = self.episode_cycle_counts[-self.window_size:]
-            self.episode_durations = self.episode_durations[-self.window_size:]
-
-        return True
-
-    def _on_rollout_end(self):
-        if not self.episode_cycle_counts:
-            return True
-
-        # Cycle count: actual number of misting cycles per episode
-        recent_cycles = self.episode_cycle_counts[-self.window_size:]
-        if recent_cycles:
-            avg_cycles = float(np.mean(recent_cycles))
-            self.model.logger.record("rollout/cycle_count_mean", avg_cycles)
-
-        # Episode duration: actual simulated seconds survived
-        recent_dur = self.episode_durations[-self.window_size:]
-        if recent_dur:
-            avg_duration = float(np.mean(recent_dur))
-            self.model.logger.record("rollout/episode_duration_seconds", avg_duration)
-
-        return True
-
-
-def linear_schedule(initial_value: float, final_value: float = 1e-5):
-    """Linear learning rate schedule from initial_value to final_value."""
-    def func(progress_remaining: float) -> float:
-        return final_value + (initial_value - final_value) * progress_remaining
-    return func
 
 
 class CurriculumWeatherScaleCallback(BaseCallback):
@@ -340,88 +239,93 @@ class CurriculumWeatherScaleCallback(BaseCallback):
         return True
 
 
-def train_ppo():
+def train_td3():
     """
-    Train PPO agent with optimized hyperparameters.
-    Key fixes vs previous runs:
-    - Normalized [-1,1] action space (fixes double-scaling bug)
-    - Higher entropy for better exploration
-    - More timesteps for convergence
-    - Linear LR schedule for fine-tuning
+    Train TD3 agent with optimized hyperparameters for aeroponic control.
+
+    Key design choices:
+    - Off-policy replay buffer for data reuse in deterministic environment
+    - Twin critics with min(Q1,Q2) to reduce overestimation
+    - Delayed policy updates (policy_delay=2) for stability
+    - Target policy smoothing for smooth learning targets
+    - Action noise for exploration (Gaussian, per-dimension sigma)
+    - VecNormalize for observation and reward normalization
+    - Curriculum weather scaling for gradual domain randomization
     """
     base_dir = '/home/almuzky/TA/Microservices/ppo-model-training'
     models_dir = os.path.join(base_dir, 'models')
-    tensorboard_dir = os.path.join(base_dir, 'aeroponic_ppo_tensorboard')
+    tensorboard_dir = os.path.join(base_dir, 'aeroponic_td3_tensorboard')
     os.makedirs(models_dir, exist_ok=True)
     os.makedirs(tensorboard_dir, exist_ok=True)
 
-    # Vectorized env for stabilization and reward normalization
     vec_env = make_vec_env(AeroponicGymnasiumEnv, n_envs=1)
     vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
 
-    # Training hyperparameters
-    total_timesteps = 500_000
-    lr_schedule = linear_schedule(3e-4, 1e-5)
+    total_timesteps = 1_000_000
+    lr_schedule = lambda progress_remaining: 1e-4 * progress_remaining
 
-    # Adaptive entropy callback
-    entropy_callback = AdaptiveEntropyCallback(ent_start=0.2, ent_end=0.03, total_timesteps=total_timesteps)
+    n_actions = vec_env.action_space.shape[-1]
+    action_noise = NormalActionNoise(
+        mean=np.zeros(n_actions),
+        sigma=np.array([0.1, 0.1, 0.2]),
+    )
+
     value_norm_callback = ValueNormalizationCallback()
     reward_log_callback = RewardLoggingCallback()
-    curriculum_callback = CurriculumWeatherScaleCallback(start_scale=0.0, end_scale=0.5, total_timesteps=total_timesteps)
-    cycle_count_callback = CycleCountCallback()
+    curriculum_callback = CurriculumWeatherScaleCallback(
+        start_scale=0.0,
+        end_scale=1.0,
+        total_timesteps=total_timesteps,
+    )
 
-    model_path = os.path.join(models_dir, 'aeroponic_ppo.zip')
+    model_path = os.path.join(models_dir, 'aeroponic_td3.zip')
     if os.path.exists(model_path):
-        model = PPO.load(model_path, env=vec_norm)
+        model = TD3.load(model_path, env=vec_norm)
         print(f"Resumed existing model from {model_path} ({model.num_timesteps} timesteps)")
     else:
-        model = PPO(
+        model = TD3(
             policy='MlpPolicy',
             env=vec_norm,
             learning_rate=lr_schedule,
-            n_steps=4096,
+            buffer_size=100_000,
+            learning_starts=10_000,
             batch_size=256,
-            n_epochs=10,
+            tau=0.005,
             gamma=0.995,
-            ent_coef=0.05,
-            vf_coef=0.5,
-            max_grad_norm=1.0,
-            clip_range=0.1,
-            gae_lambda=0.95,
+            train_freq=(1, 'step'),
+            gradient_steps=1,
+            action_noise=action_noise,
+            policy_delay=2,
+            target_policy_noise=0.2,
+            target_noise_clip=0.5,
+            stats_window_size=100,
             verbose=1,
             tensorboard_log=tensorboard_dir,
             device='cpu',
         )
 
     print("=" * 80)
-    print("STARTING PPO TRAINING (FIXED CONFIG)")
+    print("STARTING TD3 TRAINING")
     print("=" * 80)
-    print(f"Fixes applied:")
-    print(f"  - Normalized [-1,1] action space (fixes double-scaling bug)")
-    print(f"  - Survival bonus (+0.5/step) + strong early termination penalty")
-    print(f"  - EC correction during misting (dilution effect)")
-    print(f"  - Linear LR schedule: 3e-4 -> 1e-5")
-    print(f"  - Efficiency reward when state healthy + resource-saving actions")
-    print(f"  - Curriculum weather scale: 0.3 -> 1.0")
     print(f"Hyperparameters:")
     print(f"  Total timesteps: {total_timesteps:,}")
-    print(f"  Learning rate: 3e-4 -> 1e-5 (linear schedule)")
-    print(f"  n_steps: 4096")
-    print(f"  batch_size: 256")
-    print(f"  n_epochs: 10")
-    print(f"  gamma: 0.995")
-    print(f"  ent_coef: 0.05 (adaptive)")
-    print(f"  vf_coef: 0.5")
-    print(f"  max_grad_norm: 1.0")
-    print(f"  clip_range: 0.1")
-    print(f"  gae_lambda: 0.95")
-    print(f"  clip_reward: 10.0")
+    print(f"  Learning rate: 1e-4 (linear schedule)")
+    print(f"  Buffer size: 300,000")
+    print(f"  Learning starts: 10,000")
+    print(f"  Batch size: 256")
+    print(f"  Tau: 0.005")
+    print(f"  Gamma: 0.995")
+    print(f"  Policy delay: 2")
+    print(f"  Target policy noise: 0.2")
+    print(f"  Target noise clip: 0.5")
+    print(f"  Action noise sigma: [0.1, 0.1, 0.2]")
+    print(f"  Valve threshold: 0.0 (action[2] >= 0.0 -> ON)")
     print(f"  device: cpu")
     print(f"  tensorboard_log: {tensorboard_dir}")
-    print(f"  model save path: {os.path.join(models_dir, 'aeroponic_ppo.zip')}")
+    print(f"  model save path: {model_path}")
     print("=" * 80)
 
-    callback = [entropy_callback, value_norm_callback, reward_log_callback, curriculum_callback, cycle_count_callback]
+    callback = [value_norm_callback, reward_log_callback, curriculum_callback]
     remaining_timesteps = max(0, total_timesteps - model.num_timesteps)
     if remaining_timesteps <= 0:
         print(f"Model already has {model.num_timesteps} timesteps, target is {total_timesteps}. No additional training needed.")
@@ -429,11 +333,11 @@ def train_ppo():
         print(f"Training for {remaining_timesteps:,} additional timesteps to reach {total_timesteps:,}")
         model.learn(total_timesteps=remaining_timesteps, callback=callback)
 
-    model_path = os.path.join(models_dir, 'aeroponic_ppo.zip')
+    model_path = os.path.join(models_dir, 'aeroponic_td3.zip')
     model.save(model_path)
     print(f"\nModel saved to: {model_path}")
 
-    vec_norm_path = os.path.join(models_dir, 'vec_normalize_ppo.pkl')
+    vec_norm_path = os.path.join(models_dir, 'vec_normalize_td3.pkl')
     vec_norm.save(vec_norm_path)
     print(f"VecNormalize stats saved to: {vec_norm_path}")
 
@@ -445,4 +349,4 @@ def train_ppo():
 
 
 if __name__ == "__main__":
-    train_ppo()
+    train_td3()

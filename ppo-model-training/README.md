@@ -23,8 +23,8 @@ ppo-model-training/
 - **Policy:** MlpPolicy (2 hidden layers, 64 units each)
 - **Observation space:** 10D continuous `[L_root, U_status, T_in, H_in, T_out, H_out, EC, pH, T_nut, I_day]`
 - **Action space:** 3D continuous `[-1, 1]` mapped to:
-  - `D_mist`: `[60, 900]` seconds (1–15 minutes ON)
-  - `interval_sec`: `[60, 900]` seconds (1–15 minutes OFF)
+  - `D_mist`: `[120, 600]` seconds (2–10 minutes ON)
+  - `interval_sec`: `[120, 600]` seconds (2–10 minutes OFF)
   - `A_valve`: `[0, 1]` (threshold at 0)
 
 ## Reward Structure
@@ -34,7 +34,7 @@ ppo-model-training/
 | `R_growth` | `w_growth=15.0` | Per-step growth reward from simulator |
 | `R_humidity_maintenance` | +1.5 / -3.0 | +1.5 if `80≤H_in≤95%`, -3.0 if `H_in<70%` or `H_in>97%` |
 | `R_temperature_maintenance` | +1.5 / -3.0 | +1.5 if `18≤T_in≤28°C`, -3.0 if `T_in<15°C` or `T_in>32°C` |
-| `R_efficiency` | +0.05/+0.03/+0.02 | If state healthy: valve OFF, `D_mist≤180s`, `interval≥600s` |
+| `R_efficiency` | +0.0–0.369 | Conditional + gradual: requires stable EC(1.2–2.0), pH(5.5–6.5), H_in≥80%, T_in(24–30°C); rewards D_mist<300s, interval>300s, and valve bonus |
 | `P_env` | `w_env=0.05` | pH/EC/H_in deviation penalty |
 | `P_hypoxia` | `w_hypoxia=0.02` | Oxygen depletion penalty |
 | `P_interval` | `w_interval=0.01` | Very long interval penalty (`>720s`) |

@@ -20,18 +20,17 @@ class AeroponicSimulatorEnv:
 
         # Continuous misting counter for O2 model
         self.T_continuous = 0
-        self.max_steps = 1440  # 24h episode for training (1 step = 1 minute)
         self._step_count = 0
         self._time_remainder = 0.0
         self.episode_duration = 86400.0  # 24 hours in seconds for training
         self._episode_start_time = 0.0
         self._mode = 'training'  # 'training' or 'simulation'
 
-        # Action space bounds (expanded to 1-15 minutes)
-        self.D_mist_min = 60.0   # 1 minute minimum ON
-        self.D_mist_max = 900.0  # 15 minutes maximum ON
-        self.interval_min = 60.0   # 1 minute minimum OFF
-        self.interval_max = 900.0  # 15 minutes maximum OFF
+        # Action space bounds (realistic ranges: 2-10 minutes)
+        self.D_mist_min = 120.0   # 2 minutes minimum ON
+        self.D_mist_max = 600.0   # 10 minutes maximum ON
+        self.interval_min = 120.0   # 2 minutes minimum OFF
+        self.interval_max = 600.0   # 10 minutes maximum OFF
 
         # Reward weights (tuned for stable learning and growth dominance)
         self.w_growth = 10.0
@@ -91,7 +90,7 @@ class AeroponicSimulatorEnv:
         # Initialize state after all attributes are set
         self.reset()
 
-    def reset(self, L_root=None, continuous=False, mode='training', episode_duration=None, max_steps=None):
+    def reset(self, L_root=None, continuous=False, mode='training', episode_duration=None):
         """Reset to initial conditions based on aeroponic research.
         
         Args:
@@ -100,7 +99,6 @@ class AeroponicSimulatorEnv:
             mode: 'training' for 24h episodes with full reset, 
                   'simulation' for continuous multi-day simulation.
             episode_duration: Override episode duration in seconds. If None, uses default.
-            max_steps: Override max steps per episode. If None, uses default.
         """
         L_root_init = L_root if L_root is not None else 8.0
         self.L_root_init = L_root_init
@@ -186,12 +184,18 @@ class AeroponicSimulatorEnv:
             self.event_start_time = 0.0
             self.event_end_time = 0.0
             self._generate_random_events()
+            
+            # Reset milestone flags for new episode in continuous mode
+            self._milestone_3h = False
+            self._milestone_6h = False
+            self._milestone_12h = False
+            self._milestone_18h = False
         
         self.T_continuous = 0
         self._step_count = 0
         self.last_reward_growth = 0.0
         
-        # Set episode duration and max steps based on mode or explicit overrides
+        # Set episode duration based on mode or explicit override
         if episode_duration is not None:
             self.episode_duration = episode_duration
         elif mode == 'training':
@@ -199,12 +203,11 @@ class AeroponicSimulatorEnv:
         else:
             self.episode_duration = 86400.0  # default 24h for simulation episodes
         
-        if max_steps is not None:
-            self.max_steps = max_steps
-        elif mode == 'training':
-            self.max_steps = 1440  # 24h for training (1 step = 1 minute)
-        else:
-            self.max_steps = 1440  # default 24h for simulation episodes
+        # Reset milestone flags for new episode
+        self._milestone_3h = False
+        self._milestone_6h = False
+        self._milestone_12h = False
+        self._milestone_18h = False
         
         self._captured_this_step = False
         self._last_R_growth = 0.0
@@ -648,12 +651,31 @@ class AeroponicSimulatorEnv:
         
         # Survival bonus: reward agent for each step it stays alive
         # This incentivizes maintaining healthy state throughout the episode
-        reward += 0.5
+        reward += 2.0
         
-        # Step counting for 180-step milestone + completion tracking
+        # Survival milestone bonuses for reaching key time checkpoints
+        # This provides strong positive reinforcement for longevity
+        elapsed_time = self.current_time - self._episode_start_time
+        if elapsed_time >= 3 * 3600 and not getattr(self, '_milestone_3h', False):
+            reward += 20.0
+            self._milestone_3h = True
+        if elapsed_time >= 6 * 3600 and not getattr(self, '_milestone_6h', False):
+            reward += 50.0
+            self._milestone_6h = True
+        if elapsed_time >= 12 * 3600 and not getattr(self, '_milestone_12h', False):
+            reward += 100.0
+            self._milestone_12h = True
+        if elapsed_time >= 18 * 3600 and not getattr(self, '_milestone_18h', False):
+            reward += 200.0
+            self._milestone_18h = True
+        
+        # Frequent small survival bonuses every 30 minutes of simulated time
+        # This provides dense positive reinforcement for staying alive
+        if elapsed_time > 0 and int(elapsed_time / (30 * 60)) > int((elapsed_time - self.dt) / (30 * 60)):
+            reward += 5.0
+        
+        # Step counting for tracking + completion tracking
         self._step_count += 1
-        if self._step_count == self.max_steps:
-            reward += 10.0  # full 180-step completion bonus
         
         # Clip reward for training stability (wider range to preserve signal)
         reward = self._clip(reward, -200.0, 200.0)
@@ -663,7 +685,7 @@ class AeroponicSimulatorEnv:
         pH_val = self.state[7]
         EC_val = self.state[6]
         terminated = (pH_val < 4.5 or pH_val > 8.5 or EC_val < 0.5 or EC_val > 3.0)
-        truncated = (self.current_time - self._episode_start_time) >= self.episode_duration or self._step_count >= self.max_steps
+        truncated = (self.current_time - self._episode_start_time) >= self.episode_duration
 
         # Episode completion bonus: reward agent for surviving the full episode
         if truncated and not terminated:
@@ -671,20 +693,12 @@ class AeroponicSimulatorEnv:
 
         # Strong early termination penalty: losing remaining survival bonus + growth
         if terminated and not truncated:
-            # Scale penalty by episode length to keep it proportional
-            if self._episode_start_time > 0:
-                elapsed = self.current_time - self._episode_start_time
-                remaining_time = max(0.0, self.episode_duration - elapsed)
-                remaining_steps = max(1.0, remaining_time / self.dt)
-                episode_length = self.episode_duration / self.dt
-            else:
-                remaining_steps = max(1, self.max_steps - self._step_count)
-                episode_length = self.max_steps
+            elapsed_time = self.current_time - self._episode_start_time
+            remaining_time = max(0.0, self.episode_duration - elapsed_time)
+            remaining_ratio = remaining_time / self.episode_duration
             
-            # Normalize penalty by episode length to keep it proportional
-            normalized_remaining = remaining_steps / episode_length
-            reward -= 0.5 * normalized_remaining  # lost survival bonus (normalized)
-            reward -= self.w_growth * (1.0 + self.state[0] / 100.0) * 5.0  # higher penalty for more developed plants
+            reward -= 0.5 * remaining_ratio  # lost survival bonus (normalized)
+            reward -= self.w_growth * (1.0 + self.state[0] / 100.0) * 1.0  # higher penalty for more developed plants
 
         # Robustness
         if not math.isfinite(reward):
@@ -820,13 +834,19 @@ class AeroponicSimulatorEnv:
                 P_diversity += 0.5
 
         R_efficiency = 0.0
-        if P_env < 1.0 and P_hypoxia == 0.0:
-            if A_valve == 0.0:
-                R_efficiency += 0.05
-            if D_mist <= 180.0:
-                R_efficiency += 0.03
-            if interval_sec >= 600.0:
-                R_efficiency += 0.02
+        stability_ok = (
+            1.2 <= EC <= 2.0 and
+            5.5 <= pH <= 6.5 and
+            H_in >= 80.0 and
+            24.0 <= T_in <= 30.0
+        )
+        if stability_ok:
+            if D_mist < 300.0:
+                R_efficiency += 0.1 * (300.0 - D_mist) / 180.0
+            if interval_sec > 300.0:
+                R_efficiency += 0.1 * (interval_sec - 300.0) / 300.0
+            if A_valve < 0.5 and D_mist < 300.0 and interval_sec > 300.0:
+                R_efficiency += 0.2
 
         # Penalize root shrinkage and low/alive status
         P_shrink = self._last_P_shrink

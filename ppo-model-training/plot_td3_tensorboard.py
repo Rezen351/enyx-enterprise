@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Plot TensorBoard training curves from PPO training events.
+Plot TensorBoard training curves from TD3 training events.
 """
 
 import os
@@ -33,20 +33,15 @@ def load_tensorboard_events(log_dir):
 
 def plot_training_curves(metrics, out_path):
     """
-    Plot training curves for key metrics.
+    Plot training curves for key TD3 metrics.
     """
-    # Select key metrics to plot
     key_metrics = {
         'rollout/ep_rew_mean': 'Mean Episode Reward',
         'rollout/ep_len_mean': 'Episode Length',
         'rollout/episode_duration_seconds': 'Episode Duration (seconds)',
         'rollout/cycle_count_mean': 'Cycle Count per Episode',
-        'train/loss': 'Policy Loss',
-        'train/value_loss': 'Value Loss',
-        'train/entropy_loss': 'Entropy Loss',
-        'train/clip_fraction': 'Clip Fraction',
-        'train/approx_kl': 'Approximate KL Divergence',
-        'train/explained_variance': 'Explained Variance',
+        'train/actor_loss': 'Actor Loss',
+        'train/critic_loss': 'Critic Loss',
         'train/learning_rate': 'Learning Rate',
         'rollout/reward_growth': 'Reward Growth',
         'rollout/reward_resource': 'Reward Resource',
@@ -55,9 +50,10 @@ def plot_training_curves(metrics, out_path):
         'rollout/reward_hypoxia': 'Reward Hypoxia',
         'rollout/reward_interval': 'Reward Interval',
         'rollout/reward_efficiency': 'Reward Efficiency',
+        'rollout/reward_humidity_proxy': 'Reward Humidity Proxy',
+        'rollout/reward_low_humidity_penalty': 'Reward Low Humidity Penalty',
     }
 
-    # Create subplots
     n_plots = len(key_metrics)
     n_cols = 3
     n_rows = max(1, (n_plots + n_cols - 1) // n_cols)
@@ -96,7 +92,6 @@ def plot_training_curves(metrics, out_path):
 
             plot_idx += 1
 
-    # Hide unused subplots
     for idx in range(plot_idx, len(axes)):
         axes[idx].axis('off')
 
@@ -149,12 +144,8 @@ def print_summary(metrics):
         'rollout/ep_len_mean': 'Episode Length',
         'rollout/episode_duration_seconds': 'Episode Duration (seconds)',
         'rollout/cycle_count_mean': 'Cycle Count per Episode',
-        'train/loss': 'Policy Loss',
-        'train/value_loss': 'Value Loss',
-        'train/entropy_loss': 'Entropy Loss',
-        'train/clip_fraction': 'Clip Fraction',
-        'train/approx_kl': 'Approximate KL',
-        'train/explained_variance': 'Explained Variance',
+        'train/actor_loss': 'Actor Loss',
+        'train/critic_loss': 'Critic Loss',
         'train/learning_rate': 'Learning Rate',
         'rollout/reward_growth': 'Reward Growth',
         'rollout/reward_resource': 'Reward Resource',
@@ -163,6 +154,8 @@ def print_summary(metrics):
         'rollout/reward_hypoxia': 'Reward Hypoxia',
         'rollout/reward_interval': 'Reward Interval',
         'rollout/reward_efficiency': 'Reward Efficiency',
+        'rollout/reward_humidity_proxy': 'Reward Humidity Proxy',
+        'rollout/reward_low_humidity_penalty': 'Reward Low Humidity Penalty',
     }
 
     for tag, name in key_metrics.items():
@@ -194,31 +187,25 @@ def get_latest_tensorboard_log_dir(tensorboard_base_dir):
 
 
 def main():
-    tensorboard_base_dir = '/home/almuzky/TA/Microservices/ppo-model-training/aeroponic_ppo_tensorboard'
+    tensorboard_base_dir = '/home/almuzky/TA/Microservices/ppo-model-training/aeroponic_td3_tensorboard'
     results_dir = '/home/almuzky/TA/Microservices/ppo-model-training/results'
     os.makedirs(results_dir, exist_ok=True)
 
     log_dir = get_latest_tensorboard_log_dir(tensorboard_base_dir)
     print("=" * 80)
-    print("TENSORBOARD TRAINING CURVES")
+    print("TENSORBOARD TRAINING CURVES (TD3)")
     print("=" * 80)
     print(f"Log directory: {log_dir}")
 
     metrics = load_tensorboard_events(log_dir)
     print(f"\nLoaded {len(metrics)} scalar metrics from TensorBoard")
 
-    # Print available tags
     print("\nAvailable metrics:")
     for tag in sorted(metrics.keys()):
         print(f"  - {tag}")
 
-    # Plot training curves
-    plot_training_curves(metrics, os.path.join(results_dir, 'ppo_training_curves.png'))
-
-    # Plot reward components if available
-    plot_reward_components(metrics, os.path.join(results_dir, 'ppo_reward_components.png'))
-
-    # Print summary
+    plot_training_curves(metrics, os.path.join(results_dir, 'td3_training_curves.png'))
+    plot_reward_components(metrics, os.path.join(results_dir, 'td3_reward_components.png'))
     print_summary(metrics)
 
     print("\n" + "=" * 80)

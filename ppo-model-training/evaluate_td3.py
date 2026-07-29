@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Evaluate trained PPO model on Aeroponic Simulator and plot results.
+Evaluate trained TD3 model on Aeroponic Simulator and plot results.
 """
 
 import os
 import sys
 import math
 import random
+import csv
 
 sys.path.insert(0, '/home/almuzky/TA/Microservices/ppo-model-training')
 
@@ -15,17 +16,17 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from stable_baselines3 import PPO
+from stable_baselines3 import TD3
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from aeroponic_simulator import AeroponicSimulatorEnv
-from train_ppo import AeroponicGymnasiumEnv
+from train_td3 import AeroponicGymnasiumEnv
 
 
 def load_model_and_env():
     base_dir = '/home/almuzky/TA/Microservices/ppo-model-training'
-    model_path = os.path.join(base_dir, 'models', 'aeroponic_ppo.zip')
-    vec_norm_path = os.path.join(base_dir, 'models', 'vec_normalize_ppo.pkl')
+    model_path = os.path.join(base_dir, 'models', 'aeroponic_td3.zip')
+    vec_norm_path = os.path.join(base_dir, 'models', 'vec_normalize_td3.pkl')
 
     env = AeroponicGymnasiumEnv()
     vec_env = DummyVecEnv([lambda: env])
@@ -33,7 +34,7 @@ def load_model_and_env():
     vec_norm.training = False
     vec_norm.norm_reward = False
 
-    model = PPO.load(model_path, env=vec_norm)
+    model = TD3.load(model_path, env=vec_norm)
     return model, vec_norm
 
 
@@ -108,7 +109,6 @@ def evaluate_policy(model, vec_env, num_episodes=5, curriculum_weather_scale=1.0
             pre_pH = sim.state[7]
             pre_T_nut = sim.state[8]
 
-            # Map normalized PPO actions to physical values for accurate logging
             a_01 = (action + 1.0) / 2.0
             D_mist_phys = 60.0 + a_01[0] * 840.0
             interval_phys = 60.0 + a_01[1] * 840.0
@@ -208,7 +208,6 @@ def evaluate_policy(model, vec_env, num_episodes=5, curriculum_weather_scale=1.0
 def evaluate_with_curriculum(model, vec_env, num_episodes=5):
     """
     Evaluate policy across multiple curriculum weather scales.
-    Tests: 0.0, 0.3, 0.5, 0.7, 1.0, 1.5
     """
     scales = [0.0, 0.3, 0.5, 0.7, 1.0, 1.5]
     results = {}
@@ -247,7 +246,6 @@ def evaluate_with_curriculum(model, vec_env, num_episodes=5):
 def evaluate_domain_randomization(model, vec_env, num_episodes=5):
     """
     Evaluate policy with different domain randomization levels.
-    Tests: no DR, partial DR, full DR
     """
     dr_levels = [
         ('no_dr', {'sensor_noise_T': 0.0, 'sensor_noise_H': 0.0, 'sensor_noise_EC': 0.0, 'sensor_noise_pH': 0.0, 'actuator_noise_D_mist': 0.0, 'actuator_noise_spray_delay': 0.0}),
@@ -284,11 +282,8 @@ def evaluate_domain_randomization(model, vec_env, num_episodes=5):
 
 def plot_action_histograms(histories, out_path):
     """
-    Plot histograms of actions taken by the PPO agent.
+    Plot histograms of actions taken by the TD3 agent.
     """
-    import os
-
-    # Collect all actions across episodes
     all_D_mist = []
     all_interval = []
     all_A_valve = []
@@ -300,7 +295,6 @@ def plot_action_histograms(histories, out_path):
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 
-    # D_mist histogram
     ax1 = axes[0]
     ax1.hist(all_D_mist, bins=30, color='tab:blue', alpha=0.7, edgecolor='black')
     ax1.set_xlabel('D_mist (s)')
@@ -312,7 +306,6 @@ def plot_action_histograms(histories, out_path):
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
-    # Interval histogram
     ax2 = axes[1]
     ax2.hist(all_interval, bins=30, color='tab:green', alpha=0.7, edgecolor='black')
     ax2.set_xlabel('Interval (s)')
@@ -324,7 +317,6 @@ def plot_action_histograms(histories, out_path):
     ax2.legend()
     ax2.grid(True, alpha=0.3)
 
-    # A_valve histogram
     ax3 = axes[2]
     ax3.hist(all_A_valve, bins=[-0.5, 0.5, 1.5], color='tab:red', alpha=0.7, edgecolor='black', rwidth=0.6)
     ax3.set_xlabel('A_valve')
@@ -335,12 +327,11 @@ def plot_action_histograms(histories, out_path):
     ax3.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    out_path = os.path.join(out_path, 'ppo_action_histograms.png')
+    out_path = os.path.join(out_path, 'td3_action_histograms.png')
     plt.savefig(out_path, dpi=150)
     print(f"Saved action histograms: {out_path}")
     plt.close()
 
-    # Print statistics
     print("\n" + "=" * 80)
     print("ACTION DISTRIBUTION STATISTICS")
     print("=" * 80)
@@ -371,9 +362,6 @@ def save_episode_summary(histories, out_path):
     """
     Save episode metrics summary to CSV.
     """
-    import os
-    import csv
-
     out_path = os.path.join(out_path, 'episode_summary.csv')
     with open(out_path, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -398,8 +386,6 @@ def plot_reward_curve(histories, out_path):
     """
     Plot reward per cycle and cumulative reward.
     """
-    import os
-
     colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple']
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
@@ -424,7 +410,7 @@ def plot_reward_curve(histories, out_path):
     axes[1].grid(True, alpha=0.3)
 
     plt.tight_layout()
-    out_path = os.path.join(out_path, 'ppo_reward_curve.png')
+    out_path = os.path.join(out_path, 'td3_reward_curve.png')
     plt.savefig(out_path, dpi=150)
     print(f"Saved reward curve: {out_path}")
     plt.close()
@@ -434,8 +420,6 @@ def plot_events(histories, out_path):
     """
     Plot extreme/normal weather events over episode time.
     """
-    import os
-
     event_colors = {
         'extreme_heat': 'tab:red',
         'extreme_cold': 'tab:blue',
@@ -485,7 +469,7 @@ def plot_events(histories, out_path):
         ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    out_path = os.path.join(out_path, 'ppo_events.png')
+    out_path = os.path.join(out_path, 'td3_events.png')
     plt.savefig(out_path, dpi=150)
     print(f"Saved events plot: {out_path}")
     plt.close()
@@ -499,14 +483,6 @@ def plot_episode_comparison(histories, out_path):
 
     fig, axes = plt.subplots(5, 2, figsize=(14, 14))
 
-    # Panel structure (row, col):
-    # 0,0 L_root | 0,1 H_in
-    # 1,0 H_out  | 1,1 T_in
-    # 2,0 T_out  | 2,1 T_nut
-    # 3,0 EC     | 3,1 pH
-    # 4,0 D_mist | 4,1 Total Reward
-
-    # Row 1
     ax = axes[0, 0]
     for i, hist in enumerate(histories):
         ax.plot(hist['time_h'], hist['L_root'], label=f'Ep {i+1}', color=colors[i], alpha=0.7)
@@ -525,7 +501,6 @@ def plot_episode_comparison(histories, out_path):
     ax.legend()
     ax.grid(True)
 
-    # Row 2
     ax = axes[1, 0]
     for i, hist in enumerate(histories):
         ax.plot(hist['time_h'], hist['H_out'], label=f'Ep {i+1}', color=colors[i], alpha=0.7)
@@ -544,7 +519,6 @@ def plot_episode_comparison(histories, out_path):
     ax.legend()
     ax.grid(True)
 
-    # Row 3
     ax = axes[2, 0]
     for i, hist in enumerate(histories):
         ax.plot(hist['time_h'], hist['T_out'], label=f'Ep {i+1}', color=colors[i], alpha=0.7)
@@ -563,7 +537,6 @@ def plot_episode_comparison(histories, out_path):
     ax.legend()
     ax.grid(True)
 
-    # Row 4
     ax = axes[3, 0]
     for i, hist in enumerate(histories):
         ax.plot(hist['time_h'], hist['EC'], label=f'Ep {i+1}', color=colors[i], alpha=0.7)
@@ -582,7 +555,6 @@ def plot_episode_comparison(histories, out_path):
     ax.legend()
     ax.grid(True)
 
-    # Row 5
     ax = axes[4, 0]
     for i, hist in enumerate(histories):
         ax.plot(hist['time_h'], hist['D_mist'], label=f'Ep {i+1}', color=colors[i], alpha=0.7)
@@ -602,7 +574,7 @@ def plot_episode_comparison(histories, out_path):
     ax.grid(True)
 
     plt.tight_layout()
-    out_path = os.path.join(out_path, 'ppo_episode_comparison.png')
+    out_path = os.path.join(out_path, 'td3_episode_comparison.png')
     plt.savefig(out_path, dpi=150)
     print(f"Saved episode comparison: {out_path}")
     plt.close()
@@ -610,7 +582,7 @@ def plot_episode_comparison(histories, out_path):
 
 def print_summary(histories):
     print("\n" + "=" * 80)
-    print("PPO EVALUATION SUMMARY")
+    print("TD3 EVALUATION SUMMARY")
     print("=" * 80)
 
     for i, hist in enumerate(histories):
@@ -645,7 +617,7 @@ def run_evaluation():
     os.makedirs(results_dir, exist_ok=True)
 
     print("=" * 80)
-    print("PPO MODEL EVALUATION")
+    print("TD3 MODEL EVALUATION")
     print("=" * 80)
 
     model, vec_env = load_model_and_env()
