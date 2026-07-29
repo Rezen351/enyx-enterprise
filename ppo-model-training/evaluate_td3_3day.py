@@ -73,7 +73,9 @@ def evaluate_3day(model, vec_env, num_episodes=2, episode_duration=259200):
             'day': [],
             'L_root': [],
             'H_in': [],
+            'H_in_setpoint': [],
             'T_in': [],
+            'T_in_setpoint': [],
             'T_out': [],
             'H_out': [],
             'EC': [],
@@ -165,6 +167,24 @@ def evaluate_3day(model, vec_env, num_episodes=2, episode_duration=259200):
             history['interval_sec'].append(interval_phys)
             history['A_valve'].append(A_valve_phys)
             history['captured'].append(sim._captured_this_step)
+
+            # Compute setpoints: environment target without agent control
+            T_in_setpoint = sim._cached_T_in_base
+            if hasattr(sim, 'extreme_heat_intensity') and sim.extreme_heat_intensity > 0 and sim._is_event_active(sim.event_start_time, sim.event_end_time):
+                T_in_setpoint += sim.extreme_heat_intensity * 0.9
+            if hasattr(sim, 'extreme_cold_intensity') and sim.extreme_cold_intensity > 0 and sim._is_event_active(sim.event_start_time, sim.event_end_time):
+                T_in_setpoint -= sim.extreme_cold_intensity * 0.9
+            if hasattr(sim, 'heat_wave_intensity') and sim.heat_wave_intensity > 0 and sim._is_event_active(sim.event_start_time, sim.event_end_time):
+                T_in_setpoint += sim.heat_wave_intensity * 0.8
+            if hasattr(sim, 'cold_snap_intensity') and sim.cold_snap_intensity > 0 and sim._is_event_active(sim.event_start_time, sim.event_end_time):
+                T_in_setpoint -= sim.cold_snap_intensity * 0.8
+
+            H_in_setpoint = log_H_out
+            if hasattr(sim, 'drought_intensity') and sim.drought_intensity > 0 and sim._is_event_active(sim.event_start_time, sim.event_end_time):
+                H_in_setpoint = min(H_in_setpoint, max(40.0, log_H_in * 0.6))
+
+            history['T_in_setpoint'].append(T_in_setpoint)
+            history['H_in_setpoint'].append(H_in_setpoint)
 
             event_active = False
             event_type = 'none'
@@ -507,6 +527,46 @@ def print_summary(histories):
                 print(f"    Day {day+1}: final={day_L[-1]:.4f}, growth={day_L[-1]-8.0:+.4f}, reward={sum(day_reward):.2f}")
 
 
+def print_stability_comparison(histories):
+    print("\n" + "=" * 80)
+    print("STABILITY COMPARISON: DISTURBANCE vs MAINTAINED")
+    print("=" * 80)
+    print("Optimal ranges: T_in [24, 30]°C, H_in >= 80%")
+    print()
+
+    for i, hist in enumerate(histories):
+        T_in_arr = np.array(hist['T_in'])
+        H_in_arr = np.array(hist['H_in'])
+        T_in_setpoint_arr = np.array(hist['T_in_setpoint'])
+        H_in_setpoint_arr = np.array(hist['H_in_setpoint'])
+        time_h = np.array(hist['time_h'])
+        total_steps = len(T_in_arr)
+
+        T_in_optimal = np.sum((T_in_arr >= 24.0) & (T_in_arr <= 30.0)) / total_steps * 100
+        H_in_optimal = np.sum(H_in_arr >= 80.0) / total_steps * 100
+        T_in_setpoint_optimal = np.sum((T_in_setpoint_arr >= 24.0) & (T_in_setpoint_arr <= 30.0)) / total_steps * 100
+        H_in_setpoint_optimal = np.sum(H_in_setpoint_arr >= 80.0) / total_steps * 100
+
+        episode_duration_h = time_h[-1] if len(time_h) > 0 else 0
+        T_in_optimal_h = T_in_optimal / 100 * episode_duration_h
+        H_in_optimal_h = H_in_optimal / 100 * episode_duration_h
+        T_in_setpoint_optimal_h = T_in_setpoint_optimal / 100 * episode_duration_h
+        H_in_setpoint_optimal_h = H_in_setpoint_optimal / 100 * episode_duration_h
+
+        T_in_rmse = np.sqrt(np.mean((T_in_arr - T_in_setpoint_arr) ** 2))
+        H_in_rmse = np.sqrt(np.mean((H_in_arr - H_in_setpoint_arr) ** 2))
+        T_in_max_dev = np.max(np.abs(T_in_arr - T_in_setpoint_arr))
+        H_in_max_dev = np.max(np.abs(H_in_arr - H_in_setpoint_arr))
+
+        print(f"Episode {i+1} ({episode_duration_h:.1f}h):")
+        print(f"  T_in optimal: actual={T_in_optimal:.1f}% ({T_in_optimal_h:.2f}h) | setpoint={T_in_setpoint_optimal:.1f}% ({T_in_setpoint_optimal_h:.2f}h)")
+        print(f"  H_in optimal: actual={H_in_optimal:.1f}% ({H_in_optimal_h:.2f}h) | setpoint={H_in_setpoint_optimal:.1f}% ({H_in_setpoint_optimal_h:.2f}h)")
+        print(f"  T_in RMSE from setpoint: {T_in_rmse:.2f}°C (max dev: {T_in_max_dev:.2f}°C)")
+        print(f"  H_in RMSE from setpoint: {H_in_rmse:.2f}% (max dev: {H_in_max_dev:.2f}%)")
+        print(f"  Stability retention: T_in={T_in_optimal:.1f}% vs disturbance={T_in_setpoint_optimal:.1f}%")
+        print(f"                       H_in={H_in_optimal:.1f}% vs disturbance={H_in_setpoint_optimal:.1f}%")
+
+
 def run_evaluation():
     base_dir = '/home/almuzky/TA/Microservices/ppo-model-training'
     results_dir = os.path.join(base_dir, 'results')
@@ -524,6 +584,7 @@ def run_evaluation():
     plot_action_histograms(histories, os.path.join(results_dir, 'td3_3day_action_histograms.png'))
     save_episode_summary(histories, results_dir)
     print_summary(histories)
+    print_stability_comparison(histories)
 
     print("\n" + "=" * 80)
     print("3-DAY EVALUATION COMPLETE")
