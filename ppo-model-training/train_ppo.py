@@ -198,14 +198,10 @@ class RewardLoggingCallback(BaseCallback):
             "reward_state",
             "reward_env",
             "reward_hypoxia",
-            "reward_interval",
             "reward_efficiency",
             "reward_shrink",
             "reward_death",
             "reward_extreme",
-            "reward_smooth",
-            "reward_stability",
-            "reward_anti_extreme",
         ]
 
         for info, done in zip(infos, dones):
@@ -235,14 +231,10 @@ class RewardLoggingCallback(BaseCallback):
             "reward_state",
             "reward_env",
             "reward_hypoxia",
-            "reward_interval",
             "reward_efficiency",
             "reward_shrink",
             "reward_death",
             "reward_extreme",
-            "reward_smooth",
-            "reward_stability",
-            "reward_anti_extreme",
         ]
 
         recent = self.episode_rewards[-self.window_size:]
@@ -253,55 +245,6 @@ class RewardLoggingCallback(BaseCallback):
 
         if len(self.episode_rewards) > self.window_size:
             self.episode_rewards = self.episode_rewards[-self.window_size:]
-
-        return True
-
-
-class CycleCountCallback(BaseCallback):
-    """
-    Log cycle count and episode duration.
-    In this simulator each env step is one misting cycle, so:
-    - cycle_count_mean = number of cycles per episode
-    - episode_duration_seconds = actual simulated seconds survived
-    """
-    def __init__(self, window_size=10):
-        super().__init__()
-        self.window_size = window_size
-        self.episode_cycle_counts = []
-        self.episode_durations = []
-
-    def _on_step(self):
-        dones = self.locals.get("dones", [])
-        infos = self.locals.get("infos", [])
-        if not dones or not infos:
-            return True
-
-        for done, info in zip(dones, infos):
-            if done and isinstance(info, dict):
-                self.episode_cycle_counts.append(info.get('cycle_count', 0))
-                self.episode_durations.append(info.get('elapsed_time_seconds', 0.0))
-
-        if len(self.episode_cycle_counts) > self.window_size:
-            self.episode_cycle_counts = self.episode_cycle_counts[-self.window_size:]
-            self.episode_durations = self.episode_durations[-self.window_size:]
-
-        return True
-
-    def _on_rollout_end(self):
-        if not self.episode_cycle_counts:
-            return True
-
-        # Cycle count: actual number of misting cycles per episode
-        recent_cycles = self.episode_cycle_counts[-self.window_size:]
-        if recent_cycles:
-            avg_cycles = float(np.mean(recent_cycles))
-            self.model.logger.record("rollout/cycle_count_mean", avg_cycles)
-
-        # Episode duration: actual simulated seconds survived
-        recent_dur = self.episode_durations[-self.window_size:]
-        if recent_dur:
-            avg_duration = float(np.mean(recent_dur))
-            self.model.logger.record("rollout/episode_duration_seconds", avg_duration)
 
         return True
 
@@ -360,7 +303,7 @@ def train_ppo():
     vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
 
     # Training hyperparameters
-    total_timesteps = 500_000
+    total_timesteps = 300_000
     lr_schedule = linear_schedule(3e-4, 1e-5)
 
     # Adaptive entropy callback
@@ -368,7 +311,6 @@ def train_ppo():
     value_norm_callback = ValueNormalizationCallback()
     reward_log_callback = RewardLoggingCallback()
     curriculum_callback = CurriculumWeatherScaleCallback(start_scale=0.0, end_scale=0.5, total_timesteps=total_timesteps)
-    cycle_count_callback = CycleCountCallback()
 
     model_path = os.path.join(models_dir, 'aeroponic_ppo.zip')
     if os.path.exists(model_path):
@@ -421,7 +363,7 @@ def train_ppo():
     print(f"  model save path: {os.path.join(models_dir, 'aeroponic_ppo.zip')}")
     print("=" * 80)
 
-    callback = [entropy_callback, value_norm_callback, reward_log_callback, curriculum_callback, cycle_count_callback]
+    callback = [entropy_callback, value_norm_callback, reward_log_callback, curriculum_callback]
     remaining_timesteps = max(0, total_timesteps - model.num_timesteps)
     if remaining_timesteps <= 0:
         print(f"Model already has {model.num_timesteps} timesteps, target is {total_timesteps}. No additional training needed.")
