@@ -100,8 +100,8 @@ class AdaptiveEntropyCallback(BaseCallback):
         self.window_size = window_size
         self.total_timesteps = total_timesteps
         self.entropy_window = []
-        self.entropy_min = 0.3
-        self.entropy_max = 2.5
+        self.entropy_min = 1.0
+        self.entropy_max = 5.0
 
     def _on_step(self):
         # No-op: entropy adjustment happens in _on_rollout_end
@@ -194,6 +194,7 @@ class RewardLoggingCallback(BaseCallback):
 
         keys = [
             "reward_growth",
+            "reward_growth_proxy",
             "reward_resource",
             "reward_state",
             "reward_env",
@@ -227,6 +228,7 @@ class RewardLoggingCallback(BaseCallback):
 
         keys = [
             "reward_growth",
+            "reward_growth_proxy",
             "reward_resource",
             "reward_state",
             "reward_env",
@@ -303,11 +305,11 @@ def train_ppo():
     vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
 
     # Training hyperparameters
-    total_timesteps = 300_000
-    lr_schedule = linear_schedule(3e-4, 1e-5)
+    total_timesteps = 500_000
+    lr_schedule = linear_schedule(5e-4, 1e-5)
 
-    # Adaptive entropy callback
-    entropy_callback = AdaptiveEntropyCallback(ent_start=0.2, ent_end=0.03, total_timesteps=total_timesteps)
+    # Adaptive entropy callback: stronger exploration for longer
+    entropy_callback = AdaptiveEntropyCallback(ent_start=0.8, ent_end=0.5, boost_factor=3.0, total_timesteps=total_timesteps)
     value_norm_callback = ValueNormalizationCallback()
     reward_log_callback = RewardLoggingCallback()
     curriculum_callback = CurriculumWeatherScaleCallback(start_scale=0.0, end_scale=0.5, total_timesteps=total_timesteps)
@@ -321,14 +323,14 @@ def train_ppo():
             policy='MlpPolicy',
             env=vec_norm,
             learning_rate=lr_schedule,
-            n_steps=4096,
+            n_steps=16384,
             batch_size=256,
             n_epochs=10,
             gamma=0.995,
-            ent_coef=0.05,
-            vf_coef=0.5,
+            ent_coef=0.2,
+            vf_coef=0.3,
             max_grad_norm=1.0,
-            clip_range=0.1,
+            clip_range=0.3,
             gae_lambda=0.95,
             verbose=1,
             tensorboard_log=tensorboard_dir,
@@ -342,20 +344,20 @@ def train_ppo():
     print(f"  - Normalized [-1,1] action space (fixes double-scaling bug)")
     print(f"  - Survival bonus (+0.5/step) + strong early termination penalty")
     print(f"  - EC correction during misting (dilution effect)")
-    print(f"  - Linear LR schedule: 3e-4 -> 1e-5")
+    print(f"  - Linear LR schedule: 5e-4 -> 1e-5")
     print(f"  - Efficiency reward when state healthy + resource-saving actions")
     print(f"  - Curriculum weather scale: 0.3 -> 1.0")
     print(f"Hyperparameters:")
     print(f"  Total timesteps: {total_timesteps:,}")
-    print(f"  Learning rate: 3e-4 -> 1e-5 (linear schedule)")
-    print(f"  n_steps: 4096")
+    print(f"  Learning rate: 5e-4 -> 1e-5 (linear schedule)")
+    print(f"  n_steps: 16384")
     print(f"  batch_size: 256")
     print(f"  n_epochs: 10")
     print(f"  gamma: 0.995")
-    print(f"  ent_coef: 0.05 (adaptive)")
-    print(f"  vf_coef: 0.5")
+    print(f"  ent_coef: 0.2 (adaptive)")
+    print(f"  vf_coef: 0.3")
     print(f"  max_grad_norm: 1.0")
-    print(f"  clip_range: 0.1")
+    print(f"  clip_range: 0.3")
     print(f"  gae_lambda: 0.95")
     print(f"  clip_reward: 10.0")
     print(f"  device: cpu")
