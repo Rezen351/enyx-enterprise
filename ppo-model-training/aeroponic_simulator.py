@@ -48,6 +48,7 @@ class AeroponicSimulatorEnv:
 
         # Reward component tracking for info dict
         self._last_R_growth = 0.0
+        self._last_R_growth_proxy = 0.0
         self._last_C_resource = 0.0
         self._last_R_state = 0.0
         self._last_P_env = 0.0
@@ -89,7 +90,7 @@ class AeroponicSimulatorEnv:
         # Initialize state after all attributes are set
         self.reset()
 
-    def reset(self, L_root=None, continuous=False, mode='training', episode_duration=None):
+    def reset(self, L_root=None, continuous=False, mode='training', episode_duration=None, max_steps=None):
         """Reset to initial conditions based on aeroponic research.
         
         Args:
@@ -98,10 +99,12 @@ class AeroponicSimulatorEnv:
             mode: 'training' for 24h episodes with full reset, 
                   'simulation' for continuous multi-day simulation.
             episode_duration: Override episode duration in seconds. If None, uses default.
+            max_steps: Optional maximum number of steps before truncation. If None, uses episode_duration-based default.
         """
         L_root_init = L_root if L_root is not None else 8.0
         self.L_root_init = L_root_init
         self._mode = mode
+        self.max_steps = max_steps
         
         if not continuous:
             # Indonesian daytime initialization (episode starts at 06:00)
@@ -210,6 +213,7 @@ class AeroponicSimulatorEnv:
         
         self._captured_this_step = False
         self._last_R_growth = 0.0
+        self._last_R_growth_proxy = 0.0
         self._last_C_resource = 0.0
         self._last_R_state = 0.0
         self._last_P_env = 0.0
@@ -722,6 +726,7 @@ class AeroponicSimulatorEnv:
             'T_continuous': self.T_continuous,
             'O2_status': max(0.2, 1.0 - 0.08 * max(0, T_continuous_snapshot - 3)),
             'reward_growth': self._last_R_growth,
+            'reward_growth_proxy': self._last_R_growth_proxy,
             'reward_resource': self._last_C_resource,
             'reward_state': self._last_R_state,
             'reward_env': self._last_P_env,
@@ -748,6 +753,25 @@ class AeroponicSimulatorEnv:
 
         R_growth = self.last_reward_growth
         self.last_reward_growth = 0.0
+
+        # Intermediate growth proxy: dense signal based on current growth-favorable conditions
+        # Uses the same factors as actual growth calculation but without waiting for capture
+        pH = self.state[7]
+        EC = self.state[6]
+        H_in = self.state[3]
+        T_in = self.state[2]
+        T_continuous_current = self.T_continuous
+
+        f_Hin = min(1.0, H_in / 80.0)
+        if 18.0 <= T_in <= 28.0:
+            f_T = 1.0
+        elif T_in < 18.0:
+            f_T = max(0.3, 1.0 - (18.0 - T_in) * 0.1)
+        else:
+            f_T = max(0.3, 1.0 - (T_in - 28.0) * 0.15)
+        f_O2 = max(0.0, 1.0 - 0.12 * max(0, T_continuous_current - 3))
+        limiting_factor = min(f_Hin, f_T, f_O2)
+        R_growth_proxy = 0.3 * limiting_factor
 
         # Resource cost: baseline valve cost + additional cost when valve is ON
         # Baseline cost covers maintenance, electricity for pumps, etc.
@@ -796,11 +820,11 @@ class AeroponicSimulatorEnv:
 
         # T_in stability (agent-observable): optimal [18, 24] for root growth
         if 18.0 <= T_in <= 24.0:
-            R_state += 0.4
+            R_state += 0.6
         elif T_in < 18.0:
-            R_state -= 0.4 * min(1.0, (18.0 - T_in) / 6.0)
+            R_state -= 0.6 * min(1.0, (18.0 - T_in) / 6.0)
         else:
-            R_state -= 0.4 * min(1.0, (T_in - 24.0) / 12.0)
+            R_state -= 0.6 * min(1.0, (T_in - 24.0) / 10.0)
 
         # T_root stability (internal, not directly observed by agent): optimal [15, 22]
         if 15.0 <= T_root <= 22.0:
@@ -833,11 +857,11 @@ class AeroponicSimulatorEnv:
             a_valve_toggles = sum(1 for i in range(1, len(recent_actions)) if recent_actions[i, 2] != recent_actions[i-1, 2])
 
             if d_mist_std > 10.0:
-                P_diversity += 0.1 + 0.2 * min(1.0, (d_mist_std - 10.0) / 40.0)
+                P_diversity += 0.4 + 0.8 * min(1.0, (d_mist_std - 10.0) / 40.0)
             if interval_std > 20.0:
-                P_diversity += 0.1 + 0.2 * min(1.0, (interval_std - 20.0) / 40.0)
+                P_diversity += 0.2 + 0.4 * min(1.0, (interval_std - 20.0) / 40.0)
             if a_valve_toggles >= 1:
-                P_diversity += 0.1
+                P_diversity += 0.2
 
         R_efficiency = 0.0
         stability_ok = (
@@ -864,9 +888,10 @@ class AeroponicSimulatorEnv:
         if A_valve >= 0.5 and (D_mist <= 120.0 or interval_sec <= 120.0):
             P_extreme += 0.5
         
-        R_total = R_growth + R_state + P_diversity + R_efficiency - C_resource - P_env - P_hypoxia - P_extreme - P_shrink - P_death
+        R_total = R_growth + R_growth_proxy + R_state + P_diversity + R_efficiency - C_resource - P_env - P_hypoxia - P_extreme - P_shrink - P_death
 
         self._last_R_growth = R_growth
+        self._last_R_growth_proxy = R_growth_proxy
         self._last_C_resource = C_resource
         self._last_R_state = R_state
         self._last_P_env = P_env
