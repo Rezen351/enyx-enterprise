@@ -58,6 +58,11 @@ class AeroponicSimulatorEnv:
         self._last_P_death = 0.0
         self._last_P_extreme = 0.0
 
+        # T_in curriculum: gradually narrow optimal range from [12,30] to [18,24]
+        self._t_in_target_center = 21.0
+        self._t_in_target_width = 6.0  # starts at [12, 30], ends at [18, 24]
+        self._t_in_target_min_width = 3.0
+
         # Action history for diversity bonus
         self._action_history = []
         self._action_history_max = 10
@@ -149,6 +154,10 @@ class AeroponicSimulatorEnv:
             self.event_start_time = 0.0
             self.event_end_time = 0.0
             
+            # Reset T_in curriculum for new episode
+            self._t_in_target_center = 21.0
+            self._t_in_target_width = 6.0
+            
             # Generate random events for this episode
             self._generate_random_events()
             self._no_more_events = True  # Don't regenerate events mid-episode in training mode
@@ -186,6 +195,10 @@ class AeroponicSimulatorEnv:
             self.event_start_time = 0.0
             self.event_end_time = 0.0
             self._generate_random_events()
+            
+            # Reset T_in curriculum for new episode
+            self._t_in_target_center = 21.0
+            self._t_in_target_width = 6.0
             
             # Reset milestone flags for new episode in continuous mode
             self._milestone_3h = False
@@ -751,6 +764,12 @@ class AeroponicSimulatorEnv:
         if T_continuous is None:
             T_continuous = self.T_continuous
 
+        # Update T_in curriculum: gradually narrow optimal range
+        # Starts wide [12, 30] for easy exploration, ends at [18, 24] for precision
+        episode_progress = min(1.0, self.current_time / max(self.episode_duration, 1.0))
+        curriculum_factor = 1.0 - episode_progress * 0.5  # 1.0 → 0.5
+        self._t_in_target_width = self._t_in_target_min_width + (6.0 - self._t_in_target_min_width) * curriculum_factor
+
         R_growth = self.last_reward_growth
         self.last_reward_growth = 0.0
 
@@ -818,13 +837,15 @@ class AeroponicSimulatorEnv:
         else:
             R_state -= 0.8 * (85.0 - H_in) / 10.0
 
-        # T_in stability (agent-observable): optimal [18, 24] for root growth
-        if 18.0 <= T_in <= 24.0:
+        # T_in stability (agent-observable): curriculum from [12, 30] to [18, 24]
+        t_in_low = self._t_in_target_center - self._t_in_target_width / 2.0
+        t_in_high = self._t_in_target_center + self._t_in_target_width / 2.0
+        if t_in_low <= T_in <= t_in_high:
             R_state += 0.6
-        elif T_in < 18.0:
-            R_state -= 0.6 * min(1.0, (18.0 - T_in) / 6.0)
+        elif T_in < t_in_low:
+            R_state -= 0.6 * min(1.0, (t_in_low - T_in) / self._t_in_target_width)
         else:
-            R_state -= 0.6 * min(1.0, (T_in - 24.0) / 10.0)
+            R_state -= 0.6 * min(1.0, (T_in - t_in_high) / self._t_in_target_width)
 
         # T_root stability (internal, not directly observed by agent): optimal [15, 22]
         if 15.0 <= T_root <= 22.0:
@@ -864,11 +885,13 @@ class AeroponicSimulatorEnv:
                 P_diversity += 0.2
 
         R_efficiency = 0.0
+        t_in_low = self._t_in_target_center - self._t_in_target_width / 2.0
+        t_in_high = self._t_in_target_center + self._t_in_target_width / 2.0
         stability_ok = (
             1.2 <= EC <= 2.0 and
             5.5 <= pH <= 6.5 and
             H_in >= 80.0 and
-            18.0 <= T_in <= 24.0
+            t_in_low <= T_in <= t_in_high
         )
         if stability_ok:
             if D_mist <= 300.0:
