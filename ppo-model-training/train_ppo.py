@@ -302,7 +302,7 @@ def train_ppo():
 
     # Vectorized env for stabilization and reward normalization
     vec_env = make_vec_env(AeroponicGymnasiumEnv, n_envs=1)
-    vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
+    vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=1.0)
 
     # Training hyperparameters
     total_timesteps = 500_000
@@ -359,7 +359,7 @@ def train_ppo():
     print(f"  max_grad_norm: 1.0")
     print(f"  clip_range: 0.3")
     print(f"  gae_lambda: 0.95")
-    print(f"  clip_reward: 10.0")
+    print(f"  clip_reward: 1.0")
     print(f"  device: cpu")
     print(f"  tensorboard_log: {tensorboard_dir}")
     print(f"  model save path: {os.path.join(models_dir, 'aeroponic_ppo.zip')}")
