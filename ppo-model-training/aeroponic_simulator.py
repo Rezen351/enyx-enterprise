@@ -33,7 +33,7 @@ class AeroponicSimulatorEnv:
         self.interval_max = 600.0   # 10 minutes maximum OFF
 
         # Reward weights (tuned for realistic penalty hierarchy)
-        self.w_growth = 10.0
+        self.w_growth = 50.0
         self.w_mist_cost = 0.002
         self.w_valve_cost = 0.15
         self.w_env = 0.05
