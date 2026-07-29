@@ -110,8 +110,8 @@ def evaluate_policy(model, vec_env, num_episodes=5, curriculum_weather_scale=1.0
             pre_T_nut = sim.state[8]
 
             a_01 = (action + 1.0) / 2.0
-            D_mist_phys = 60.0 + a_01[0] * 840.0
-            interval_phys = 60.0 + a_01[1] * 840.0
+            D_mist_phys = 120.0 + a_01[0] * 480.0
+            interval_phys = 120.0 + a_01[1] * 480.0
             A_valve_phys = 1.0 if action[2] >= 0.0 else 0.0
 
             obs, reward, done, info = vec_env.step(action.reshape(1, -1))
