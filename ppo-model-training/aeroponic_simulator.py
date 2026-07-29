@@ -490,6 +490,15 @@ class AeroponicSimulatorEnv:
             # Update T_in with daily cycle (affected by events)
             T_in = self._clip(T_in_base, 18.0, 36.0)
 
+            # Evaporative cooling from misting: lowers T_in when misting is active
+            # More effective when air is dry (low H_in) and hot (high T_out)
+            if is_misting_on:
+                base_cooling = 0.02  # 0.02°C per substep = 1.2°C per hour
+                dry_boost = max(0.0, (80.0 - H_in) / 80.0) * 0.5  # up to +0.5 when H_in=30%
+                hot_boost = max(0.0, (T_out - 25.0) / 10.0) * 0.3  # up to +0.3 when T_out=35°C
+                T_in = T_in - base_cooling * (1.0 + dry_boost + hot_boost)
+                T_in = max(T_in, 18.0)  # don't cool below physical minimum
+
             # I_day update based on time of day
             hour = int((6 + self.current_time / 3600.0) % 24)
             I_day = 1.0 if 6 <= hour < 18 else 0.0
