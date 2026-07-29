@@ -531,7 +531,7 @@ def print_stability_comparison(histories):
     print("\n" + "=" * 80)
     print("STABILITY COMPARISON: DISTURBANCE vs MAINTAINED")
     print("=" * 80)
-    print("Optimal ranges: T_in [24, 30]°C, H_in >= 80%")
+    print("Optimal ranges: T_in [18, 24]°C, H_in >= 80%")
     print()
 
     for i, hist in enumerate(histories):
@@ -542,9 +542,9 @@ def print_stability_comparison(histories):
         time_h = np.array(hist['time_h'])
         total_steps = len(T_in_arr)
 
-        T_in_optimal = np.sum((T_in_arr >= 24.0) & (T_in_arr <= 30.0)) / total_steps * 100
+        T_in_optimal = np.sum((T_in_arr >= 18.0) & (T_in_arr <= 24.0)) / total_steps * 100
         H_in_optimal = np.sum(H_in_arr >= 80.0) / total_steps * 100
-        T_in_setpoint_optimal = np.sum((T_in_setpoint_arr >= 24.0) & (T_in_setpoint_arr <= 30.0)) / total_steps * 100
+        T_in_setpoint_optimal = np.sum((T_in_setpoint_arr >= 18.0) & (T_in_setpoint_arr <= 24.0)) / total_steps * 100
         H_in_setpoint_optimal = np.sum(H_in_setpoint_arr >= 80.0) / total_steps * 100
 
         episode_duration_h = time_h[-1] if len(time_h) > 0 else 0

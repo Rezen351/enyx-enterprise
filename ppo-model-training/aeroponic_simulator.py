@@ -794,13 +794,21 @@ class AeroponicSimulatorEnv:
         else:
             R_state -= 0.8 * (85.0 - H_in) / 10.0
 
-        # T_root stability: optimal [10, 20], target 15
-        if 10.0 <= T_root <= 20.0:
+        # T_in stability (agent-observable): optimal [18, 24] for root growth
+        if 18.0 <= T_in <= 24.0:
             R_state += 0.4
-        elif T_root < 10.0:
-            R_state -= 0.4 * min(1.0, (10.0 - T_root) / 10.0)
+        elif T_in < 18.0:
+            R_state -= 0.4 * min(1.0, (18.0 - T_in) / 6.0)
         else:
-            R_state -= 0.4 * min(1.0, (T_root - 20.0) / 10.0)
+            R_state -= 0.4 * min(1.0, (T_in - 24.0) / 12.0)
+
+        # T_root stability (internal, not directly observed by agent): optimal [15, 22]
+        if 15.0 <= T_root <= 22.0:
+            R_state += 0.2
+        elif T_root < 15.0:
+            R_state -= 0.2 * min(1.0, (15.0 - T_root) / 10.0)
+        else:
+            R_state -= 0.2 * min(1.0, (T_root - 22.0) / 10.0)
 
         # O2 stability: optimal >= 0.6
         if O2_status >= 0.6:
@@ -836,7 +844,7 @@ class AeroponicSimulatorEnv:
             1.2 <= EC <= 2.0 and
             5.5 <= pH <= 6.5 and
             H_in >= 80.0 and
-            24.0 <= T_in <= 30.0
+            18.0 <= T_in <= 24.0
         )
         if stability_ok:
             if D_mist <= 300.0:
