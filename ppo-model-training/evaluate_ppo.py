@@ -701,6 +701,74 @@ def print_stability_comparison(histories):
         print(f"                       H_in={H_in_optimal:.1f}% vs disturbance={H_in_setpoint_optimal:.1f}%")
 
 
+def plot_stability_comparison(histories, out_path):
+    """
+    Plot stability comparison: actual vs disturbance setpoint for T_in and H_in.
+    Shows optimal ranges and retention metrics.
+    """
+    n_episodes = len(histories)
+    fig = plt.figure(figsize=(14, 4 * n_episodes))
+    gs = fig.add_gridspec(n_episodes, 3, hspace=0.35, wspace=0.3)
+
+    colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple']
+
+    for i, hist in enumerate(histories):
+        time_h = np.array(hist['time_h'])
+        T_in_arr = np.array(hist['T_in'])
+        H_in_arr = np.array(hist['H_in'])
+        T_in_setpoint_arr = np.array(hist['T_in_setpoint'])
+        H_in_setpoint_arr = np.array(hist['H_in_setpoint'])
+        color = colors[i % len(colors)]
+
+        # Panel 1: T_in actual vs setpoint
+        ax1 = fig.add_subplot(gs[i, 0])
+        ax1.plot(time_h, T_in_arr, label='T_in actual', color=color, linewidth=1.5)
+        ax1.plot(time_h, T_in_setpoint_arr, label='T_in setpoint', color='tab:gray', linestyle='--', linewidth=1.2, alpha=0.7)
+        ax1.axhspan(18.0, 24.0, alpha=0.15, color='tab:green', label='Optimal [18,24]°C')
+        ax1.set_xlabel('Time (h)')
+        ax1.set_ylabel('T_in (°C)')
+        ax1.set_title(f'Ep {i+1}: T_in Stability')
+        ax1.legend(fontsize=8)
+        ax1.grid(True, alpha=0.3)
+
+        # Panel 2: H_in actual vs setpoint
+        ax2 = fig.add_subplot(gs[i, 1])
+        ax2.plot(time_h, H_in_arr, label='H_in actual', color=color, linewidth=1.5)
+        ax2.plot(time_h, H_in_setpoint_arr, label='H_in setpoint', color='tab:gray', linestyle='--', linewidth=1.2, alpha=0.7)
+        ax2.axhspan(80.0, 100.0, alpha=0.15, color='tab:green', label='Optimal >=80%')
+        ax2.set_xlabel('Time (h)')
+        ax2.set_ylabel('H_in (%)')
+        ax2.set_title(f'Ep {i+1}: H_in Stability')
+        ax2.legend(fontsize=8)
+        ax2.grid(True, alpha=0.3)
+
+        # Panel 3: Bar chart comparison
+        ax3 = fig.add_subplot(gs[i, 2])
+        T_in_optimal = np.sum((T_in_arr >= 18.0) & (T_in_arr <= 24.0)) / len(T_in_arr) * 100
+        H_in_optimal = np.sum(H_in_arr >= 80.0) / len(H_in_arr) * 100
+        T_in_setpoint_optimal = np.sum((T_in_setpoint_arr >= 18.0) & (T_in_setpoint_arr <= 24.0)) / len(T_in_setpoint_arr) * 100
+        H_in_setpoint_optimal = np.sum(H_in_setpoint_arr >= 80.0) / len(H_in_setpoint_arr) * 100
+
+        x = np.arange(4)
+        values = [T_in_optimal, T_in_setpoint_optimal, H_in_optimal, H_in_setpoint_optimal]
+        bars = ax3.bar(x, values, color=['tab:blue', 'tab:gray', 'tab:orange', 'tab:red'], alpha=0.7)
+        ax3.set_xticks(x)
+        ax3.set_xticklabels(['T_in\nActual', 'T_in\nDisturb', 'H_in\nActual', 'H_in\nDisturb'], fontsize=9)
+        ax3.set_ylabel('Optimal %')
+        ax3.set_title(f'Ep {i+1}: Stability Retention')
+        ax3.set_ylim(0, 110)
+        ax3.grid(True, alpha=0.3, axis='y')
+
+        for bar, val in zip(bars, values):
+            ax3.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 2, f'{val:.1f}%', ha='center', va='bottom', fontsize=8)
+
+    plt.tight_layout()
+    out_file = os.path.join(out_path, 'ppo_stability_comparison.png')
+    plt.savefig(out_file, dpi=150)
+    print(f"Saved stability comparison: {out_file}")
+    plt.close()
+
+
 def run_evaluation():
     base_dir = '/home/almuzky/TA/Microservices/ppo-model-training'
     results_dir = os.path.join(base_dir, 'results')
@@ -719,6 +787,7 @@ def run_evaluation():
     save_episode_summary(histories, results_dir)
     print_summary(histories)
     print_stability_comparison(histories)
+    plot_stability_comparison(histories, results_dir)
 
     print("\n" + "=" * 80)
     print("EVALUATION COMPLETE")
