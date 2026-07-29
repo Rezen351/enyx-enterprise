@@ -767,40 +767,46 @@ class AeroponicSimulatorEnv:
         O2_status = max(0.2, 1.0 - 0.08 * max(0, T_continuous - 3))
         P_hypoxia = self.w_hypoxia * max(0.0, 1.0 - O2_status)
 
-        # State-based reward: encourage healthy ranges
+        # State-based reward: encourage healthy ranges with gradual approach
         T_root = self.T_root
 
         R_state = 0.0
+
+        # pH stability: optimal [5.5, 6.5], target 6.0
         if 5.5 <= pH <= 6.5:
-            R_state += 0.2
-        elif pH < 5.5:
-            R_state -= 0.2 * (5.5 - pH)
+            R_state += 0.4
         else:
-            R_state -= 0.1 * (pH - 6.5)
+            dev = abs(pH - 6.0)
+            R_state -= 0.4 * min(1.0, dev / 1.0)
 
+        # EC stability: optimal [1.2, 2.0], target 1.6
         if 1.2 <= EC <= 2.0:
-            R_state += 0.2
-        elif EC < 1.2:
-            R_state -= 0.2 * (1.2 - EC)
+            R_state += 0.4
         else:
-            R_state -= 0.1 * (EC - 2.0)
+            dev = abs(EC - 1.6)
+            R_state -= 0.4 * min(1.0, dev / 0.8)
 
+        # H_in stability: optimal >= 80%, target 90%
         if H_in >= 85.0:
-            R_state += 0.2
+            R_state += 0.4
+        elif H_in >= 80.0:
+            R_state += 0.2 * (H_in - 80.0) / 5.0
         else:
-            R_state -= 2.0 * (85.0 - H_in) / 10.0
+            R_state -= 0.8 * (85.0 - H_in) / 10.0
 
+        # T_root stability: optimal [10, 20], target 15
         if 10.0 <= T_root <= 20.0:
-            R_state += 0.3
+            R_state += 0.4
         elif T_root < 10.0:
-            R_state -= 0.5 * (10.0 - T_root)
+            R_state -= 0.4 * min(1.0, (10.0 - T_root) / 10.0)
         else:
-            R_state -= 0.3 * (T_root - 20.0)
+            R_state -= 0.4 * min(1.0, (T_root - 20.0) / 10.0)
 
+        # O2 stability: optimal >= 0.6
         if O2_status >= 0.6:
-            R_state += 0.2
+            R_state += 0.4
         else:
-            R_state -= 0.2 * (0.6 - O2_status)
+            R_state -= 0.4 * min(1.0, (0.6 - O2_status) / 0.4)
 
         # Action shaping: gradual reward for effective misting duration
         if D_mist >= 120.0:
@@ -834,11 +840,11 @@ class AeroponicSimulatorEnv:
         )
         if stability_ok:
             if D_mist <= 300.0:
-                R_efficiency += 0.1 * (300.0 - D_mist) / 180.0
+                R_efficiency += 0.2 * (300.0 - D_mist) / 180.0
             if interval_sec >= 300.0:
-                R_efficiency += 0.1 * (interval_sec - 300.0) / 300.0
+                R_efficiency += 0.2 * (interval_sec - 300.0) / 300.0
             if A_valve < 0.5 and D_mist < 300.0 and interval_sec > 300.0:
-                R_efficiency += 0.2
+                R_efficiency += 0.4
 
         # Penalize root shrinkage and low/alive status
         P_shrink = self._last_P_shrink
