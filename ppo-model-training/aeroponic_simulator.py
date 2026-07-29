@@ -32,14 +32,14 @@ class AeroponicSimulatorEnv:
         self.interval_min = 120.0   # 2 minutes minimum OFF
         self.interval_max = 600.0   # 10 minutes maximum OFF
 
-        # Reward weights (tuned for stable learning and growth dominance)
+        # Reward weights (tuned for realistic penalty hierarchy)
         self.w_growth = 10.0
         self.w_mist_cost = 0.002
         self.w_valve_cost = 0.15
         self.w_env = 0.05
-        self.w_hypoxia = 0.02
-        self.w_interval = 0.01
-        self.w_status = 3.0
+        self.w_hypoxia = 5.0
+        self.w_interval = 1.0
+        self.w_status = 10.0
 
         # Reward tracking for info dict
         self.last_reward_growth = 0.0
@@ -792,7 +792,7 @@ class AeroponicSimulatorEnv:
         if H_in >= 85.0:
             R_state += 0.2
         else:
-            R_state -= 0.5 * (85.0 - H_in) / 10.0
+            R_state -= 2.0 * (85.0 - H_in) / 10.0
 
         if 10.0 <= T_root <= 20.0:
             R_state += 0.3
@@ -841,9 +841,9 @@ class AeroponicSimulatorEnv:
             24.0 <= T_in <= 30.0
         )
         if stability_ok:
-            if D_mist < 300.0:
+            if D_mist <= 300.0:
                 R_efficiency += 0.1 * (300.0 - D_mist) / 180.0
-            if interval_sec > 300.0:
+            if interval_sec >= 300.0:
                 R_efficiency += 0.1 * (interval_sec - 300.0) / 300.0
             if A_valve < 0.5 and D_mist < 300.0 and interval_sec > 300.0:
                 R_efficiency += 0.2
@@ -856,11 +856,11 @@ class AeroponicSimulatorEnv:
         # This encourages the agent to use actions within sensible ranges
         P_extreme = 0.0
         if D_mist >= 850.0 or D_mist <= 70.0:
-            P_extreme += 2.0
+            P_extreme += 0.5
         if interval_sec <= 70.0 or interval_sec >= 850.0:
-            P_extreme += 2.0
+            P_extreme += 0.5
         if A_valve >= 0.5 and (D_mist <= 120.0 or interval_sec <= 120.0):
-            P_extreme += 1.0
+            P_extreme += 0.5
         
         R_total = R_growth + R_state + P_diversity + R_efficiency - C_resource - P_env - P_hypoxia - P_interval - P_extreme - P_shrink - P_death
 
