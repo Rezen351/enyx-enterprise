@@ -33,7 +33,8 @@ class AeroponicSimulatorEnv:
         self.interval_max = 600.0   # 10 minutes maximum OFF
 
         # Reward weights (tuned for realistic penalty hierarchy)
-        self.w_growth = 50.0
+        # Priority: Growth > Stability > Efficiency > Exploration
+        self.w_growth = 100.0
         self.w_mist_cost = 0.002
         self.w_valve_cost = 0.15
         self.w_env = 0.05
@@ -647,8 +648,7 @@ class AeroponicSimulatorEnv:
         reward = self._compute_reward([D_mist, interval_sec, A_valve], T_continuous=T_continuous_for_reward)
         
         # Survival bonus: reward agent for each step it stays alive
-        # This incentivizes maintaining healthy state throughout the episode
-        reward += 2.0
+        reward += 0.5
         
         # Survival milestone bonuses for reaching key time checkpoints
         # This provides strong positive reinforcement for longevity
@@ -833,11 +833,11 @@ class AeroponicSimulatorEnv:
             a_valve_toggles = sum(1 for i in range(1, len(recent_actions)) if recent_actions[i, 2] != recent_actions[i-1, 2])
 
             if d_mist_std > 10.0:
-                P_diversity += 0.5 + 1.5 * min(1.0, (d_mist_std - 10.0) / 40.0)
+                P_diversity += 0.1 + 0.2 * min(1.0, (d_mist_std - 10.0) / 40.0)
             if interval_std > 20.0:
-                P_diversity += 0.5 + 0.5 * min(1.0, (interval_std - 20.0) / 40.0)
+                P_diversity += 0.1 + 0.2 * min(1.0, (interval_std - 20.0) / 40.0)
             if a_valve_toggles >= 1:
-                P_diversity += 0.5
+                P_diversity += 0.1
 
         R_efficiency = 0.0
         stability_ok = (
@@ -848,11 +848,11 @@ class AeroponicSimulatorEnv:
         )
         if stability_ok:
             if D_mist <= 300.0:
-                R_efficiency += 0.2 * (300.0 - D_mist) / 180.0
+                R_efficiency += 0.3 * (300.0 - D_mist) / 180.0
             if interval_sec >= 300.0:
-                R_efficiency += 0.2 * (interval_sec - 300.0) / 300.0
+                R_efficiency += 0.3 * (interval_sec - 300.0) / 300.0
             if A_valve < 0.5 and D_mist < 300.0 and interval_sec > 300.0:
-                R_efficiency += 0.4
+                R_efficiency += 0.6
 
         # Penalize root shrinkage and low/alive status
         P_shrink = self._last_P_shrink
