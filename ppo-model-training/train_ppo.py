@@ -203,6 +203,8 @@ class RewardLoggingCallback(BaseCallback):
             "reward_shrink",
             "reward_death",
             "reward_extreme",
+            "reward_joint_tin_o2",
+            "episode_phase",
         ]
 
         for info, done in zip(infos, dones):
@@ -237,6 +239,8 @@ class RewardLoggingCallback(BaseCallback):
             "reward_shrink",
             "reward_death",
             "reward_extreme",
+            "reward_joint_tin_o2",
+            "episode_phase",
         ]
 
         recent = self.episode_rewards[-self.window_size:]
@@ -305,7 +309,7 @@ def train_ppo():
     vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=1.0)
 
     # Training hyperparameters
-    total_timesteps = 500_000
+    total_timesteps = 800_000
     lr_schedule = linear_schedule(5e-4, 1e-5)
 
     # Adaptive entropy callback: stronger exploration for longer

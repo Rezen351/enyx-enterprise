@@ -57,6 +57,8 @@ class AeroponicSimulatorEnv:
         self._last_P_shrink = 0.0
         self._last_P_death = 0.0
         self._last_P_extreme = 0.0
+        self._last_R_joint_tin_o2 = 0.0
+        self._last_episode_phase = 1
 
         # T_in curriculum: gradually narrow optimal range from [12,30] to [18,24]
         self._t_in_target_center = 21.0
@@ -763,6 +765,8 @@ class AeroponicSimulatorEnv:
             'reward_shrink': self._last_P_shrink,
             'reward_death': self._last_P_death,
             'reward_extreme': self._last_P_extreme,
+            'reward_joint_tin_o2': self._last_R_joint_tin_o2,
+            'episode_phase': self._last_episode_phase,
             'captured': self._captured_this_step,
             'T_in': self.state[2],
             'T_out': self.state[4],
@@ -779,11 +783,22 @@ class AeroponicSimulatorEnv:
         if T_continuous is None:
             T_continuous = self.T_continuous
 
-        # Update T_in curriculum: gradually narrow optimal range
-        # Starts wide [12, 30] for easy exploration, ends at [18, 24] for precision
+        # Episode phase for curriculum learning
         episode_progress = min(1.0, self.current_time / max(self.episode_duration, 1.0))
-        curriculum_factor = 1.0 - episode_progress * 0.5  # 1.0 → 0.5
-        self._t_in_target_width = self._t_in_target_min_width + (6.0 - self._t_in_target_min_width) * curriculum_factor
+        if episode_progress < 0.33:
+            phase = 1  # Basic stability: pH, EC, H_in
+        elif episode_progress < 0.66:
+            phase = 2  # Intermediate: + T_in stability
+        else:
+            phase = 3  # Advanced: + T_in-O2 joint optimization
+
+        # Update T_in curriculum based on phase
+        if phase == 1:
+            self._t_in_target_width = 9.0  # [6, 36] - very wide
+        elif phase == 2:
+            self._t_in_target_width = 6.0  # [12, 30] - wide
+        else:
+            self._t_in_target_width = self._t_in_target_min_width + (6.0 - self._t_in_target_min_width) * (1.0 - (episode_progress - 0.66) / 0.34)
 
         R_growth = self.last_reward_growth
         self.last_reward_growth = 0.0
@@ -823,7 +838,13 @@ class AeroponicSimulatorEnv:
         P_env = self.w_env * (dev_pH + dev_EC + dev_Hin)
 
         O2_status = max(0.2, 1.0 - 0.08 * max(0, T_continuous - 3))
-        P_hypoxia = self.w_hypoxia * max(0.0, 1.0 - O2_status)
+        # Phase-dependent hypoxia penalty
+        # Phase 1-2: no penalty (agent learns basics first)
+        # Phase 3: full penalty
+        if phase >= 3:
+            P_hypoxia = self.w_hypoxia * max(0.0, 1.0 - O2_status)
+        else:
+            P_hypoxia = 0.0
 
         # State-based reward: encourage healthy ranges with gradual approach
         T_root = self.T_root
@@ -852,7 +873,7 @@ class AeroponicSimulatorEnv:
         else:
             R_state -= 0.8 * (85.0 - H_in) / 10.0
 
-        # T_in stability (agent-observable): curriculum from [12, 30] to [18, 24]
+        # T_in stability (agent-observable): phase-dependent curriculum
         t_in_low = self._t_in_target_center - self._t_in_target_width / 2.0
         t_in_high = self._t_in_target_center + self._t_in_target_width / 2.0
         if t_in_low <= T_in <= t_in_high:
@@ -870,11 +891,29 @@ class AeroponicSimulatorEnv:
         else:
             R_state -= 0.2 * min(1.0, (T_root - 22.0) / 10.0)
 
-        # O2 stability: optimal >= 0.6
-        if O2_status >= 0.6:
-            R_state += 0.4
-        else:
-            R_state -= 0.4 * min(1.0, (0.6 - O2_status) / 0.4)
+        # O2 stability: phase-dependent
+        # Phase 1: no O2 penalty (agent learns basics first)
+        # Phase 2: mild O2 awareness
+        # Phase 3: full O2 penalty + joint T_in-O2 bonus
+        if phase >= 2:
+            o2_threshold = 0.6
+            if O2_status >= o2_threshold:
+                R_state += 0.4
+            else:
+                R_state -= 0.4 * min(1.0, (o2_threshold - O2_status) / 0.4)
+
+        # Joint T_in-O2 stability bonus (Phase 3 only)
+        # Encourages agent to find sweet spot: good T_in AND good O2
+        if phase == 3:
+            t_in_ok = t_in_low <= T_in <= t_in_high
+            o2_ok = O2_status >= 0.6
+            if t_in_ok and o2_ok:
+                R_state += 0.8  # Bonus for maintaining both
+            elif t_in_ok and not o2_ok:
+                R_state += 0.2  # Partial credit
+            elif o2_ok and not t_in_ok:
+                R_state += 0.2  # Partial credit
+            # No bonus if both are bad
 
         # Action shaping: gradual reward for effective misting duration
         if D_mist >= 120.0:
@@ -899,15 +938,40 @@ class AeroponicSimulatorEnv:
             if a_valve_toggles >= 1:
                 P_diversity += 0.2
 
+        # Joint T_in-O2 stability bonus (Phase 3 only)
+        R_joint_tin_o2 = 0.0
+        if phase == 3:
+            t_in_ok = t_in_low <= T_in <= t_in_high
+            o2_ok = O2_status >= 0.6
+            if t_in_ok and o2_ok:
+                R_joint_tin_o2 = 0.8
+            elif t_in_ok or o2_ok:
+                R_joint_tin_o2 = 0.2
+
         R_efficiency = 0.0
         t_in_low = self._t_in_target_center - self._t_in_target_width / 2.0
         t_in_high = self._t_in_target_center + self._t_in_target_width / 2.0
-        stability_ok = (
-            1.2 <= EC <= 2.0 and
-            5.5 <= pH <= 6.5 and
-            H_in >= 80.0 and
-            t_in_low <= T_in <= t_in_high
-        )
+        if phase == 1:
+            stability_ok = (
+                1.2 <= EC <= 2.0 and
+                5.5 <= pH <= 6.5 and
+                H_in >= 80.0
+            )
+        elif phase == 2:
+            stability_ok = (
+                1.2 <= EC <= 2.0 and
+                5.5 <= pH <= 6.5 and
+                H_in >= 80.0 and
+                t_in_low <= T_in <= t_in_high
+            )
+        else:
+            stability_ok = (
+                1.2 <= EC <= 2.0 and
+                5.5 <= pH <= 6.5 and
+                H_in >= 80.0 and
+                t_in_low <= T_in <= t_in_high and
+                O2_status >= 0.6
+            )
         if stability_ok:
             if D_mist <= 300.0:
                 R_efficiency += 0.3 * (300.0 - D_mist) / 180.0
@@ -926,7 +990,7 @@ class AeroponicSimulatorEnv:
         if A_valve >= 0.5 and (D_mist <= 120.0 or interval_sec <= 120.0):
             P_extreme += 0.5
         
-        R_total = R_growth + R_growth_proxy + R_state + P_diversity + R_efficiency - C_resource - P_env - P_hypoxia - P_extreme - P_shrink - P_death
+        R_total = R_growth + R_growth_proxy + R_state + R_joint_tin_o2 + P_diversity + R_efficiency - C_resource - P_env - P_hypoxia - P_extreme - P_shrink - P_death
 
         self._last_R_growth = R_growth
         self._last_R_growth_proxy = R_growth_proxy
@@ -938,6 +1002,8 @@ class AeroponicSimulatorEnv:
         self._last_P_shrink = P_shrink
         self._last_P_death = P_death
         self._last_P_extreme = P_extreme
+        self._last_R_joint_tin_o2 = R_joint_tin_o2
+        self._last_episode_phase = phase
 
         return R_total
 

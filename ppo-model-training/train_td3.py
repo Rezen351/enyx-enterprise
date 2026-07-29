@@ -138,20 +138,17 @@ class RewardLoggingCallback(BaseCallback):
 
         keys = [
             "reward_growth",
+            "reward_growth_proxy",
             "reward_resource",
             "reward_state",
             "reward_env",
             "reward_hypoxia",
-            "reward_interval",
             "reward_efficiency",
             "reward_shrink",
             "reward_death",
             "reward_extreme",
-            "reward_smooth",
-            "reward_stability",
-            "reward_anti_extreme",
-            "reward_humidity_proxy",
-            "reward_low_humidity_penalty",
+            "reward_joint_tin_o2",
+            "episode_phase",
         ]
 
         for info, done in zip(infos, dones):
@@ -184,20 +181,17 @@ class RewardLoggingCallback(BaseCallback):
 
         keys = [
             "reward_growth",
+            "reward_growth_proxy",
             "reward_resource",
             "reward_state",
             "reward_env",
             "reward_hypoxia",
-            "reward_interval",
             "reward_efficiency",
             "reward_shrink",
             "reward_death",
             "reward_extreme",
-            "reward_smooth",
-            "reward_stability",
-            "reward_anti_extreme",
-            "reward_humidity_proxy",
-            "reward_low_humidity_penalty",
+            "reward_joint_tin_o2",
+            "episode_phase",
         ]
 
         recent = self.episode_rewards[-self.window_size:]
@@ -310,7 +304,7 @@ def train_td3():
     print(f"Hyperparameters:")
     print(f"  Total timesteps: {total_timesteps:,}")
     print(f"  Learning rate: 1e-4 (linear schedule)")
-    print(f"  Buffer size: 300,000")
+    print(f"  Buffer size: 100,000")
     print(f"  Learning starts: 10,000")
     print(f"  Batch size: 256")
     print(f"  Tau: 0.005")
