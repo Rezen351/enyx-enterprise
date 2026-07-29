@@ -26,11 +26,11 @@ class AeroponicSimulatorEnv:
         self._episode_start_time = 0.0
         self._mode = 'training'  # 'training' or 'simulation'
 
-        # Action space bounds (realistic ranges: 2-10 minutes)
-        self.D_mist_min = 120.0   # 2 minutes minimum ON
-        self.D_mist_max = 600.0   # 10 minutes maximum ON
-        self.interval_min = 120.0   # 2 minutes minimum OFF
-        self.interval_max = 600.0   # 10 minutes maximum OFF
+        # Action space bounds (realistic ranges: 1-15 minutes)
+        self.D_mist_min = 60.0   # 1 minute minimum ON
+        self.D_mist_max = 900.0  # 15 minutes maximum ON
+        self.interval_min = 60.0   # 1 minute minimum OFF
+        self.interval_max = 900.0  # 15 minutes maximum OFF
 
         # Reward weights (tuned for realistic penalty hierarchy)
         self.w_growth = 50.0

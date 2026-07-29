@@ -30,7 +30,7 @@ class AeroponicGymnasiumEnv(gym.Env):
     Action: 3D continuous [-1, 1] normalized, mapped to physical ranges:
       - D_mist: [60, 900] seconds (1-15 minutes ON)
       - interval_sec: [60, 900] seconds (1-15 minutes OFF)
-      - A_valve: [0, 1] (threshold at 0)
+      - A_valve: [0, 1] (threshold at 0.5)
     """
     def __init__(self):
         super().__init__()
@@ -51,11 +51,11 @@ class AeroponicGymnasiumEnv(gym.Env):
             dtype=np.float32,
         )
 
-        # Physical action bounds for mapping (realistic ranges: 2-10 minutes)
-        self.D_mist_min = 120.0
-        self.D_mist_max = 600.0
-        self.interval_min = 120.0
-        self.interval_max = 600.0
+        # Physical action bounds for mapping (expanded to 1-15 minutes)
+        self.D_mist_min = 60.0
+        self.D_mist_max = 900.0
+        self.interval_min = 60.0
+        self.interval_max = 900.0
 
     def _map_action(self, action):
         """Map normalized [-1, 1] actions to physical ranges."""
