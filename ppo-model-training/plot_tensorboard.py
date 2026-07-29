@@ -39,8 +39,6 @@ def plot_training_curves(metrics, out_path):
     key_metrics = {
         'rollout/ep_rew_mean': 'Mean Episode Reward',
         'rollout/ep_len_mean': 'Episode Length',
-        'rollout/episode_duration_seconds': 'Episode Duration (seconds)',
-        'rollout/cycle_count_mean': 'Cycle Count per Episode',
         'train/loss': 'Policy Loss',
         'train/value_loss': 'Value Loss',
         'train/entropy_loss': 'Entropy Loss',
@@ -53,7 +51,6 @@ def plot_training_curves(metrics, out_path):
         'rollout/reward_state': 'Reward State',
         'rollout/reward_env': 'Reward Env',
         'rollout/reward_hypoxia': 'Reward Hypoxia',
-        'rollout/reward_interval': 'Reward Interval',
         'rollout/reward_efficiency': 'Reward Efficiency',
     }
 
@@ -147,8 +144,6 @@ def print_summary(metrics):
     key_metrics = {
         'rollout/ep_rew_mean': 'Mean Episode Reward',
         'rollout/ep_len_mean': 'Episode Length',
-        'rollout/episode_duration_seconds': 'Episode Duration (seconds)',
-        'rollout/cycle_count_mean': 'Cycle Count per Episode',
         'train/loss': 'Policy Loss',
         'train/value_loss': 'Value Loss',
         'train/entropy_loss': 'Entropy Loss',
@@ -161,7 +156,6 @@ def print_summary(metrics):
         'rollout/reward_state': 'Reward State',
         'rollout/reward_env': 'Reward Env',
         'rollout/reward_hypoxia': 'Reward Hypoxia',
-        'rollout/reward_interval': 'Reward Interval',
         'rollout/reward_efficiency': 'Reward Efficiency',
     }
 

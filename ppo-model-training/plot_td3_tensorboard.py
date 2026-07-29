@@ -38,8 +38,6 @@ def plot_training_curves(metrics, out_path):
     key_metrics = {
         'rollout/ep_rew_mean': 'Mean Episode Reward',
         'rollout/ep_len_mean': 'Episode Length',
-        'rollout/episode_duration_seconds': 'Episode Duration (seconds)',
-        'rollout/cycle_count_mean': 'Cycle Count per Episode',
         'train/actor_loss': 'Actor Loss',
         'train/critic_loss': 'Critic Loss',
         'train/learning_rate': 'Learning Rate',
@@ -48,10 +46,7 @@ def plot_training_curves(metrics, out_path):
         'rollout/reward_state': 'Reward State',
         'rollout/reward_env': 'Reward Env',
         'rollout/reward_hypoxia': 'Reward Hypoxia',
-        'rollout/reward_interval': 'Reward Interval',
         'rollout/reward_efficiency': 'Reward Efficiency',
-        'rollout/reward_humidity_proxy': 'Reward Humidity Proxy',
-        'rollout/reward_low_humidity_penalty': 'Reward Low Humidity Penalty',
     }
 
     n_plots = len(key_metrics)
@@ -142,8 +137,6 @@ def print_summary(metrics):
     key_metrics = {
         'rollout/ep_rew_mean': 'Mean Episode Reward',
         'rollout/ep_len_mean': 'Episode Length',
-        'rollout/episode_duration_seconds': 'Episode Duration (seconds)',
-        'rollout/cycle_count_mean': 'Cycle Count per Episode',
         'train/actor_loss': 'Actor Loss',
         'train/critic_loss': 'Critic Loss',
         'train/learning_rate': 'Learning Rate',
@@ -152,10 +145,7 @@ def print_summary(metrics):
         'rollout/reward_state': 'Reward State',
         'rollout/reward_env': 'Reward Env',
         'rollout/reward_hypoxia': 'Reward Hypoxia',
-        'rollout/reward_interval': 'Reward Interval',
         'rollout/reward_efficiency': 'Reward Efficiency',
-        'rollout/reward_humidity_proxy': 'Reward Humidity Proxy',
-        'rollout/reward_low_humidity_penalty': 'Reward Low Humidity Penalty',
     }
 
     for tag, name in key_metrics.items():
