@@ -31,7 +31,12 @@ services/stream/stream-svc
 # ML model weights (store in the models volume, not the repo)
 *.pt
 
-# PPO training artifacts
+# TD3/PPO training artifacts
+control-model-training/models/*.zip
+control-model-training/models/*.pkl
+control-model-training/aeroponic_td3_tensorboard/
+control-model-training/results/*.png
+control-model-training/results/*.csv
 ppo-model-training/models/*.zip
 ppo-model-training/models/*.pkl
 ppo-model-training/aeroponic_ppo_tensorboard/
