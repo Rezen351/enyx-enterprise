@@ -37,7 +37,7 @@ function CircleDotIcon({ className }) {
 }
 import PageHeader from './PageHeader';
 import streamApi from '../../../api/stream';
-import { useModule } from '../../../context/ModuleContext';
+import { useModule } from '../../../context/useModule';
 
 // ─── Role helpers ──────────────────────────────────────────────────────────────
 function currentUser() {
@@ -99,7 +99,7 @@ function MtxPlayer({ name, enabled }) {
             videoRef.current?.play().catch(() => {});
           });
         }
-      } catch (e) {
+      } catch {
         // silent
       }
     }

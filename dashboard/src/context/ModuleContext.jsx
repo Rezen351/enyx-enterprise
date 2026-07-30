@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useState, useEffect, useCallback } from 'react';
 import { moduleApi } from '../api/module';
 
 const ModuleContext = createContext(null);
@@ -91,10 +91,4 @@ export function ModuleProvider({ children }) {
       {children}
     </ModuleContext.Provider>
   );
-}
-
-export function useModule() {
-  const ctx = useContext(ModuleContext);
-  if (!ctx) throw new Error('useModule must be used inside ModuleProvider');
-  return ctx;
 }

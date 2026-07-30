@@ -20,10 +20,10 @@ import {
 } from 'lucide-react';
 import PageHeader from './PageHeader';
 import EnvironmentalOverview from './EnvironmentalOverview';
-import { API_BASE, getToken, request, getWsUrl } from '../../../api/client';
+import { getToken, request, getWsUrl } from '../../../api/client';
 import controlApi from '../../../api/control';
 import { moduleApi } from '../../../api/module';
-import { useModule } from '../../../context/ModuleContext';
+import { useModule } from '../../../context/useModule';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 

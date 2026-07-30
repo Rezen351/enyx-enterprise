@@ -1,25 +1,17 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Download,
-  RefreshCw,
   Loader2,
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
   FileText,
   Table,
-  Workflow,
-  ShieldAlert,
-  TerminalSquare,
-  ScrollText,
-  Search,
   Filter,
 } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { exportApi } from '../../../api/export';
-import { useModule } from '../../../context/ModuleContext';
-
-const PAGE_SIZES = [25, 50, 100];
+import { useModule } from '../../../context/useModule';
 
 const EXPORT_TABS = [
   { id: 'telemetry', label: 'Telemetry', icon: Table },
@@ -162,22 +154,6 @@ function fmtDate(d) {
   return dt.toISOString().slice(0, 10);
 }
 
-function badgeForExportType(type) {
-  switch (type) {
-    case 'telemetry':
-    case 'aggregate':
-      return 'bg-sky-500/15 text-sky-300 border-sky-500/30';
-    case 'alerts':
-      return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
-    case 'commands':
-      return 'bg-violet-500/15 text-violet-300 border-violet-500/30';
-    case 'audit':
-      return 'bg-red-500/15 text-red-300 border-red-500/30';
-    default:
-      return 'bg-slate-500/15 text-slate-300 border-slate-500/30';
-  }
-}
-
 export default function Export() {
   const { selectedModule } = useModule();
   const [tab, setTab] = useState('telemetry');
@@ -195,14 +171,13 @@ export default function Export() {
     return fmtDate(d);
   });
   const [to, setTo] = useState(() => fmtDate(new Date()));
-  const [limit, setLimit] = useState(10000);
+  const [limit] = useState(10000);
   const [offset, setOffset] = useState(0);
   const [event, setEvent] = useState('');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('time');
   const [order, setOrder] = useState('desc');
 
-  const [results, setResults] = useState(null);
   const [preview, setPreview] = useState([]);
   const [total, setTotal] = useState(0);
 
@@ -272,14 +247,6 @@ export default function Export() {
       setMetric('*');
     }
   }, [metric]);
-
-  if (!canExport()) {
-    return (
-      <div className="border border-red-500/20 bg-red-500/5 p-6 text-red-300">
-        You do not have permission to export data.
-      </div>
-    );
-  }
 
   const loadDiscover = useCallback(async () => {
     setLoading(true);
@@ -364,11 +331,9 @@ export default function Export() {
           });
           setPreview(rows.slice(0, 10));
           setTotal(rows.length);
-          setResults({ rows });
         } else {
           setPreview([]);
           setTotal(0);
-          setResults(null);
         }
       } else {
         const payload = res?.data || res;
@@ -379,12 +344,10 @@ export default function Export() {
         const previewRows = Array.isArray(data) ? data.slice(0, 10) : [];
         setPreview(previewRows);
         setTotal(typeof payload.total === 'number' ? payload.total : (Array.isArray(data) ? data.length : previewRows.length));
-        setResults(payload);
       }
     } catch (err) {
       setError(err?.message || 'Failed to load export preview');
       setPreview([]);
-      setResults(null);
     } finally {
       setLoading(false);
     }
@@ -395,6 +358,14 @@ export default function Export() {
       loadPreview();
     }
   }, [tab, loadPreview, format, nodeId, metric, moduleId, from, to, limit, offset, event, search, sort, order]);
+
+  if (!canExport()) {
+    return (
+      <div className="border border-red-500/20 bg-red-500/5 p-6 text-red-300">
+        You do not have permission to export data.
+      </div>
+    );
+  }
 
   const download = async (downloadFormat) => {
     setLoading(true);
@@ -474,7 +445,7 @@ export default function Export() {
           return (
             <button
               key={t.id}
-              onClick={() => { setTab(t.id); setOffset(0); setPreview([]); setResults(null); setDiscover(null); }}
+              onClick={() => { setTab(t.id); setOffset(0); setPreview([]); setDiscover(null); }}
               className={`flex items-center gap-2 px-3 py-2.5 text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap cursor-pointer ${
                 active
                   ? 'border-b-2 border-emerald-500 text-emerald-400'

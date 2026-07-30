@@ -17,7 +17,7 @@ import PageHeader from './PageHeader';
 import streamApi from '../../../api/stream';
 import mlApi from '../../../api/ml';
 import { withToken } from '../../../api/client';
-import { useModule } from '../../../context/ModuleContext';
+import { useModule } from '../../../context/useModule';
 
 function canManage() {
   try {

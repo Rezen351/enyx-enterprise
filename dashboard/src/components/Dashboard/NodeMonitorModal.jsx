@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Activity, X, Radio, Trash2, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
-import { API_BASE, getToken, getWsUrl } from '../../api/client';
+import { getToken, getWsUrl } from '../../api/client';
 
 function safeJson(raw) {
   try {

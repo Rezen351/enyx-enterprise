@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Server, Plus, Edit2, Trash2, AlertTriangle, Save, X, Network } from 'lucide-react';
-import { useModule } from '../../../context/ModuleContext';
+import { useModule } from '../../../context/useModule';
 import { moduleApi } from '../../../api/module';
 import NodeManagement from './NodeManagement';
 

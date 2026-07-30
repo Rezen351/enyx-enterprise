@@ -25,7 +25,8 @@ import Register from './components/Auth/Register';
 import DashboardLayout from './components/Dashboard/DashboardLayout';
 import WebSerialClient from './components/WebSerial/WebSerialClient';
 import Docs from './components/Docs/Docs';
-import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { ThemeProvider } from './context/ThemeContext';
+import { useTheme } from './context/useTheme';
 import { authApi } from './api/auth';
 import { registerUnauthorized, registerServerError, clearSession } from './api/client';
 

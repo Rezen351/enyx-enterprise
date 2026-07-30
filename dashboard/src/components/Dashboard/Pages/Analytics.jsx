@@ -29,7 +29,7 @@ import {
 import PageHeader from './PageHeader';
 import analyticsApi from '../../../api/analytics';
 import { moduleApi } from '../../../api/module';
-import { useModule } from '../../../context/ModuleContext';
+import { useModule } from '../../../context/useModule';
 
 ChartJS.register(
   CategoryScale,

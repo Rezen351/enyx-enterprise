@@ -41,7 +41,7 @@ function ClockWidget() {
     </div>
   );
 }
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme } from '../../context/useTheme';
 import { ModuleProvider } from '../../context/ModuleContext';
 import Sidebar from './Sidebar';
 import ModuleSelector from './ModuleSelector';

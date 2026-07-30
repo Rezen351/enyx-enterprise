@@ -23,7 +23,7 @@ import {
 import PageHeader from './PageHeader';
 import controlApi from '../../../api/control';
 import { moduleApi } from '../../../api/module';
-import { useModule } from '../../../context/ModuleContext';
+import { useModule } from '../../../context/useModule';
 
 // Schedule type → editable parameters (kept in sync with Control Service).
 const SCHEDULE_TYPES = {

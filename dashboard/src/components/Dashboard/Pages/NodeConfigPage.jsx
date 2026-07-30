@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeft, Activity, Tags, Plus, Trash2, Save, Radio, AlertTriangle, RefreshCw, Wifi, WifiOff, SlidersHorizontal } from 'lucide-react';
-import { API_BASE, getToken, getWsUrl } from '../../../api/client';
+import { getToken, getWsUrl } from '../../../api/client';
 import { moduleApi } from '../../../api/module';
 
 function safeJson(raw) {

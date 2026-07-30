@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Bell, BellOff, ShieldAlert, X } from 'lucide-react';
-import { useNotification } from '../../context/NotificationContext';
+import { useNotification } from '../../context/useNotification';
 
 function relativeTime(ts) {
   try {

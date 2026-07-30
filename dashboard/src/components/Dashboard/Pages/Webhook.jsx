@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Globe,
-  RefreshCw,
   Loader2,
   AlertTriangle,
   ChevronLeft,
@@ -10,7 +9,6 @@ import {
   Settings2,
   ScrollText,
   Save,
-  Bell,
   Mail,
 } from 'lucide-react';
 import PageHeader from './PageHeader';

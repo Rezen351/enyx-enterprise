@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { API_BASE, getWsUrl } from '../api/client';
+import { createContext, useState, useEffect, useCallback } from 'react';
+import { getWsUrl } from '../api/client';
 
 const NotificationContext = createContext();
 
@@ -171,8 +171,4 @@ export function NotificationProvider({ children }) {
       {children}
     </NotificationContext.Provider>
   );
-}
-
-export function useNotification() {
-  return useContext(NotificationContext);
 }

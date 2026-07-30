@@ -1,5 +1,5 @@
 import { Server, ChevronDown, Loader2 } from 'lucide-react';
-import { useModule } from '../../context/ModuleContext';
+import { useModule } from '../../context/useModule';
 
 function ModuleSelector() {
   const { modules, selectedModule, setSelectedModule, loadingModules } = useModule();
