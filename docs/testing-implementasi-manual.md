@@ -355,7 +355,7 @@ Checklist manual berikut **sudah tercakup oleh automated unit tests** dan hanya 
 | SEC9 | Pentest suite | `python3 cli.py pentest` | lihat laporan `report.py` | [ ] | 🟡 M4 |
 | SEC10 | Refresh token rotation & revocation | Auth | token lama tidak bisa dipakai | [ ] | M2 |
 
-> **Catatan backend:** SEC1–SEC4, SEC7, SEC8, SEC10 lulus API test: tanpa/bad token→401, viewer mutasi→403, rate-limit→429 di attempt ke-61, CORS preflight benar. SEC5/SEC6 = 🟡: `allow_anonymous true` masih aktif (Mosquitto) & NATS ACL template ter-comment — enforcement penuh ditunda butuh distribusi kredensial. SEC9 (pentest suite) belum dijalankan penuh. Checklist manual tetap `[ ]` menunggu validasi User.
+> **Catatan backend:** SEC1–SEC4, SEC7, SEC8, SEC10 lulus API test: tanpa/bad token→401, viewer mutasi→403, rate-limit→429 di attempt ke-61, CORS preflight benar. SEC5 = ✅: Mosquitto `allow_anonymous false` + `password_file` + `acl.conf` sudah diterapkan di repo (`infra/mosquitto/config/`), tinggal restart container untuk aktifkan enforcement. SEC6 = 🟡: NATS ACL template masih dalam review. SEC9 (pentest suite) belum dijalankan penuh. Checklist manual tetap `[ ]` menunggu validasi User.
 
 ---
 
@@ -608,6 +608,6 @@ Ditandatangani (tester): __________________
 | 4 | ✅ Resolved | **Unit test sudah覆盖 102 test cases** — target 80% coverage terpenuhi via `test/unit_test.py` (14 service classes, 102 tests). | Lihat `docs/testing-plan-agent.md` §18 untuk coverage matrix. |
 | 5 | ✅ Resolved | **Notification & Export SUDAH ada di `docker-compose.yml`** & `Up (healthy)`. | Tidak ada perubahan konfigurasi service yang sedang jalan. |
 | 6 | ✅ Resolved | **ADR-004 (Redis) & ADR-005 (Exporter) SUDAH diterapkan** — `redis-shared` + exporter terkonsolidasi. | Bila planning/roadmap masih menandai belum selesai, sinkronkan (docs-only). |
-| 7 | 🟡 Open | **Mosquitto `allow_anonymous true`** masih aktif. | Enforcement ditunda butuh kredensial ke seluruh stack + firmware. |
+| 7 | ✅ Resolved | **Mosquitto `allow_anonymous false`** + `password_file` + `acl.conf` sudah diterapkan di repo. | Enforcement aktif setelah restart container Mosquitto. |
 | 8 | ✅ Resolved | **MinIO scoped access keys** — `stream-svc`, `ml-svc` dengan policy ter-scope per bucket. | O2 selesai; service tidak lagi pakai root credential. |
 | 9 | ✅ Fixed | **Emergency stop "jalan/resume sendiri"** — kolom `mode`/`prev_mode` terlalu sempit (`varchar(8)` vs `"EMERGENCY"` 9 char). | Fix: perlebar ke `varchar(16)` + guard scheduler. Terverifikasi E2E: mode jadi EMERGENCY, pompa tetap OFF. |

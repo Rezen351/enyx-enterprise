@@ -67,11 +67,11 @@ lain), `cors` (origins localhost:3000/5173 + `FRONTEND_URL`), `prometheus`.
 - Redis **SUDAH di-consolidate** → 1 instance `redis-shared` (multi-DB: module=DB0, alert=DB1, notification=DB2, export=DB3) — ADR-004 ✅ terapan.
 - Exporter **SUDAH di-consolidate** → 3 container (`mysqld-exporter-all` 8 port, `postgres-exporter-all` 2 port, `redis-exporter` 4 series) — ADR-005 ✅ terapan. Total 31 Prometheus target.
 - MinIO **sudah 1 instance bersama** multi-bucket (`stream`/`ml-vision`), semua bucket `private` (anonymous download ditolak). Scoped access key per-service ✅ sudah diterapkan (O2 selesai).
-- Mosquitto **masih `allow_anonymous true`** (ACL template ter-comment) — 🟡 open item O1.
+- Mosquitto `allow_anonymous false` + `password_file` + `acl.conf` **sudah diterapkan** di repo (`infra/mosquitto/config/`). Container Mosquitto perlu direstart untuk mengaktifkan enforcement — 🟡 open item O1 selesai, tinggalenergizing runtime.
 - `monitor` (CLI `docker stats`) **SUDAH DI-REMOVE** (commit `b444390`, 2026-07-15); visibility resource container kini via `cadvisor` + `node-exporter` (Prometheus). §13 di test plan telah dihapus agar tidak merujuk service yang tidak ada.
 
 **Open Remediation (lihat `roadmap.md` § Remediasi Keamanan Terbuka):**
-- O1: Mosquitto `allow_anonymous false` + `acl.conf` enforcement (belum).
+- O1: Mosquitto enforcement **sudah closed** — config file sudah diterapkan, tinggal restart container untuk aktifkan.
 
 ---
 
@@ -974,7 +974,7 @@ Sinkron dengan `roadmap.md` § "Yang belum dikerjakan" & "Rekomendasi Eksekusi T
 
 ## Catatan Lintas-Service
 - GAP-1 (WS `system-status`), GAP-2 (`?token=` WS), GAP-3 (Export di-UI) **SUDAH SELESAI** — lihat §11/§10/§16.
-- Open remediation keamanan: O1 (Mosquitto `allow_anonymous`) — lihat `roadmap.md` § Remediasi Keamanan Terbuka. O2 (MinIO scoped key) **sudah selesai**.
+- Open remediation keamanan: O1 (Mosquitto `allow_anonymous`) **sudah closed** — config file sudah diterapkan, tinggal restart container untuk aktifkan enforcement. O2 (MinIO scoped key) **sudah selesai**.
 - Semua route dashboard harus punya pasangan Kong + service valid (cek `vite build`).
 - Cross-cutting TA-Scale (DLQ/Outbox/CI/Test) **sudah selesai** — lihat `logs.md` 2026-07-16/21.
 

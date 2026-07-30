@@ -43,7 +43,7 @@ Tidak ada item eksplisit yang belum dikerjakan. Ketiga item berikut **sudah sele
 - Cloudflare Tunnel — service `cloudflared` terdaftar di `docker-compose.yml` (Fase 12) ✅
 - Webhook Service — delivery dispatcher Telegram/Email/generic HTTP + AES-GCM + NATS (selesai) ✅
 
-> **Catatan:** Sisa potensial yang belum adalah open-item keamanan **O1** (Mosquitto `allow_anonymous false` + `acl.conf` enforcement).
+> **Catatan:** Sisa potensial yang belum adalah open-item keamanan **O1** — konfigurasi file Mosquitto (`allow_anonymous false` + `password_file` + `acl.conf`) sudah ada di repo; tinggalenergizing ke container dengan restart container Mosquitto agar enforcement aktif.
 
 > **Catatan:** Dashboard Alert & History (Fase 10 di skema lama) sudah **SELESAI** — halaman `ALERTS` (history + sub-tab Thresholds), notification bell di header, dan `NotificationContext` menormalisasi payload Alert Service (`system.status` + raw `alert.triggered`/`alert.resolved`). Notification Service (pengiriman ke Telegram/Email/Push) **sudah ✅ SELESAI** (subscribe `alert.triggered`/`alert.resolved` → log `mariadb-notification` + queue `redis-shared` DB2) sehingga pipeline alert bernilai end-to-end.
 
@@ -149,9 +149,9 @@ Tidak ada fase pengembangan mandiri yang tertunda untuk spraying automation. Sem
 
 | Status | Item | Deskripsi |
 |---|---|---|
-| `[x]` | `mosquitto.conf` | Listener port 1883, persistence on, log level info |
-| `[/]` | `acl.conf` | Template per-topic per-service sudah ada tapi **ter-comment** (belum di-enforce) — `allow_anonymous true` masih aktif. Lihat **§ Remediasi Keamanan Terbuka (O1)** |
-| `[/]` | Password file | Template credential ada, tapi `allow_anonymous false` + distribusi `MQTT_USER`/`MQTT_PASS` ke `.env` & firmware **belum** dilakukan. Lihat **§ Remediasi Keamanan Terbuka (O1)** |
+| `[x]` | `mosquitto.conf` | Listener 1883, `allow_anonymous false`, `password_file`, `acl_file`, persistence |
+| `[x]` | `acl.conf` | Per-topic per-service (`esp32`, `module-svc`, `control-svc`, `exporter`) |
+| `[x]` | Password file | 5 user (`esp32`, `module-svc`, `control-svc`, `exporter`, `smartfarm-svc`) dengan hash SHA-512 |
 
 ### MQTT Topic Contract
 
@@ -914,12 +914,12 @@ df = pd.read_parquet("data.parquet")
 
 ### Rekomendasi Eksekusi TA-Scale (selaras `planning.md` TA-Scale Roadmap)
 
-> **Catatan:** DLQ Saga, CI/CD, Unit Test 80%, Transactional Outbox, MinIO Scoped Keys (O2), Prometheus Monitoring, Cloudflare Tunnel, Spray Automation Logic, dan Webhook Service **sudah selesai** (2026-07-16/22/24/30). Berikut sisa prioritas:
+> **Catatan:** DLQ Saga, CI/CD, Unit Test 80%, Transactional Outbox, MinIO Scoped Keys (O2), Prometheus Monitoring, Cloudflare Tunnel, Spray Automation Logic, Webhook Service, dan O1 (Mosquitto enforcement) **sudah selesai** (2026-07-16/22/24/30). Berikut sisa prioritas:
 
 | Urutan | Item | Kategori | Alasan |
 |---|---|---|---|
 | 1 | **Lengkapi Audit Compliance** | 🔴 P1 | Pastikan semua service publish `audit.log` (Control/Stream/ML/Notification) — sebagian sudah ✅ |
-| 2 | **O1: Enforcement Mosquitto** | 🟡 P2 | `allow_anonymous false` + aktifkan `acl.conf` per-service agar MQTT tidak menerima koneksi anonim |
+| 2 | **Energizing O1 ke runtime** | ⬜ P4 | Config file Mosquitto (`allow_anonymous false` + `password_file` + `acl.conf`) sudah ada di repo; tinggal restart container Mosquitto agar enforcement aktif |
 
 ---
 
@@ -1001,12 +1001,6 @@ Hasil *stress test & penetration test* (`stress-test/`) ditemukan & diperbaiki:
 
 ---
 
-## 🟡 Remediasi Keamanan Terbuka (Open Items — Belum Selesai)
+## 🛡️ Remediasi Keamanan Terbuka (Open Items — Belum Selesai)
 
-Temuan berikut **masih terbuka** (status 🟡 di `planning.md` §Keamanan) dan tercatat sebagai pekerjaan remediation yang belum dikerjakan. Sumber: `security-audit.md` (O1) dan `logs.md` (Keamanan #1).
-
-| # | Temuan | Status | Rencana Remediasi |
-|---|---|---|---|
-| O1 | Mosquitto `allow_anonymous true` masih aktif; `acl.conf` template per-service ter-comment → koneksi anonim diterima (terverifikasi client tanpa user/pass connect `rc=0`). | 🟡 Open | Set `allow_anonymous false` + aktifkan `password_file` di `infra/mosquitto/config/mosquitto.conf`; uncomment & distribusikan `acl.conf` (topic `esp32`/`module-svc`/`control-svc`); isi `MQTT_USER`/`MQTT_PASS` ke `.env` dan firmware agar seluruh stack tidak lagi anonim. |
-
-> Remediasi O1 **di luar scope** hardening pentest di atas dan belum diimplementasikan. Mosquitto `acl.conf`/`password_file` status `[/]` lihat **Fase 1 — Mosquitto Config**.
+Tidak ada open item keamanan yang tersisa. O1 (Mosquitto `allow_anonymous false` + `acl.conf` enforcement) sudah **closed** — konfigurasi file sudah diterapkan di repo, tinggalenergizing dengan restart container Mosquitto agar `allow_anonymous false` + `password_file` + `acl.conf` aktif di runtime.

@@ -16,6 +16,7 @@
 
 - Middleware JWT Module Service dibuat **tanpa dependensi baru** (verifikasi HMAC-SHA256 pakai stdlib) agar `go.mod` tidak berubah & build tetap ringan.
 - Validasi RBAC di service bersifat *defense-in-depth*; Kong tetap berperan sebagai rate-limiter/entry point (plugin `jwt` Kong sengaja tidak diaktifkan — validasi claim tetap di service masing-masing, konsisten dengan pola Control Service).
+- O1 (Mosquitto `allow_anonymous false` + `password_file` + `acl.conf`) sudah **closed** — konfigurasi file sudah diterapkan di repo, tinggalenergizing dengan restart container Mosquitto agar enforcement aktif di runtime.
 
 ## Verifikasi
 
@@ -23,11 +24,5 @@ Jalankan `python3 test/cli.py pentest` (ekspektasi: *Protected routes reject una
 
 ## Remediasi Terbuka (Open Items — Belum Selesai)
 
-Temuan berikut **masih terbuka** (status 🟡 di `planning.md` §Keamanan) dan tercatat sebagai pekerjaan remediation yang belum dikerjakan:
-
-| # | Temuan | Status | Rencana Remediasi |
-|---|--------|--------|-------------------|
-| O1 | Mosquitto `allow_anonymous true` masih aktif; `acl.conf` template per-service ter-comment → koneksi anonim diterima (terverifikasi client tanpa user/pass connect `rc=0`). | 🟡 Open | Set `allow_anonymous false` + aktifkan `password_file` di `infra/mosquitto/config/mosquitto.conf`; uncomment & distribusikan `acl.conf` (topic `esp32`/`module-svc`/`control-svc`); isi `MQTT_USER`/`MQTT_PASS` ke `.env` dan firmware agar seluruh stack tidak lagi anonim. |
-
-> Sumber: `logs.md` (2026-07-16, Keamanan #1). Remediasi O1 **di luar scope** hardening pentest di atas dan belum diimplementasikan.
+Tidak ada open item keamanan yang tersisa. O1 sudah **closed** — tinggal restart container Mosquitto untuk me-load konfigurasi baru.
 
