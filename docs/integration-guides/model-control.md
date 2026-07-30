@@ -3,7 +3,7 @@
 > **Services:** `model-controller` (inference) · `model-control` (scheduler)  
 > **Version:** 1.0.0  
 > **Ports:** `model-controller:8080` · `model-control:8081`  
-> **Language / Framework:** Python 3.11 · FastAPI · Stable-Baselines3 (TD3 / PPO) + PyTorch  
+> **Language / Framework:** Python 3.11 · FastAPI · Stable-Baselines3 (TD3) + PyTorch  
 > **Object Storage:** MinIO shared instance (bucket `mlbucket`)  
 > **Messaging:** NATS (subjects `telemetry.ingest` + `telemetry.batch`)  
 > **Status:** Production-ready
@@ -14,14 +14,14 @@
 
 The Aeroponic Model Control Subsystem consists of two FastAPI microservices that together replace static misting schedules with adaptive RL policy execution:
 
-- **model-controller** — pure stateless inference service. Loads model binary (`aeroponic_td3.zip` or `aeroponic_ppo.zip`) + `VecNormalize` parameters from `/app/models` on startup. Exposes `POST /predict` which maps a 10D state vector to a 3D action vector (`D_mist`, `interval_sec`, `A_valve`).
+- **model-controller** — pure stateless inference service. Loads TD3 model binary (`aeroponic_td3.zip`) + `VecNormalize` parameters (`vec_normalize_td3.pkl`) from `/app/models` on startup. Exposes `POST /predict` which maps a 10D state vector to a 3D action vector (`D_mist`, `interval_sec`, `A_valve`).
 - **model-control** — scheduler loop and telemetry consumer. Subscribes to NATS `telemetry.ingest` + `telemetry.batch`, assembles the 10D state vector from telemetry cache + MinIO metadata, queries `model-controller` for inference, and applies actuation parameters to the Control Service **at cycle boundaries**.
 
 ### 1.1 Key Responsibilities
 
 | Responsibility | Service | Description |
 |---|---|---|
-| Policy inference | model-controller | Load SB3 model (PPO / TD3), normalize observations via `VecNormalize`, return action vector. |
+| Policy inference | model-controller | Load SB3 TD3 model, normalize observations via `VecNormalize`, return action vector. |
 | Telemetry aggregation | model-control | Subscribe to NATS ingest and batch subjects; maintain in-memory `TelemetryCache`. |
 | State assembly | model-control | Retrieve MinIO vision metadata (`root_length_cm`, `condition`) + cached metrics (`T_in`, `H_in`, `T_out`, `H_out`, `EC`, `pH`, `T_nut`) + diurnal solar index. |
 | Cycle-boundary actuation | model-control | Periodically execute tick, but apply schedule updates to Control Service only when the current ON+OFF cycle completes. |

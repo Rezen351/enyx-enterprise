@@ -187,6 +187,41 @@ schema bisnis existing tidak diubah; hanya tabel `outbox` baru + relay worker.
 
 ---
 
+## ADR-008 — Ganti algoritma RL dari PPO ke TD3 (2026-07-30)
+
+**Konteks:** Model PPO untuk AeroponicSimulatorEnv mencapai status training yang stabil, tetapi mempertahankan local optimum yang kurang optimal (clip_fraction≈0, episode length beku di 90–94 siklus, pertumbuhan akar terbatas). Reward jarang muncul setiap 720 langkah pada episode 1440 langkah, sehingga sinyal pembelajaran PPO kurang efektif.
+
+**Keputusan:** Beralih ke **TD3 (Twin Delayed DDPG)** untuk kontinyu aeroponik.
+
+**Alasan:**
+1. **Overcoming local optimum:** TD3 deterministic policy + target policy smoothing mengurangi risiko terjebak padastrategi konservatif yang diamati pada PPO.
+2. **Sparse reward handling:** Replay buffer off-policy pada TD3 memungkinkan data reuse meski reward hanya muncul setiap beberapa ratus siklus di simulator deterministik.
+3. **Action noise untuk eksplorasi:** Gaussian action noise pada TD3 lebih sesuai untuk kontrol threshold valve (A_valve biner) dibanding entropy regularization PPO.
+4. **Hyperparameter lebih stabil untuk continuous control:** TD3 lebih sedikit sensitif terhadap tuning dibanding SAC, dan lebih cocok untuk deployment CPU-only (tanpa CUDA).
+5. **Latar belakang akademis:** TD3 diakui sebagai algoritma off-policy deterministic yang efektif untuk robot/precision agriculture continuous control.
+
+**Skema model dan deployment:**
+```
+Training : control-model-training/
+  ├── train_td3.py
+  ├── evaluate_td3.py / evaluate_td3_3day.py
+  ├── models/aeroponic_td3.zip
+  └── models/vec_normalize_td3.pkl
+
+Deployment:
+  ├── model-controller:8080  (inference, FastAPI + SB3 TD3)
+  └── model-control:8081     (scheduler + telemetry consumer)
+```
+
+**Yang TIDAK diubah:** Arsitektur dua-service (`model-controller` + `model-control`), kontrak NATS (`telemetry.ingest`/`telemetry.batch`), interface Control Service, atau skema database. Hanya model weight + loop training yang berganti algoritma.
+
+**Verifikasi:**
+- Training 2M timesteps berhasil (`aeroponic_td3.zip` + `vec_normalize_td3.pkl`).
+- Evaluasi 5-episode + 3-day continuous menunjukkan stabil tanpa pelanggaran bounds pH/EC.
+- `docker-compose.yml` sudah menunjuk `MODEL_PATH=/app/models/aeroponic_td3.zip` dan `VEC_NORM_PATH=/app/models/vec_normalize_td3.pkl`.
+
+---
+
 ## 7. ADR-007: Transparent `/v1` API Versioning via Kong Gateway Reverse Proxy
 
 **Tanggal:** 2026-07-21  

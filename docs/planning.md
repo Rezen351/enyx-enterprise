@@ -2,7 +2,7 @@
 
 > **Versi Dokumen:** 2.18.0  
 > **Tanggal:** 2026-07-29  
-> **Status:** 🟢 Fase 0-9b + DLQ + CI/CD + UnitTest + Outbox + MinIO Scoped Keys + PPO Control Live + PPO Controller Inference + Cycle-Boundary Schedule Update 
+> **Status:** 🟢 Fase 0-9b + DLQ + CI/CD + UnitTest + Outbox + MinIO Scoped Keys + TD3 Control Live + TD3 Controller Inference + Cycle-Boundary Schedule Update 
 > **Penulis:** Alif Muhammad Rizky
 > **Dokumen Terkait:** [roadmap.md](file:///home/almuzky/TA/Microservices/docs/roadmap.md) · [adr.md](file:///home/almuzky/TA/Microservices/docs/adr.md) · [runbook.md](file:///home/almuzky/TA/Microservices/docs/runbook.md) · [security-audit.md](file:///home/almuzky/TA/Microservices/docs/security-audit.md) · [logs.md](file:///home/almuzky/TA/Microservices/logs.md) · [testing-plan-agent.md](file:///home/almuzky/TA/Microservices/docs/testing-plan-agent.md) · [AGENTS.md](file:///home/almuzky/TA/Microservices/AGENTS.md)
 
@@ -708,14 +708,14 @@ Status implementasi per fase **di dokumentasikan lengkap di [`roadmap.md`](./roa
 | 5/6 | Stream Service (MediaMTX + MinIO) | ✅ Selesai | P3 |
 | 6 | ML / Vision API (YOLOv8 Model Registry) | ✅ Selesai | P3 |
 | 6b/6c | Snapshot→AI Detection + CCTV Recording | ✅ Selesai | P3 |
-| 6d | ML Control — PPO Aeroponic Training (timer-based cycles, domain randomization, stress testing) | ✅ Selesai | P2 |
-| 6e | PPO Controller Inference Service (`ppo-controller`) | ✅ Selesai | P2 |
-| 6f | PPO Control Scheduler Service (`ppo-control`) | ✅ Selesai | P2 |
+| 6d | ML Control — TD3 Aeroponic Training (off-policy continuous control, domain randomization, reward shaping) | ✅ Selesai | P2 |
+| 6e | TD3 Controller Inference Service (`model-controller`) | ✅ Selesai | P2 |
+| 6f | TD3 Control Scheduler Service (`model-control`) | ✅ Selesai | P2 |
 | 7 | DLQ Saga Worker | ✅ Selesai | P1 |
 | 8 | Audit Service | ✅ Selesai | P1 |
 | 9 | Dashboard Lengkap | ✅ Selesai | P3 |
 | 9b | Export Service / Data API | ✅ Selesai | P3 |
-| 13 | Spray Automation Service (AI-driven misting + PPO control integration) | 🟡 In Progress | P2 |
+| 13 | Spray Automation Service (AI-driven misting + TD3 control integration) | 🟡 In Progress | P2 |
 
 > **Catatan:** Detail kontrak firmware (Control), endpoint ML, dan implementasi Stream (ffmpeg/ffprobe) berada di `roadmap.md`. Keputusan arsitektur (MinIO, Export Opsi A, Shared JWT) berada di [`adr.md`](./adr.md`).
 
@@ -768,26 +768,26 @@ Catatan: Validasi peran dilakukan oleh middleware `RequireRole` di level mikrose
 
 ---
 
-## 🤖 PPO Aeroponic Controller — Training + Inference
+## 🤖 TD3 Aeroponic Controller — Training + Inference
 
 ### Arsitektur Training
 
-Model PPO dilatih di direktori `ppo-model-training/` menggunakan **Stable-Baselines3** + Gymnasium. Komponen utama:
+Model TD3 dilatih di direktori `control-model-training/` menggunakan **Stable-Baselines3** + Gymnasium. Komponen utama:
 
 | Komponen | File | Deskripsi |
 |---|---|---|
 | Simulator | `aeroponic_simulator.py` | Environment Gymnasium dengan fisika aeroponik: humidity dynamics, temperature drift, EC/pH drift, oxygen depletion, domain randomization |
-| Training | `train_ppo.py` | PPO training loop dengan SB3, tensorboard logging, model save |
-| Evaluation | `evaluate_ppo.py` | 5-episode evaluation dengan action histograms, state trajectories, episode comparison |
+| Training | `train_td3.py` | TD3 off-policy training loop dengan SB3, tensorboard logging, model save |
+| Evaluation | `evaluate_td3.py`, `evaluate_td3_3day.py` | 5-episode + 3-day continuous evaluation dengan action histograms, state trajectories, episode comparison |
 | Stress Test | `stress_test.py` | 5 weather scenarios: Baseline, Hot & Dry, Cool & Humid, Rainy, Night |
 | Results | `results/` | PNG plots: training curves, action histograms, evaluation states/actions |
-| Models | `models/` | `aeroponic_ppo.zip`, `vec_normalize.pkl`, `best_config.json` |
+| Models | `models/` | `aeroponic_td3.zip`, `vec_normalize_td3.pkl` |
 
 ### Action Space (Normalized [-1,1] → Physical Ranges)
 
 Setiap aksi = satu siklus ON/OFF lengkap. Wrapper Gymnasium menerima aksi ter-normalisasi $[-1, 1]$ untuk semua 3 dimensi, lalu memetakannya ke rentang fisik:
-- $a_{\text{mist}} \in [-1, 1] \mapsto D_{\text{mist}} \in [10, 240]\text{s}$ (durasi misting)
-- $a_{\text{interval}} \in [-1, 1] \mapsto interval_{\text{sec}} \in [60, 540]\text{s}$ ( jeda antar misting)
+- $a_{\text{mist}} \in [-1, 1] \mapsto D_{\text{mist}} \in [120, 600]\text{s}$ (durasi misting 2–10 menit)
+- $a_{\text{interval}} \in [-1, 1] \mapsto interval_{\text{sec}} \in [120, 600]\text{s}$ ( jeda antar misting 2–10 menit)
 - $a_{\text{valve}} \in [-1, 1] \mapsto A_{\text{valve}} \in \{0, 1\}$ dengan threshold **0**: $\ge 0 \to 1.0$, $< 0 \to 0.0$
 
 ### State Space (10D)
@@ -815,26 +815,26 @@ R_total = R_growth + R_state + P_diversity - C_resource - P_env - P_hypoxia - P_
 
 ### Arsitektur Deployment (Live)
 
-Model PPO di-deploy sebagai dua service terpisah:
+Model TD3 di-deploy sebagai dua service terpisah:
 
 | Service | Port | Role | Technology |
 |---|---|---|---|
-| `ppo-controller` | `8080` | Stateless inference | FastAPI + Stable-Baselines3 + torch |
-| `ppo-control` | `8081` | Scheduler + telemetry consumer | FastAPI + threading + NATS subscriber |
+| `model-controller` | `8080` | Stateless inference | FastAPI + Stable-Baselines3 + torch |
+| `model-control` | `8081` | Scheduler + telemetry consumer | FastAPI + threading + NATS subscriber |
 
 **Data flow:**
 ```
-ppo-control → NATS (telemetry.ingest + telemetry.batch) → TelemetryCache (in-memory)
-ppo-control → MinIO (mlbucket) → L_root, condition metadata
-ppo-control → ppo-controller:8080/predict → action
-ppo-control → Control Service (update schedule + valve command) → ESP32
+model-control → NATS (telemetry.ingest + telemetry.batch) → TelemetryCache (in-memory)
+model-control → MinIO (mlbucket) → L_root, condition metadata
+model-control → model-controller:8080/predict → action
+model-control → Control Service (update schedule + valve command) → ESP32
 ```
 
 ### Cycle-Boundary Schedule Update
 
-`ppo-control` tidak meng-update schedule tiap prediksi. Karena `PREDICTION_INTERVAL_SEC=5` detik, jika schedule direset tiap 5 detik, siklus ON/OFF tidak pernah sempat selesai. Solusi:
+`model-control` tidak meng-update schedule tiap prediksi. Karena `PREDICTION_INTERVAL_SEC=5` detik, jika schedule direset tiap 5 detik, siklus ON/OFF tidak pernah sempat selesai. Solusi:
 
-- Evaluasi PPO tetap tiap 5 detik untuk mengamati state terbaru.
+- Evaluasi TD3 tetap tiap 5 detik untuk mengamati state terbaru.
 - Hasil prediksi disimpan sebagai `pending_action`.
 - `update_schedule` + `send_valve_command` hanya dikirim jika **satu siklus sudah selesai** (`elapsed >= D_mist + interval_sec`).
 - Ini memastikan pola ON/OFF berjalan penuh sebelum diubah oleh policy.
@@ -843,17 +843,17 @@ ppo-control → Control Service (update schedule + valve command) → ESP32
 
 | Metric | Source | Consumer |
 |---|---|---|
-| `ppo_control_state` | ppo-control log `state=...` | `docker logs ppo-control` |
-| `ppo_control_schedule_update` | ppo-control log `schedule update ok=...` | `docker logs ppo-control` |
-| `ppo_control_valve_command` | ppo-control log `valve command ok=...` | `docker logs ppo-control` |
-| `ppo_controller_predict_latency_seconds` | ppo-controller Prometheus `/metrics` | Prometheus |
-| `ppo_controller_predictions_total` | ppo-controller Prometheus `/metrics` | Prometheus |
+| `model_control_state` | model-control log `state=...` | `docker logs model-control` |
+| `model_control_schedule_update` | model-control log `schedule update ok=...` | `docker logs model-control` |
+| `model_control_valve_command` | model-control log `valve command ok=...` | `docker logs model-control` |
+| `model_controller_predict_latency_seconds` | model-controller Prometheus `/metrics` | Prometheus |
+| `model_controller_predictions_total` | model-controller Prometheus `/metrics` | Prometheus |
 
 ### Referensi
 
-- Models: `ppo-model-training/models/` (dibagikan via volume mount ke `ppo-controller`)
-- Config: `services/ppo-control/app/config.py`, `services/ppo-controller/app/config.py`
-- Integration guide: [`docs/integration-guides/ppo.md`](./ppo.md)
+- Models: `control-model-training/models/` (dibagikan via volume mount ke `model-controller`)
+- Config: `services/model-control/app/config.py`, `services/model-controller/app/config.py`
+- Integration guide: [`docs/integration-guides/model-control.md`](./model-control.md)
 
 ---
 
@@ -872,7 +872,7 @@ ppo-control → Control Service (update schedule + valve command) → ESP32
 ### Target Prometheus Saat Ini
 
 > **Total: 32 target** (`count(up)` = 32, 0 DOWN) — sesuai realita live per `logs.md` §13 #10 / #4.
-> Sesi **C/D belum di-merge**, sehingga angka di bawah menggunakan *current reality* (compose + `infra/prometheus/prometheus.yml` on-disk), bukan snapshot branch lain. Keputusan konsolidasi ADR-004/ADR-005 (Redis & MariaDB diekspor via exporter tunggal) **tidak diubah** — jumlah *instance database* tetap 12 (lihat §"Database Isolation"), sedangkan jumlah *target Prometheus* adalah 32 karena beberapa target merepresentasikan pelabelan per-DB (mis. `redis-shared` = 4 series DB0–DB3) + 2 target PPO services.
+> Sesi **C/D belum di-merge**, sehingga angka di bawah menggunakan *current reality* (compose + `infra/prometheus/prometheus.yml` on-disk), bukan snapshot branch lain. Keputusan konsolidasi ADR-004/ADR-005 (Redis & MariaDB diekspor via exporter tunggal) **tidak diubah** — jumlah *instance database* tetap 12 (lihat §"Database Isolation"), sedangkan jumlah *target Prometheus* adalah 32 karena beberapa target merepresentasikan pelabelan per-DB (mis. `redis-shared` = 4 series DB0–DB3) + 2 target TD3 services.
 
 **A. Self / Gateway (2)**
 | Target | Endpoint | Status |
@@ -895,8 +895,8 @@ ppo-control → Control Service (update schedule + valve command) → ESP32
 | `export-service` | `export:8080/metrics` | ✅ UP |
 | `ml-service` | `ml:8080/metrics` | ✅ UP |
 | `dlq-service` | `dlq:8080/metrics` | ✅ UP |
-| `ppo-controller-service` | `ppo-controller:8080/metrics` | ✅ UP |
-| `ppo-control-service` | `ppo-control:8081/metrics` | ✅ UP |
+| `model-controller-service` | `model-controller:8080/metrics` | ✅ UP |
+| `model-control-service` | `model-control:8081/metrics` | ✅ UP |
 | `kong` | `kong:8001/metrics` | ✅ UP |
 
 **C. Database Exporters (11)**

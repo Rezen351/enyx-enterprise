@@ -146,7 +146,7 @@ All endpoints are mounted under `/control` (Kong strips `/v1`). All responses fo
 | `value` | `int` | Yes (`set_state`, `set_level`) | 0–255. For `set_state` use `1` (ON) or `0` (OFF). |
 | `duration_sec` | `int` | No (for `pulse`) | Pulse duration in seconds. Default `5`. |
 | `targets` | `array` | No | Optional actuator tag set rendered by the dashboard (keeps command consistent with UI). |
-| `bypass` | `bool` | No | If `true`, command is allowed even when node is in `AUTO` mode. Intended for AI/automation services (e.g. PPO controller) that need to override specific outputs without switching the node to MANUAL. |
+| `bypass` | `bool` | No | If `true`, command is allowed even when node is in `AUTO` mode. Intended for AI/automation services (e.g. TD3 controller) that need to override specific outputs without switching the node to MANUAL. |
 
 **Response:**
 

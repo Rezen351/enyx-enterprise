@@ -1,9 +1,9 @@
 # TD3 Aeroponic Controller — Integration Guide
 
-> **Services:** `ppo-controller` (inference) · `ppo-control` (scheduler)  
+> **Services:** `model-controller` (inference) · `model-control` (scheduler)  
 > **Version:** 1.0.0  
-> **Ports:** `ppo-controller:8080` · `ppo-control:8081`  
-> **Language / Framework:** Python 3.11 · FastAPI · Stable-Baselines3 + PyTorch  
+> **Ports:** `model-controller:8080` · `model-control:8081`  
+> **Language / Framework:** Python 3.11 · FastAPI · Stable-Baselines3 (TD3) + PyTorch  
 > **Object Storage:** MinIO shared instance (bucket `mlbucket`)  
 > **Messaging:** NATS (subjects `telemetry.ingest` + `telemetry.batch`)  
 > **Status:** Production-ready (Fase 6e/6f)
@@ -14,38 +14,38 @@
 
 The TD3 Aeroponic Controller consists of two FastAPI services that together replace rule-based misting schedules with a learned policy:
 
-- **ppo-controller** — pure stateless inference. Loads `aeroponic_td3.zip` + `vec_normalize_td3.pkl` on startup. Exposes `POST /predict` which maps a 10D state vector to a 3D action (`D_mist`, `interval_sec`, `A_valve`).
-- **ppo-control** — scheduler and telemetry consumer. Subscribes to NATS `telemetry.ingest` + `telemetry.batch`, assembles the 10D state from cache + MinIO metadata, calls ppo-controller for prediction, and applies the action to Control Service **only at cycle boundaries**.
+- **model-controller** — pure stateless inference. Loads `aeroponic_td3.zip` + `vec_normalize_td3.pkl` on startup. Exposes `POST /predict` which maps a 10D state vector to a 3D action (`D_mist`, `interval_sec`, `A_valve`).
+- **model-control** — scheduler and telemetry consumer. Subscribes to NATS `telemetry.ingest` + `telemetry.batch`, assembles the 10D state from cache + MinIO metadata, calls model-controller for prediction, and applies the action to Control Service **only at cycle boundaries**.
 
 ### 1.1 Key Responsibilities
 
 | Responsibility | Service | Description |
-|---|---|---|
-| Policy inference | ppo-controller | Load SB3 model, normalize observation via `VecNormalize`, return clipped action. |
-| Telemetry aggregation | ppo-control | Subscribe NATS ingest + batch subjects; maintain in-memory `TelemetryCache` with metric value + timestamp. |
-| State assembly | ppo-control | Read MinIO metadata (`root_length_cm`, `condition`) + cache metrics (`T_in`, `H_in`, `T_out`, `H_out`, `EC`, `pH`, `T_nut`) + sunlight index. |
-| Cycle-boundary actuation | ppo-control | Predict every `PREDICTION_INTERVAL_SEC` (default 5s), but only call Control Service when the current ON+OFF cycle completes. |
-| Schedule management | ppo-control | `PUT /control/schedules/{id}` + `POST /control/command` (bypass=true) to update pump interval and valve state. |
+||---|---|---|
+| Policy inference | model-controller | Load SB3 TD3 model, normalize observation via `VecNormalize`, return clipped action. |
+| Telemetry aggregation | model-control | Subscribe NATS ingest + batch subjects; maintain in-memory `TelemetryCache` with metric value + timestamp. |
+| State assembly | model-control | Read MinIO metadata (`root_length_cm`, `condition`) + cache metrics (`T_in`, `H_in`, `T_out`, `H_out`, `EC`, `pH`, `T_nut`) + sunlight index. |
+| Cycle-boundary actuation | model-control | Predict every `PREDICTION_INTERVAL_SEC` (default 5s), but only call Control Service when the current ON+OFF cycle completes. |
+| Schedule management | model-control | `PUT /control/schedules/{id}` + `POST /control/command` (bypass=true) to update pump interval and valve state. |
 
 ### 1.2 Architecture Diagram
 
 ```
-Module Service ──NATS──▶ ppo-control
-                            │
-                            ├── MinIO (mlbucket) ──▶ L_root, condition
-                            │
-                            ├── ppo-controller:8080/predict
-                            │
-                            └── Control Service ──▶ ESP32
-                                    │
-                                    └── MQTT smartfarm/actuator/{node_id}
+Module Service ──NATS──▶ model-control
+                             │
+                             ├── MinIO (mlbucket) ──▶ L_root, condition
+                             │
+                             ├── model-controller:8080/predict
+                             │
+                             └── Control Service ──▶ ESP32
+                                     │
+                                     └── MQTT smartfarm/actuator/{node_id}
 ```
 
 ---
 
 ## 2. State Space (10D)
 
-Assembled in `ppo-control/app/ppo_loop.py:assemble_state()`:
+Assembled in `services/model-control/app/ppo_loop.py:assemble_state()`:
 
 | Index | Field | Source | Default | Clamp |
 |---|---|---|---|---|
@@ -70,7 +70,7 @@ Assembled in `ppo-control/app/ppo_loop.py:assemble_state()`:
 
 ## 3. Action Space (3D)
 
-Returned by ppo-controller as JSON:
+Returned by model-controller as JSON:
 
 | Field | Type | Physical Range | SB3 Mapping |
 |---|---|---|---|
@@ -87,7 +87,7 @@ All responses use the standard envelope:
 { "success": true, "data": ... }
 ```
 
-### 4.1 ppo-controller Endpoints
+### 4.1 model-controller Endpoints
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -114,7 +114,7 @@ All responses use the standard envelope:
 }
 ```
 
-### 4.2 ppo-control Endpoints
+### 4.2 model-control Endpoints
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -144,9 +144,9 @@ All responses use the standard envelope:
 
 ## 5. Cycle-Boundary Update Behavior
 
-`ppo-control` evaluates TD3 every `PREDICTION_INTERVAL_SEC` (compose default: `5` seconds), but only applies actions to Control Service when one full cycle completes:
+`model-control` evaluates TD3 every `PREDICTION_INTERVAL_SEC` (compose default: `5` seconds), but only applies actions to Control Service when one full cycle completes:
 
-1. Tick assembles 10D state and calls `ppo-controller/predict`.
+1. Tick assembles 10D state and calls `model-controller/predict`.
 2. Result is stored in `pending_action` (overwrites previous pending).
 3. On each tick, check: `elapsed = now - last_schedule_update`.
 4. If `elapsed >= current_D_mist + current_interval` → apply `pending_action` to Control Service.
@@ -164,10 +164,10 @@ tick skipped cycle_done=False pending=True elapsed=5.4s cycle=120s
 
 | Subject | Direction | Payload Schema | Consumer |
 |---|---|---|---|
-| `telemetry.ingest` | Module → ppo-control | `{"node_id":"...","metric":"telemetry.modbus.cwt2.temp","value":25.0,"ts":1690000000000}` | Core NATS fan-out; ppo-control keeps latest per metric |
-| `telemetry.batch` | Module → ppo-control | `{"rows":[{"node_id":"...","metric":"...","last":25.0,"last_ts":1690000000000,...}], "ts":...}` | JetStream `TELEMETRY_BATCH`; fallback when ingest is missed |
+| `telemetry.ingest` | Module → model-control | `{"node_id":"...","metric":"telemetry.modbus.cwt2.temp","value":25.0,"ts":1690000000000}` | Core NATS fan-out; model-control keeps latest per metric |
+| `telemetry.batch` | Module → model-control | `{"rows":[{"node_id":"...","metric":"...","last":25.0,"last_ts":1690000000000,...}], "ts":...}` | JetStream `TELEMETRY_BATCH`; fallback when ingest is missed |
 
-ppo-control stores both raw ingest values and batch `last` values in the same in-memory cache, preferring the most recent timestamp.
+model-control stores both raw ingest values and batch `last` values in the same in-memory cache, preferring the most recent timestamp.
 
 ### Cache Debug Logging
 
@@ -191,9 +191,9 @@ Every tick logs cache freshness at DEBUG level:
 
 ## 7. MinIO Dependency
 
-ppo-control reads vision/stream metadata from MinIO bucket `mlbucket`:
+model-control reads vision/stream metadata from MinIO bucket `mlbucket`:
 
-- **File:** `services/ppo-control/app/minio_client.py`
+- **File:** `services/model-control/app/minio_client.py`
 - **Bucket:** `mlbucket`
 - **Key pattern:** latest metadata for `settings.MODULE_ID` (e.g., `module-00/latest/metadata.json`)
 - **Fields used:** `root_length_cm` (float), `condition` (float 0-100)
@@ -219,17 +219,17 @@ If MinIO is unreachable or metadata is missing, both `L_root` and `U_status` fal
 
 | Signal | How to Observe |
 |---|---|
-| Prediction loop health | `docker logs ppo-control` — look for `TD3 loop started interval=5s` |
-| State evolution | `docker logs ppo-control` — `state=[...]` every tick |
-| Cycle-boundary logic | `docker logs ppo-control` — `schedule update ok=...` (only at cycle end) or `tick skipped cycle_done=False` |
-| Inference latency | `curl ppo-controller:8080/metrics` → `predict_latency_seconds` histogram |
-| Prediction throughput | `curl ppo-controller:8080/metrics` → `predictions_total` counter |
-| Cache freshness | `docker logs ppo-control` (DEBUG level) — `cache metrics: {"T_in": {"value": 25.0, "age_s": 3.4}, ...}` |
+| Prediction loop health | `docker logs model-control` — look for `TD3 loop started interval=5s` |
+| State evolution | `docker logs model-control` — `state=[...]` every tick |
+| Cycle-boundary logic | `docker logs model-control` — `schedule update ok=...` (only at cycle end) or `tick skipped cycle_done=False` |
+| Inference latency | `curl model-controller:8080/metrics` → `predict_latency_seconds` histogram |
+| Prediction throughput | `curl model-controller:8080/metrics` → `predictions_total` counter |
+| Cache freshness | `docker logs model-control` (DEBUG level) — `cache metrics: {"T_in": {"value": 25.0, "age_s": 3.4}, ...}` |
 
 ---
 
 ## 10. Known Limitations
 
-- `H_in` (internal humidity) may be `Infinity` age if the module firmware does not publish `telemetry.modbus.cwt2.hum`. ppo-control falls back to `DEFAULT_H_IN=70.0`.
+- `H_in` (internal humidity) may be `Infinity` age if the module firmware does not publish `telemetry.modbus.cwt2.hum`. model-control falls back to `DEFAULT_H_IN=70.0`.
 - MinIO metadata is only as fresh as the last ML/vision analysis. If Stream/ML stops running, `L_root` and `U_status` become stale.
-- ppo-controller has no fallback if the model file is corrupted; it fails at startup and returns 503 on `/predict`.
+- model-controller has no fallback if the model file is corrupted; it fails at startup and returns 503 on `/predict`.

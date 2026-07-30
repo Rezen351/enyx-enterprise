@@ -2,7 +2,7 @@ import os
 import sys
 import numpy as np
 
-from stable_baselines3 import TD3, PPO
+from stable_baselines3 import TD3
 from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
 from gymnasium.spaces import Box as GymBox
 import gymnasium as gym
@@ -13,20 +13,18 @@ SERVICE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def _find_default_model_path():
     models_dir = os.path.join(SERVICE_DIR, "models")
-    for name in ["aeroponic_td3.zip", "aeroponic_ppo.zip", "model.zip"]:
-        path = os.path.join(models_dir, name)
-        if os.path.exists(path):
-            return path
-    return os.path.join(models_dir, "aeroponic_td3.zip")
+    path = os.path.join(models_dir, "aeroponic_td3.zip")
+    if os.path.exists(path):
+        return path
+    return path
 
 
 def _find_default_vec_norm_path():
     models_dir = os.path.join(SERVICE_DIR, "models")
-    for name in ["vec_normalize_td3.pkl", "vec_normalize_ppo.pkl", "vec_normalize.pkl"]:
-        path = os.path.join(models_dir, name)
-        if os.path.exists(path):
-            return path
-    return os.path.join(models_dir, "vec_normalize_td3.pkl")
+    path = os.path.join(models_dir, "vec_normalize_td3.pkl")
+    if os.path.exists(path):
+        return path
+    return path
 
 
 DEFAULT_MODEL_PATH = _find_default_model_path()
@@ -67,8 +65,8 @@ class ModelLoader:
 
         try:
             self.model = TD3.load(self.model_path, device=self.device)
-        except Exception:
-            self.model = PPO.load(self.model_path, device=self.device)
+        except Exception as exc:
+            raise RuntimeError(f"Failed to load TD3 model from {self.model_path}: {exc}") from exc
 
         dummy_env = DummyVecEnv([lambda: _DummyAeroponicEnv()])
         self.vec_norm = VecNormalize.load(self.vec_norm_path, dummy_env)

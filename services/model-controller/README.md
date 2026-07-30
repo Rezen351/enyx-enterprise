@@ -1,6 +1,6 @@
-# PPO Controller Service
+# TD3 Controller Service
 
-Lightweight inference service that wraps the trained PPO aeroponic model and exposes it over HTTP/NATS.
+Lightweight inference service that wraps the trained TD3 aeroponic model and exposes it over HTTP.
 
 ## Endpoints
 
@@ -34,9 +34,9 @@ Lightweight inference service that wraps the trained PPO aeroponic model and exp
 ## Usage
 
 ```bash
-docker compose up -d ppo-controller
+docker compose up -d model-controller
 ```
 
 ## Integration
 
-Call `POST http://ppo-controller:8080/predict` from Spray Automation Service or ML Service, then map `D_mist` → `on_sec`, `interval_sec` → `off_sec`, and `A_valve` → actuator value.
+Call `POST http://model-controller:8080/predict` from model-control, Spray Automation Service, or ML Service, then map `D_mist` → `on_sec`, `interval_sec` → `off_sec`, and `A_valve` → actuator value.
