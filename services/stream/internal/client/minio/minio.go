@@ -175,7 +175,7 @@ func (c *Client) UploadObjectToBucketWithMetadata(bucket, key, contentType strin
 	}
 	_, err := c.client.PutObject(context.Background(), bucket, key, bytes.NewReader(data), int64(len(data)),
 		minio.PutObjectOptions{
-			ContentType: contentType,
+			ContentType:  contentType,
 			UserMetadata: metadata,
 		})
 	if err != nil {

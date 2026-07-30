@@ -36,16 +36,16 @@ type Snapshot struct {
 	Kind        string `gorm:"column:kind;type:varchar(16);default:snapshot"`
 
 	// AI vision detection metadata (kind="detection" only).
-	ModelID       string  `gorm:"column:model_id;type:varchar(64)"`
-	ModelName     string  `gorm:"column:model_name;type:varchar(255)"`
-	NumDetections int     `gorm:"column:num_detections"`
-	Classes       string  `gorm:"column:classes;type:text"`          // JSON array string
-	Detections    string  `gorm:"column:detections;type:mediumtext"` // JSON array string
-	ConfidenceAvg float64 `gorm:"column:confidence_avg"`
+	ModelID       string   `gorm:"column:model_id;type:varchar(64)"`
+	ModelName     string   `gorm:"column:model_name;type:varchar(255)"`
+	NumDetections int      `gorm:"column:num_detections"`
+	Classes       string   `gorm:"column:classes;type:text"`          // JSON array string
+	Detections    string   `gorm:"column:detections;type:mediumtext"` // JSON array string
+	ConfidenceAvg float64  `gorm:"column:confidence_avg"`
 	RootLengthCM  *float64 `gorm:"column:root_length_cm"` // vision measurement in cm
 	TuberSizeCM   *float64 `gorm:"column:tuber_size_cm"`  // vision measurement in cm
 	Condition     *float64 `gorm:"column:condition"`      // vision condition score
-	Duration      float64 `gorm:"column:duration"` // recorded clip length in seconds (kind="recording")
+	Duration      float64  `gorm:"column:duration"`       // recorded clip length in seconds (kind="recording")
 
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
 }
@@ -73,7 +73,7 @@ type SnapshotView struct {
 	RootLengthCM  *float64 `json:"root_length_cm,omitempty"` // vision measurement in cm
 	TuberSizeCM   *float64 `json:"tuber_size_cm,omitempty"`  // vision measurement in cm
 	Condition     *float64 `json:"condition,omitempty"`      // vision condition score
-	Duration      float64  `json:"duration,omitempty"` // recorded clip length in seconds
+	Duration      float64  `json:"duration,omitempty"`       // recorded clip length in seconds
 }
 
 // ─── Request DTOs ─────────────────────────────────────────────────────────────

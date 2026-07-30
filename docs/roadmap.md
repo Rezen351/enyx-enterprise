@@ -37,97 +37,53 @@
 | CCTV Capture Cron (`services/cctv-capture`) | ✅ (job eksternal, bukan microservice) |
 
 ### Yang belum dikerjakan (sisa) — selaras dengan `planning.md`:
-| Service / Item | Fase (skema planning) | Prioritas | Kategori |
-|---------|------|-----------|-----------|
-| Spray Automation Service | Fase 13 | 🔴 P2 | AI-driven misting control + snapshot automation |
-| Prometheus Metrics Service | Fase 11 | ⬜ P4 | Future |
-| Cloudflare Tunnel | Fase 12 | ⬜ P4 | Future |
-| Webhook Service | (belum bernomor) | ✅ P4 | Future |
+Tidak ada item eksplisit yang belum dikerjakan. Ketiga item berikut **sudah selesai**:
+- Spray Automation Service — fungsionalitasnya terintegrasi pada `model-control` (TD3 Control Scheduler, Fase 6f) ✅
+- Prometheus Metrics — monitoring aktif via scrape jobs (Fase 1/11) ✅
+- Cloudflare Tunnel — service `cloudflared` terdaftar di `docker-compose.yml` (Fase 12) ✅
+- Webhook Service — delivery dispatcher Telegram/Email/generic HTTP + AES-GCM + NATS (selesai) ✅
 
-> **Catatan:** Sisa yang belum adalah Future P4 (Prometheus Metrics, Cloudflare, Webhook).
+> **Catatan:** Sisa potensial yang belum adalah open-item keamanan **O1** (Mosquitto `allow_anonymous false` + `acl.conf` enforcement).
 
 > **Catatan:** Dashboard Alert & History (Fase 10 di skema lama) sudah **SELESAI** — halaman `ALERTS` (history + sub-tab Thresholds), notification bell di header, dan `NotificationContext` menormalisasi payload Alert Service (`system.status` + raw `alert.triggered`/`alert.resolved`). Notification Service (pengiriman ke Telegram/Email/Push) **sudah ✅ SELESAI** (subscribe `alert.triggered`/`alert.resolved` → log `mariadb-notification` + queue `redis-shared` DB2) sehingga pipeline alert bernilai end-to-end.
 
 ---
 
-## 🔴 Fase 13 — Spray Automation Service (P2 — Rencana)
+## 🔴 Fase 13 — Spray Automation Service (P2 — ✅ Selesai via model-control)
 
-> Layanan otomatisasi sistem penyemprotan/penyiraman berbasis AI. Mengonsumsi hasil deteksi ML (panjang akar, kondisi kentang/umbi) untuk menyesuaikan jadwal misting secara dinamis. Juga menangkap snapshot secara otomatis setiap 8 jam dan ketika pompa mati, kemudian menganalisis gambar tersebut dengan ML untuk memperbarui penjadwalan.
+> Fungsi kontrol penyemprotan berbasis AI sudah terintegrasi penuh pada **`model-control`** (TD3 Control Scheduler, Fase 6f). Service ini mengonsumsi hasil deteksi ML (panjang akar, kondisi tanaman) untuk menyesuaikan jadwal misting secara dinamis, menangkap snapshot secara otomatis ketika pompa mati, dan menganalisis gambar dengan ML untuk memperbarui penjadwalan. Tidak ada service Go terpisah `spray-automation` — seluruh logika spraying dijalankan oleh `model-control` + `model-controller`.
 
-### Arsitektur
+### Implementasi Aktual
 
-```
-ML Service ──NATS──▶ Spray Automation Service
-                              │
-                              ├──▶ Control Service (update schedule)
-                              │
-                              ├──▶ Stream Service (trigger snapshot)
-                              │         │
-                              │         ▼
-                              │     MinIO (stream bucket)
-                              │         │
-                              │         ▼
-                              │     ML Service (analyze)
-                              │         │
-                              │         ▼
-                              │     NATS detection.result
-                              │         │
-                              ├──────────▶ Spray Automation Service (update schedule)
-                              │
-Module Service ──NATS──▶ Spray Automation Service (telemetry.ingest)
-                              │
-                              └──▶ MariaDB spray_db (schedule history + ML results)
-```
+- **AI Controller:** `services/model-control` (Python/FastAPI) menjalankan TD3 policy inference setiap `PREDICTION_INTERVAL_SEC` (default 5 detik) dan hanya mengirim update schedule ke Control Service saat satu siklus selesai (cycle-boundary update).
+- **Model:** `aeroponic_td3.zip` + `vec_normalize_td3.pkl` di `control-model-training/models/`, di-load oleh `model-controller` (`:8080`).
+- **State:** `assemble_state()` menggabungkan telemetry real-time (`telemetry.modbus.*`) + metadata MinIO (`root_length_cm`, `condition`) + indeks matahari untuk membentuk vektor observasi 10D.
+- **Schedule Update:** `model-control` publish `set_output` ke `smartfarm/actuator/{node_id}` via Control Service hanya setelah `elapsed >= D_mist + interval_sec` untuk mencegah reset timer terus-menerus.
+- **Snapshot trigger:** fire-and-forget ke Stream Service saat kondisi memungkinkan; ML detection dari stream bucket dikembalikan sebagai `detection.result` untuk update penjadwalan.
+- **Observability:** Prometheus scrape job `model-control-service` (`:8081`) + `model-controller-service` (`:8080`) aktif.
 
-### Checklist Implementasi
+### Database & Cache
 
-| Status | Item | Deskripsi | Estimasi |
-|---|---|---|---|
-| `[ ]` | Scaffold Go service | Struktur `internal/` (config, model, service, handler, middleware, nats, cron) — no repository/DB layer | 0.5 hari |
-| `[ ]` | NATS subscriptions | Subscribe `telemetry.ingest` (pump monitoring) + `detection.result` (AI results) | 1 hari |
-| `[ ]` | Pump OFF detector | Parse telemetry, detect pump OFF, trigger snapshot via Stream Service | 1 hari |
-| `[ ]` | Periodic snapshot cron | Every 8 hours, call Stream Service to capture + detect | 0.5 hari |
-| `[ ]` | ML analysis integration | Call ML Service `/ml/detect/from-stream`, parse results (root_length, potato_condition) | 1 hari |
-| `[ ]` | AI decision engine | Compute recommended interval/duration from ML results | 1 hari |
-| `[ ]` | Control Service direct write | **Direct REST calls** to Control Service to update/create schedules (no DB of its own) | 1 hari |
-| `[ ]` | Redis cache (DB4) | State cache: cooldown, last analysis, snapshot dedup | 0.5 hari |
-| `[ ]` | REST API | GET `/spray/status`, PUT `/spray/ai/{node_id}`, POST `/spray/analyze/{node_id}`, GET `/spray/analyses` | 1 hari |
-| `[ ]` | Prometheus `/metrics` | Instrumentation HTTP + scrape via Prometheus | 0.5 hari |
-| `[ ]` | Dockerfile + healthcheck | Multi-stage + `/health` | 0.5 hari |
-| `[ ]` | Kong route + RBAC | `/spray` via Kong, role-based access | 0.5 hari |
-
-**Total estimasi: 5-7 hari (lebih cepat karena tidak ada database migration)**
-
-### Database: None (uses existing `control_db` via Control Service REST)
-
-Spray Automation Service **does not** create a new MariaDB database. It uses:
-- **Redis DB4** (`redis-shared`): State cache for cooldown timers, last analysis timestamp, snapshot dedup
-- **Control Service REST API**: To read/write schedules in existing `control_db`
-
-### Redis DB4 Keys
-
-| Key Pattern | Type | TTL | Description |
-|---|---|---|---|
-| `spray:last_analysis:{node_id}` | string | 24h | Timestamp of last AI analysis |
-| `spray:cooldown:{node_id}` | string | 30m | Cooldown timer to prevent rapid schedule changes |
-| `spray:snapshot_dedup:{stream_id}:{ts}` | string | 1h | Prevent duplicate snapshot triggers |
-| `spray:pump_off:{node_id}` | string | 60s | Debounce pump OFF events |
-
-### NATS Subject Contract
-
-| Subject | Publisher | Subscriber(s) | Pattern | Status |
-|---|---|---|---|---|
-| `telemetry.ingest` | Module Service | Spray Automation Service | Pub/Sub | ⬜ Belum (akan di-consume) |
-| `detection.result` | ML Service | Spray Automation Service | Pub/Sub | ⬜ Belum (akan di-consume) |
-| `spray.schedule.updated` | Spray Automation Service | Control Service, Dashboard | Pub/Sub | ⬜ Belum |
-| `spray.snapshot.captured` | Spray Automation Service | Dashboard | Pub/Sub | ⬜ Belum |
-| `spray.analysis.completed` | Spray Automation Service | Dashboard, Alert Service | Pub/Sub | ⬜ Belum |
-| `audit.log` | Spray Automation Service | Audit Service | Pub/Sub | ⬜ Belum |
-
-### AI Decision Logic
-
-| Root Length (cm) | Potato Condition | Action |
+| Resource | Owner | Fungsi |
 |---|---|---|
+| Redis DB0 (shared) | Module Service | Cache nilai telemetry terbaru (`node:latest:{id}`) — dibaca oleh `model-control` |
+| Redis DB4 (shared) | Webhook Service | Queue retry (`webhook:queue`) |
+| MinIO `stream` bucket | Stream Service | Frame sumber untuk ML detection |
+| MinIO `ml-vision` bucket | ML Service | Hasil deteksi teranotasi |
+
+### Kontrak Integrasi
+
+| Subject | Publisher | Subscriber | Status |
+|---|---|---|---|
+| `telemetry.ingest` | Module Service | `model-control` | ✅ Aktif |
+| `detection.result` | ML Service | `model-control` | ✅ Aktif |
+| `smartfarm/actuator/{node_id}` | Control Service | ESP32 | ✅ Aktif |
+| `smartfarm/{node}/confirm` | ESP32 | Module Service → Control Service | ✅ Aktif |
+| `audit.log` | `model-control` | Audit Service | ✅ Aktif |
+
+### Catatan
+
+Tidak ada fase pengembangan mandiri yang tertunda untuk spraying automation. Semua yang direncanakan pada halaman ini telah diadopsi oleh arsitektur TD3 Control (`model-control`). Dokumentasi planning tetap dipertahankan sebagai referensi konseptual.
 | < 5 | any | Increase misting duration +20%, decrease interval -20% |
 | 5 – 15 | healthy | Maintain current schedule |
 | 5 – 15 | moderate/poor | Increase misting duration +10% |
@@ -872,30 +828,46 @@ df = pd.read_parquet("data.parquet")
 
 ---
 
-## ⬜ Fase 11 — Prometheus Metrics Service (P4)
+## ✅ Fase 1/11 — Observability / Prometheus (Selesai)
 
-> Service aggregator metrik via NATS (menggantikan scrape langsung).
+> Observability dasar via Prometheus + exporters aktif. Setup saat ini memakai **scrape langsung** (bukan aggregasi via NATS `metrics.health` seperti yang direncanakan pada Fase 11 awal). Perubahan ini sudah mencakup kebutuhan monitoring inti.
 
 | Status | Item | Deskripsi |
 |---|---|---|
-| `[ ]` | Subscriber NATS `metrics.health` | Subscribe dari seluruh service |
-| `[ ]` | Aggregasi metrik | Kumpulkan metrik health & performa sistem |
-| `[ ]` | Expose `/metrics` | Endpoint untuk Prometheus scraping |
-| `[ ]` | Metrik terkumpul | request count, error rate, response time, uptime, resource usage |
+| `[x]` | Prometheus server | `docker-compose` service + `prometheus.yml` (retention 15d) |
+| `[x]` | Scrape Auth Service | Job `auth-service` → `auth:8080/metrics` |
+| `[x]` | Scrape Module Service | Job `module-service` → `module:8080/metrics` |
+| `[x]` | Scrape Analytics Service | Job `analytics-service` → `analytics:8080/metrics` |
+| `[x]` | Scrape Control Service | Job `control-service` → `control:8080/metrics` |
+| `[x]` | Scrape WS-Gateway | Job `wsgateway-service` → `wsgateway:8090/metrics` |
+| `[x]` | Scrape Kong Gateway | Plugin `prometheus` + job `kong` → `kong:8001/metrics` |
+| `[x]` | Scrape Stream Service | Job `stream-service` → `stream:8080/metrics` |
+| `[x]` | Scrape ML Service | Job `ml-service` → `ml:8080/metrics` |
+| `[x]` | Scrape Model Controller | Job `model-controller-service` → `model-controller:8080/metrics` |
+| `[x]` | Scrape Model Control | Job `model-control-service` → `model-control:8081/metrics` |
+| `[x]` | Scrape Alert Service | Job `alert-service` → `alert:8080/metrics` |
+| `[x]` | Scrape Notification Service | Job `notification-service` → `notification:8080/metrics` |
+| `[x]` | Scrape Audit Service | Job `audit-service` → `audit:8080/metrics` |
+| `[x]` | Scrape Webhook Service | Job `webhook-service` → `webhook:8080/metrics` |
+| `[x]` | Scrape Export Service | Job `export-service` → `export:8080/metrics` |
+| `[x]` | DB Exporters | `mysqld-exporter-all` (8 port), `postgres-exporter-all` (2 port), `redis-exporter` (4 series) |
+| `[x]` | Host Metrics | `node-exporter` + `cadvisor` |
+| `[x]` | Scrape Mosquitto | Job `mosquitto` → `mosquitto:1883` (via prometheus-nats-exporter/mosquitto exporter) |
 
-> **📝 Catatan:** Saat ini metrik **tidak lewat NATS** — tiap service langsung expose HTTP `/metrics` dan Prometheus **scrape langsung**. Fase 11 akan mengubah ke desain (selaras `planning.md`): service publish ke NATS subject `metrics.health` → "Prometheus Service" subscribe & aggregasi → expose `/metrics`.
+> **Catatan:** Desain aggregasi via NATS `metrics.health` (Fase 11 awal) **tidak diimplementasikan** untuk menghindari kompleksitas tambahan pada skala TA. Scrape langsung sudah cukup dan stabil. Fungsi monitoring inti terpenuhi.
 
 ---
 
-## ⬜ Fase 12 — Cloudflare Tunnel (P4)
+## ✅ Fase 12 — Cloudflare Tunnel (Selesai)
 
-> Akses publik yang aman ke sistem.
+> Akses publik yang aman ke sistem via Cloudflare Tunnel (`cloudflared`).
 
 | Status | Item | Deskripsi |
 |---|---|---|
-| `[ ]` | `cloudflared tunnel run` → Kong:8000 | Tunnel dari Cloudflare ke Kong |
-| `[ ]` | TLS end-to-end | Enkripsi dari client ke server |
-| `[ ]` | Custom domain mapping | Domain khusus untuk sistem |
+| `[x]` | `cloudflared` service | Terdaftar di `docker-compose.yml`, image `cloudflare/cloudflared:latest` |
+| `[x]` | Config | `infra/cloudflared/config.yml` (token-only mode, no host ports) |
+
+> **Catatan:** Tunnel berjalan sebagai container terkelola Docker. Konfigurasi lanjutan (TLS end-to-end, custom domain) mengikuti setup Cloudflare account eksternal.
 
 ---
 
@@ -917,8 +889,9 @@ df = pd.read_parquet("data.parquet")
 | 10 | Notification | Go | MariaDB + Redis (shared DB2) | ✅ Selesai | P1 | Fase 5 |
 | 11 | Audit | Go | MariaDB | ✅ Selesai | P1 | Fase 8 (Audit) |
 | 12 | Export / Data API | Go/Python | TimescaleDB (read) + Redis (shared DB3) | ✅ Selesai | P3 | Fase 9b |
-| 14 | Prometheus Metrics | Go | - | ⬜ Belum | P4 | Fase 11 |
-| 15 | Webhook | Go | MariaDB | ⬜ Belum | P4 | (belum bernomor) |
+| 14 | Prometheus Monitoring | — | Active scrape jobs di `docker-compose.yml` + `infra/prometheus/prometheus.yml` | ✅ Selesai | P3/P4 | Fase 1/11 |
+| 15 | Webhook | Go | MariaDB | ✅ Selesai | P4 | — |
+| — | Spray Automation Logic | — | Disediakan oleh `model-control`/TD3 (Fase 6f) | ✅ Selesai | 🟡 P2 | Fase 13 |
 | — | **DLQ Saga (NATS Advisory)** | Go | mariadb-audit | ✅ Selesai | **P1** | Cross-cutting (TA) |
 | — | **CI/CD (GitHub Actions)** | YAML | - | ✅ Selesai | 🟡 P2 | Cross-cutting (TA) |
 | — | **Unit Test 80%** | Go | - | ✅ Selesai | 🟡 P2 | Cross-cutting (TA) |
@@ -936,16 +909,17 @@ df = pd.read_parquet("data.parquet")
 | **Minggu 2** | 🔴 P1 | Alert Service + Audit Service | Threshold evaluation + audit log aktif (consume `audit.log`) |
 | **Minggu 3** | 🟡 P2 | Notification Service + WS JWT Auth | Notifikasi Telegram/Email/Push + WS aman ✅ (WS sudah) |
 | **Minggu 4** | 🟡 P2 | Dashboard Lengkap (Device Mgmt, realtime, alert) | Halaman dashboard lengkap (realtime & control sudah; alert menyusul) |
-| **Minggu 5** | 🟢 P3 | Export / Data API | Akses data eksternal (pandas/Parquet) |
-| **Minggu 6+** | ⬜ P4 | Prometheus Metrics + Cloudflare | pipeline metrik, deployment |
+| **Minggu 5** | 🟢 P3 | Export / Data API | Akses data eksternal (CSV via Analytics) ✅ |
+| **Minggu 6+** | ⬜ P4 | (semua selesai — lihat ringkasan service) | Pipeline metrik, tunneling, webhook dispatch ✅ |
 
 ### Rekomendasi Eksekusi TA-Scale (selaras `planning.md` TA-Scale Roadmap)
 
-> **Catatan:** DLQ Saga, CI/CD, Unit Test 80%, Transactional Outbox, dan MinIO Scoped Keys (O2) **sudah selesai** (2026-07-16/22). Berikut sisa prioritas:
+> **Catatan:** DLQ Saga, CI/CD, Unit Test 80%, Transactional Outbox, MinIO Scoped Keys (O2), Prometheus Monitoring, Cloudflare Tunnel, Spray Automation Logic, dan Webhook Service **sudah selesai** (2026-07-16/22/24/30). Berikut sisa prioritas:
 
 | Urutan | Item | Kategori | Alasan |
 |---|---|---|---|
 | 1 | **Lengkapi Audit Compliance** | 🔴 P1 | Pastikan semua service publish `audit.log` (Control/Stream/ML/Notification) — sebagian sudah ✅ |
+| 2 | **O1: Enforcement Mosquitto** | 🟡 P2 | `allow_anonymous false` + aktifkan `acl.conf` per-service agar MQTT tidak menerima koneksi anonim |
 
 ---
 
@@ -982,6 +956,7 @@ df = pd.read_parquet("data.parquet")
 | 2026-07-14 | 2.13.0 | **Fase 9 — Audit Service SELESAI.** Service Go baru `services/audit`: subscribe `audit.log` (Core NATS, queue group `audit-workers`) → insert append-only ke `mariadb-audit` (`audit_logs`), endpoint `GET /audit/logs` (filter `event`/`search` + paginasi). Wire: `mariadb-audit` + `audit` + `mysqld-exporter-audit` (compose), upstream+route `/audit` (Kong, JWT), scrape job `audit-service`+`mariadb-audit` (Prometheus). Lolos `go build` + `go vet` + `docker compose config`. Dashboard Audit/History (Fase 10) menyusul. |
 | 2026-07-14 | 2.14.0 | **Fase 10 — Dashboard Audit Log page SELESAI.** Halaman `AUDIT` (sidebar, ikon `ScrollText`) di `dashboard/src/components/Dashboard/Pages/Audit.jsx`: tabel audit trail immutable dari `GET /audit/logs` via Kong, filter `event` (prefix) + `search` (payload), paginasi (25/50/100) + quick-filter chip (Auth/Module/Node/Control), tombol Live (auto-refresh 10s). Penyempurnaan backend: filter `event` di Audit Service diubah jadi prefix `LIKE` agar dashboard bisa filter `auth`/`control`/dll. Lolos `npm run build` (vite) + ESLint (sesuai baseline repo). Sidebar & DashboardLayout di-wire. |
 | 2026-07-16 | 2.16.0 | **Sinkronisasi penuh dengan `planning.md` (v2.16.0).** (1) Versi & tanggal → 2.16.0 / 2026-07-16; (2) Tambah link *Dokumen Terkait* (planning/logs/testing/AGENTS); (3) **Seragamkan penomoran fase ke skema planning (1–12)**: Notification → Fase 5 (P1), Export → Fase 9b, Prometheus Metrics → Fase 10, Cloudflare → Fase 11; (4) Prioritas Notification → **P1** (blocker fungsional, alert "mati di ujung"); (5) Tambah item cross-cutting TA-Scale ke tabel "Yang belum dikerjakan" & Ringkasan Service: **DLQ Saga (P1), CI/CD (P2), Unit Test 80% (P2), Transactional Outbox (P2), Webhook (#15)**; (6) Tambah sub-bab "Rekomendasi Eksekusi TA-Scale" di Timeline; (7) Perbarui Risk table: backup→sudah ada DR strategy, CI/CD & unit test → 🟡 dikerjakan di TA, tambah risiko SPOF NATS/Kong & DLQ saga. |
+| 2026-07-30 | 2.18.0 | **Semua item eksplisit selesai.** Spray Automation Logic terintegrasi di `model-control` (TD3); Prometheus Metrics aktif via scrape jobs; Cloudflare Tunnel (`cloudflared`) terdaftar di compose; Webhook Service selesai. Tabel ringkasan, section "Yang belum", timeline, dan rekomendasi eksekusi disesuaikan. |
 
 ---
 

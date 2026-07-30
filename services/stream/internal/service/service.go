@@ -755,4 +755,3 @@ func floatPtrStr(v *float64) string {
 func floatStr(v float64) string {
 	return strconv.FormatFloat(v, 'f', 4, 64)
 }
-
