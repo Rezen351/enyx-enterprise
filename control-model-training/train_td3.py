@@ -256,7 +256,7 @@ def train_td3():
     vec_env = make_vec_env(AeroponicGymnasiumEnv, n_envs=1)
     vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
 
-    total_timesteps = 3_500_000
+    total_timesteps = 2_000_000
     lr_schedule = lambda progress_remaining: 1e-4 * progress_remaining
 
     n_actions = vec_env.action_space.shape[-1]

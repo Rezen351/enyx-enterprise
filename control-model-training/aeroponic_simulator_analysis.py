@@ -23,18 +23,18 @@ def run_validation():
 
     print("\n[TEST 1] Initial state matches notebook section 3.8")
     init = env.reset()
-    # Indonesian daytime initialization (episode starts at 06:00)
-    # T_in: 26-30°C, H_in: 70-85%, T_out: 28-33°C, H_out: 60-75%
+    # Indonesian dawn initialization (episode starts at 06:00)
+    # T_in: 22-24°C, H_in: 85-95%, T_out: 23-26°C, H_out: 75-85%
     expected_ranges = [
         (8.0, 8.0, 0.01),      # L_root: exact
         (0.95, 0.95, 0.01),    # U_status: exact
-        (26.0, 30.0, None),    # T_in: daytime range
-        (70.0, 85.0, None),    # H_in: daytime range
-        (28.0, 33.0, None),    # T_out: daytime range
-        (60.0, 75.0, None),    # H_out: daytime range
+        (22.0, 24.0, None),    # T_in: dawn/night residual range
+        (85.0, 95.0, None),    # H_in: dawn/night humidity range
+        (23.0, 26.0, None),    # T_out: dawn/night range
+        (75.0, 85.0, None),    # H_out: dawn/night range
         (1.4, 2.0, None),      # EC: tropical range
         (5.6, 6.2, None),      # pH: tropical range
-        (24.0, 33.0, None),    # T_nut: near T_in (±1°C, T_in max 30°C)
+        (22.0, 26.0, None),    # T_nut: near T_in
         (1.0, 1.0, 0.01)       # I_day: exact
     ]
     labels = ["L_root", "U_status", "T_in", "H_in", "T_out", "H_out", "EC", "pH", "T_nut", "I_day"]

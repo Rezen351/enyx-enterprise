@@ -89,14 +89,18 @@ export function NotificationProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    const token = sessionStorage.getItem('token') || '';
-    const wsUrl = getWsUrl(`/ws/system-status?token=${encodeURIComponent(token)}`);
-
     let socket = null;
     let reconnectTimer = null;
 
     function connect() {
-      if (!token) return;
+      const currentToken = sessionStorage.getItem('token') || '';
+      if (!currentToken) {
+        setLatestStatus({ status: 'warning', message: 'System: Unauthenticated' });
+        reconnectTimer = setTimeout(connect, 5000);
+        return;
+      }
+
+      const wsUrl = getWsUrl(`/ws/system-status?token=${encodeURIComponent(currentToken)}`);
       socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {

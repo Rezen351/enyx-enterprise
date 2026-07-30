@@ -300,7 +300,9 @@ services:
     volumes:
       - ./volumes/timescaledb-module:/var/lib/postgresql/data
       - ./infra/timescaledb/module/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-      - ./infra/timescaledb/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
+      - ./infra/timescaledb/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./infra/timescaledb/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     healthcheck:
       test: [ "CMD", "pg_isready", "-U", "${DB_USER}", "-d", "module_ts" ]
       interval: 10s
@@ -347,7 +349,9 @@ services:
     volumes:
       - ./volumes/timescaledb-analytics:/var/lib/postgresql/data
       - ./infra/timescaledb/analytics/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-      - ./infra/timescaledb/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
+      - ./infra/timescaledb/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./infra/timescaledb/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     healthcheck:
       test: [ "CMD", "pg_isready", "-U", "${DB_USER}", "-d", "analytics_ts" ]
       interval: 10s

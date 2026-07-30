@@ -3,6 +3,19 @@
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 > **Status:** ✅ Done · 🟡 In Progress · ❌ Blocked · 🔁 Revised · 📝 Note
 
+### Docker Compose Service Health Audit, WebSocket & Analytics API Fixes (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **WebSocket Auth Token Fix ([NotificationContext.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/context/NotificationContext.jsx)):** Memperbarui `NotificationContext.jsx` agar membaca `sessionStorage.getItem('token')` secara dinamis di dalam fungsi `connect()`. Mencegah infinite reconnect loop dengan token kedaluwarsa/kosong saat WebSocket `/ws/system-status` melakukan koneksi awal maupun reconnect. |
+| 2 | ✅ | **Analytics Service & Hypertable Schema Fix ([init.sql](file:///home/almuzky/TA/Microservices/infra/timescaledb/analytics/init.sql)):** Menyelesaikan masalah `GET /v1/analytics/nodes` 500 Internal Server Error yang disebabkan oleh belum terciptanya hypertable `metrics_rollup` pada volume TimescaleDB lama. Eksekusi `docker compose down -v` me-reset volume database dari awal dan mengeksekusi `init.sql` secara otomatis, sehingga `GET /v1/analytics/nodes` mengembalikan respons `200 OK` (`{"success": true, "data": {"nodes": []}}`). |
+| 3 | ✅ | **Orchestration Clean Startup Simulation (`docker compose down -v` & `up`):** Mengosongkan seluruh volume (`docker compose down -v --remove-orphans`) dan menyalakan kembali seluruh 37 service (`docker compose up -d`). Seluruh container berstatus **Up** dan 100% container dengan healthcheck berada dalam kondisi **(healthy)**. |
+| 4 | ✅ | **Automated Test Suite Verification ([run_all_tests.py](file:///home/almuzky/TA/Microservices/test/run_all_tests.py)):** Menjalankan pengujian otomatis master test suite (`python3 test/run_all_tests.py`). Seluruh 34 test cases pada `unit_test.py` **PASS 100%** dan 4 grafik visual PNG pada [`test/results/`](file:///home/almuzky/TA/Microservices/test/results) ter-update secara otomatis. |
+
+**Keputusan Teknis:** `NotificationContext.jsx` sebelumnya menyimpan token JWT statis saat komponen di-mount. Saat token expired atau pengguna baru login, koneksi WebSocket `/ws/system-status` terus memicu 401 Unauthorized karena menggunakan token lama. Pembacaan token secara dinamis di dalam `connect()` memastikan `sessionStorage` selalu diperiksa ulang setiap kali mencoba menghubungkan ulang WebSocket. Pada `timescaledb-analytics`, `init.sql` menginisialisasi hypertable `metrics_rollup` dan continuous aggregates secara otomatis pada data directory kosong saat `docker compose down -v` simulasi dijalankan.
+
+---
+
 ### Diurnal Cycle Analysis & Aeroponic Simulator Thermal Dynamics Fix (2026-07-30)
 
 | # | Status | Aktivitas |
