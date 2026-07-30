@@ -93,6 +93,60 @@ function statsOf(points) {
   return { count: points.length, min, max, avg: n ? sum / n : NaN, last: points[points.length - 1].v };
 }
 
+function getStepMs(range) {
+  switch (range) {
+    case '1h': return 60 * 1000;
+    case '6h': return 5 * 60 * 1000;
+    case '24h': return 15 * 60 * 1000;
+    case '7d': return 60 * 60 * 1000;
+    case '30d': return 6 * 60 * 60 * 1000;
+    default: return 60 * 1000;
+  }
+}
+
+// Build a uniform, time-sorted x-axis grid from several per-metric point arrays
+// so all metrics align to common time buckets (1m, 5m, 15m, 1h, 6h). Prevents
+// misaligned unbucketed timestamps from creating alternating null gaps.
+function buildAxis(pointLists, range = '1h') {
+  let minT = Infinity, maxT = -Infinity;
+  for (const pts of pointLists) {
+    for (const p of pts) {
+      const t = new Date(p.t).getTime();
+      if (!isNaN(t)) {
+        if (t < minT) minT = t;
+        if (t > maxT) maxT = t;
+      }
+    }
+  }
+  if (!isFinite(minT) || !isFinite(maxT)) return { axis: [], step: getStepMs(range) };
+
+  const step = getStepMs(range);
+  const start = Math.floor(minT / step) * step;
+  const end = Math.ceil(maxT / step) * step;
+
+  const maxPoints = 1440;
+  const effectiveStep = Math.max(step, Math.ceil((end - start) / maxPoints));
+
+  const axis = [];
+  for (let t = start; t <= end; t += effectiveStep) {
+    axis.push(t);
+  }
+  return { axis, step: effectiveStep };
+}
+
+// Project one metric's points onto the uniform axis grid; gaps become null
+// so the line breaks instead of shifting subsequent samples out of alignment.
+function alignToAxis(axis, pts, pick) {
+  const idx = new Map(axis.map((t, i) => [t, i]));
+  const out = new Array(axis.length).fill(null);
+  for (const p of pts) {
+    const t = new Date(p.t).getTime();
+    const i = idx.get(t);
+    if (i != null) out[i] = pick(p);
+  }
+  return out;
+}
+
 
 
 function histogram(values, bins = 10) {
