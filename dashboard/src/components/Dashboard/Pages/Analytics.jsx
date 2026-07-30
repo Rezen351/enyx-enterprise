@@ -93,61 +93,27 @@ function statsOf(points) {
   return { count: points.length, min, max, avg: n ? sum / n : NaN, last: points[points.length - 1].v };
 }
 
-function getStepMs(range) {
-  switch (range) {
-    case '1h': return 60 * 1000;
-    case '6h': return 5 * 60 * 1000;
-    case '24h': return 15 * 60 * 1000;
-    case '7d': return 60 * 60 * 1000;
-    case '30d': return 6 * 60 * 60 * 1000;
-    default: return 60 * 1000;
-  }
+// Build a unified, time-sorted x-axis from several per-metric point arrays so
+// datasets with different bucket counts (e.g. per-minute digital vs hourly
+// analog at the same range) line up by actual timestamp instead of by array
+// index — otherwise the series with fewer points gets squashed/truncated.
+function buildAxis(pointLists) {
+  const set = new Set();
+  for (const pts of pointLists) for (const p of pts) set.add(p.t);
+  return Array.from(set).sort();
 }
 
-// Build a uniform, time-sorted x-axis grid from several per-metric point arrays
-// so all metrics align to common time buckets (1m, 5m, 15m, 1h, 6h). Prevents
-// misaligned unbucketed timestamps from creating alternating null gaps.
-function buildAxis(pointLists, range = '1h') {
-  let minT = Infinity, maxT = -Infinity;
-  for (const pts of pointLists) {
-    for (const p of pts) {
-      const t = new Date(p.t).getTime();
-      if (!isNaN(t)) {
-        if (t < minT) minT = t;
-        if (t > maxT) maxT = t;
-      }
-    }
-  }
-  if (!isFinite(minT) || !isFinite(maxT)) return { axis: [], step: getStepMs(range) };
-
-  const step = getStepMs(range);
-  const start = Math.floor(minT / step) * step;
-  const end = Math.ceil(maxT / step) * step;
-
-  const maxPoints = 1440;
-  const effectiveStep = Math.max(step, Math.ceil((end - start) / maxPoints));
-
-  const axis = [];
-  for (let t = start; t <= end; t += effectiveStep) {
-    axis.push(t);
-  }
-  return { axis, step: effectiveStep };
-}
-
-// Project one metric's points onto the uniform axis grid; gaps become null
-// so the line breaks instead of shifting subsequent samples out of alignment.
+// Project one metric's points onto the unified axis; gaps become null so the
+// line breaks instead of shifting every subsequent sample out of alignment.
 function alignToAxis(axis, pts, pick) {
   const idx = new Map(axis.map((t, i) => [t, i]));
   const out = new Array(axis.length).fill(null);
   for (const p of pts) {
-    const t = new Date(p.t).getTime();
-    const i = idx.get(t);
+    const i = idx.get(p.t);
     if (i != null) out[i] = pick(p);
   }
   return out;
 }
-
-
 
 function histogram(values, bins = 10) {
   if (values.length === 0) return { labels: [], counts: [] };
@@ -188,12 +154,6 @@ function isBooleanMetric(points) {
     if (p.v !== 0 && p.v !== 1) return false;
   }
   return true;
-}
-
-function isHighMetric(metricName, points = []) {
-  if (/uptime|heap|freq|bytes|count/i.test(metricName)) return true;
-  if (!points || !points.length) return false;
-  return points.some((p) => Math.abs(p.v || 0) > 1000 || Math.abs(p.max || 0) > 1000);
 }
 
 function corrColor(v) {
@@ -407,12 +367,13 @@ function Analytics() {
     booleanSet.size ? booleanSet.has(m) : isBooleanMetric(seriesByMetric[m])
   );
   const analogMetrics = metrics.filter((m) => !boolMetrics.includes(m));
-  const trendAxisInfo = buildAxis(analogMetrics.map((m) => seriesByMetric[m] || []), range);
-  const trendLabels = trendAxisInfo.axis.map(formatTick);
-  const stateAxisInfo = buildAxis(boolMetrics.map((m) => seriesByMetric[m] || []), range);
-  const stateLabels = stateAxisInfo.axis.map(formatTick);
-
-  const hasHighMetrics = analogMetrics.some((m) => isHighMetric(m, seriesByMetric[m]));
+  // Each chart builds its own time axis from the metrics it draws, so mismatched
+  // bucket counts (per-minute digital vs hourly analog at the same range) never
+  // squash or truncate a series.
+  const trendAxis = buildAxis(analogMetrics.map((m) => seriesByMetric[m] || []));
+  const trendLabels = trendAxis.map(formatTick);
+  const stateAxis = buildAxis(boolMetrics.map((m) => seriesByMetric[m] || []));
+  const stateLabels = stateAxis.map(formatTick);
 
   // Analog trend: each metric draws a min–max envelope (filled band between its
   // low/high bucket values) plus an avg line, so aggregated ranges (7d/30d)
@@ -423,37 +384,31 @@ function Analytics() {
     datasets: analogMetrics.flatMap((m, i) => {
       const color = PALETTE[i % PALETTE.length];
       const pts = seriesByMetric[m] || [];
-      const isHigh = isHighMetric(m, pts);
-      const yAxisID = isHigh ? 'yHigh' : 'y';
       return [
         {
           label: displayName(m),
-          data: alignToAxis(trendAxisInfo, pts, (p) => (p.max != null ? p.max : p.v)),
+          data: alignToAxis(trendAxis, pts, (p) => (p.max != null ? p.max : p.v)),
           borderWidth: 0,
           pointRadius: 0,
           pointHoverRadius: 0,
           fill: '+1',
           backgroundColor: color + '22',
           isBand: true,
-          spanGaps: true,
-          yAxisID,
           order: 1,
         },
         {
           label: displayName(m),
-          data: alignToAxis(trendAxisInfo, pts, (p) => (p.min != null ? p.min : p.v)),
+          data: alignToAxis(trendAxis, pts, (p) => (p.min != null ? p.min : p.v)),
           borderWidth: 0,
           pointRadius: 0,
           pointHoverRadius: 0,
           fill: false,
           isBand: true,
-          spanGaps: true,
-          yAxisID,
           order: 1,
         },
         {
           label: displayName(m),
-          data: alignToAxis(trendAxisInfo, pts, (p) => (p.avg != null ? p.avg : p.v)),
+          data: alignToAxis(trendAxis, pts, (p) => (p.avg != null ? p.avg : p.v)),
           borderColor: color,
           backgroundColor: color + '22',
           borderWidth: 2,
@@ -461,8 +416,6 @@ function Analytics() {
           pointHoverRadius: 4,
           tension: 0.3,
           fill: false,
-          spanGaps: true,
-          yAxisID,
           order: 2,
         },
       ];
@@ -530,32 +483,7 @@ function Analytics() {
     },
     scales: {
       x: { grid: { color: 'rgba(148,163,184,0.08)' }, ticks: { color: 'rgba(148,163,184,0.7)', maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
-      y: {
-        type: 'linear',
-        display: true,
-        position: 'left',
-        title: {
-          display: true,
-          text: 'Sensors / Standard Values',
-          color: 'rgba(16,185,129,0.8)',
-          font: { size: 10, weight: 'bold' },
-        },
-        grid: { color: 'rgba(148,163,184,0.08)' },
-        ticks: { color: 'rgba(148,163,184,0.7)' },
-      },
-      yHigh: {
-        type: 'linear',
-        display: hasHighMetrics,
-        position: 'right',
-        title: {
-          display: true,
-          text: 'Counters / System Metrics',
-          color: 'rgba(6,182,212,0.8)',
-          font: { size: 10, weight: 'bold' },
-        },
-        grid: { drawOnChartArea: false },
-        ticks: { color: 'rgba(6,182,212,0.7)' },
-      },
+      y: { grid: { color: 'rgba(148,163,184,0.08)' }, ticks: { color: 'rgba(148,163,184,0.7)' } },
     },
   };
 
@@ -563,7 +491,7 @@ function Analytics() {
     labels: stateLabels,
     datasets: boolMetrics.map((m, i) => ({
       label: displayName(m),
-      data: alignToAxis(stateAxisInfo, seriesByMetric[m] || [], (p) => p.v),
+      data: alignToAxis(stateAxis, seriesByMetric[m] || [], (p) => p.v),
       borderColor: PALETTE[i % PALETTE.length],
       backgroundColor: PALETTE[i % PALETTE.length] + '22',
       borderWidth: 2,
@@ -571,7 +499,6 @@ function Analytics() {
       pointHoverRadius: 4,
       stepped: true,
       fill: false,
-      spanGaps: true,
     })),
   };
 
