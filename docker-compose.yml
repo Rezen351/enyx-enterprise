@@ -1072,41 +1072,43 @@ services:
       - iot-net
 
   # ──────────────────────────────────────
-  # PPO CONTROLLER — pure inference service
+  # MODEL CONTROLLER — pure inference service
   # ──────────────────────────────────────
-  ppo-controller:
+  model-controller:
     build:
-      context: ./services/ppo-controller
+      context: ./services/model-controller
       dockerfile: Dockerfile
-    image: ghcr.io/rezen351/enyx-enterprise/ppo-controller:${IMAGE_TAG:-latest}
+    image: ghcr.io/rezen351/enyx-enterprise/model-controller:${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       PORT: "8080"
       DEVICE: "cpu"
+      MODEL_PATH: "/app/models/aeroponic_td3.zip"
+      VEC_NORM_PATH: "/app/models/vec_normalize_td3.pkl"
       NATS_URL: "nats://nats:4222"
       JWT_SECRET: "${JWT_SECRET}"
     volumes:
-      - ./ppo-model-training/models:/app/models:ro
+      - ./control-model-training/models:/app/models:ro
     depends_on:
       nats:
         condition: service_started
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health').status==200 else 1)" ]
       interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 40s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
     networks:
       - iot-net
 
   # ──────────────────────────────────────
-  # PPO CONTROL — scheduler/cron loop
+  # MODEL CONTROL — scheduler update/cron loop
   # ──────────────────────────────────────
-  ppo-control:
+  model-control:
     build:
-      context: ./services/ppo-control
+      context: ./services/model-control
       dockerfile: Dockerfile
-    image: ghcr.io/rezen351/enyx-enterprise/ppo-control:${IMAGE_TAG:-latest}
+    image: ghcr.io/rezen351/enyx-enterprise/model-control:${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       PORT: "8081"
@@ -1117,7 +1119,8 @@ services:
       PUMP_SCHEDULE_ID: "35461f5f-d6ef-4c30-abfc-9eb680b5dfe7"
       PREDICTION_INTERVAL_SEC: "5"
       CONTROL_URL: "http://control:8080"
-      PPO_CONTROLLER_URL: "http://ppo-controller:8080"
+      MODEL_CONTROLLER_URL: "http://model-controller:8080"
+      PPO_CONTROLLER_URL: "http://model-controller:8080"
       NATS_URL: "nats://nats:4222"
       MINIO_ENDPOINT: "minio:9000"
       MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY}"
@@ -1129,7 +1132,7 @@ services:
       CONTROL_PASS: "${ADMIN_PASSWORD}"
       JWT_SECRET: "${JWT_SECRET}"
     depends_on:
-      ppo-controller:
+      model-controller:
         condition: service_healthy
       control:
         condition: service_healthy

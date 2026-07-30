@@ -60,7 +60,7 @@ func New(cfg Config, onConfirm ConfirmHandler, onTelemetry TelemetryHandler) (*C
 		SetConnectRetry(true).
 		SetConnectRetryInterval(5 * time.Second).
 		SetKeepAlive(30 * time.Second).
-		SetCleanSession(true)
+		SetCleanSession(false)
 
 	if cfg.Username != "" {
 		opts.SetUsername(cfg.Username)

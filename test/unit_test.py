@@ -1564,21 +1564,21 @@ class TestDLQService(ServiceTestCase):
         self.assertIn(res.status_code, [200, 404, 500], f"Expected 200/404/500 for DLQ filter, got {res.status_code}: {res.text}")
 
 
-class TestPPOService(ServiceTestCase):
-    """15. PPO Service Features (ppo-controller inference + ppo-control scheduler)."""
+class TestModelService(ServiceTestCase):
+    """15. Model Service Features (model-controller inference + model-control scheduler)."""
 
-    def test_01_ppo_controller_health(self):
-        url = f"{BASE_URL}/v1/ppo_controller/health"
+    def test_01_model_controller_health(self):
+        url = f"{BASE_URL}/v1/model_controller/health"
         res = requests.get(url, timeout=5)
-        self.assertEqual(res.status_code, 200, f"Expected 200 OK for ppo-controller health, got {res.status_code}: {res.text}")
+        self.assertEqual(res.status_code, 200, f"Expected 200 OK for model-controller health, got {res.status_code}: {res.text}")
         data = res.json().get("data", {})
         self.assertIn("status", data)
 
-    def test_02_ppo_controller_predict(self):
-        url = f"{BASE_URL}/v1/ppo_controller/predict"
+    def test_02_model_controller_predict(self):
+        url = f"{BASE_URL}/v1/model_controller/predict"
         payload = {"state": [10.0, 0.5, 25.0, 70.0, 28.0, 65.0, 1.5, 6.5, 25.0, 0.9]}
         res = requests.post(url, json=payload, timeout=10)
-        self.assertEqual(res.status_code, 200, f"Expected 200 OK for ppo-controller predict, got {res.status_code}: {res.text}")
+        self.assertEqual(res.status_code, 200, f"Expected 200 OK for model-controller predict, got {res.status_code}: {res.text}")
         data = res.json().get("data", {})
         self.assertIn("D_mist", data)
         self.assertIn("interval_sec", data)
@@ -1587,17 +1587,21 @@ class TestPPOService(ServiceTestCase):
         self.assertIsInstance(data["interval_sec"], (int, float))
         self.assertIn(data["A_valve"], [0, 1])
 
-    def test_03_ppo_control_health(self):
-        url = f"{BASE_URL}/v1/ppo/health"
+    def test_03_model_control_health(self):
+        url = f"{BASE_URL}/v1/model_control/health"
         res = requests.get(url, timeout=5)
-        self.assertEqual(res.status_code, 200, f"Expected 200 OK for ppo-control health, got {res.status_code}: {res.text}")
+        self.assertEqual(res.status_code, 200, f"Expected 200 OK for model-control health, got {res.status_code}: {res.text}")
         data = res.json()
         self.assertEqual(data.get("status"), "ok")
 
-    def test_04_ppo_control_trigger_predict(self):
-        url = f"{BASE_URL}/v1/ppo/trigger-predict"
+    def test_04_model_control_trigger_predict(self):
+        url = f"{BASE_URL}/v1/model_control/trigger-predict"
         res = requests.post(url, timeout=10)
-        self.assertIn(res.status_code, [200, 503], f"Expected 200/503 for ppo-control trigger-predict, got {res.status_code}: {res.text}")
+        self.assertIn(res.status_code, [200, 503], f"Expected 200/503 for model-control trigger-predict, got {res.status_code}: {res.text}")
+
+
+# Alias for backward compatibility
+TestPPOService = TestModelService
 
 
 def run_unit_tests():

@@ -1,4 +1,4 @@
-# PPO Aeroponic Controller — Integration Guide
+# TD3 Aeroponic Controller — Integration Guide
 
 > **Services:** `ppo-controller` (inference) · `ppo-control` (scheduler)  
 > **Version:** 1.0.0  
@@ -12,9 +12,9 @@
 
 ## 1. Overview
 
-The PPO Aeroponic Controller consists of two FastAPI services that together replace rule-based misting schedules with a learned policy:
+The TD3 Aeroponic Controller consists of two FastAPI services that together replace rule-based misting schedules with a learned policy:
 
-- **ppo-controller** — pure stateless inference. Loads `aeroponic_ppo.zip` + `vec_normalize.pkl` on startup. Exposes `POST /predict` which maps a 10D state vector to a 3D action (`D_mist`, `interval_sec`, `A_valve`).
+- **ppo-controller** — pure stateless inference. Loads `aeroponic_td3.zip` + `vec_normalize_td3.pkl` on startup. Exposes `POST /predict` which maps a 10D state vector to a 3D action (`D_mist`, `interval_sec`, `A_valve`).
 - **ppo-control** — scheduler and telemetry consumer. Subscribes to NATS `telemetry.ingest` + `telemetry.batch`, assembles the 10D state from cache + MinIO metadata, calls ppo-controller for prediction, and applies the action to Control Service **only at cycle boundaries**.
 
 ### 1.1 Key Responsibilities
@@ -144,7 +144,7 @@ All responses use the standard envelope:
 
 ## 5. Cycle-Boundary Update Behavior
 
-`ppo-control` evaluates PPO every `PREDICTION_INTERVAL_SEC` (compose default: `5` seconds), but only applies actions to Control Service when one full cycle completes:
+`ppo-control` evaluates TD3 every `PREDICTION_INTERVAL_SEC` (compose default: `5` seconds), but only applies actions to Control Service when one full cycle completes:
 
 1. Tick assembles 10D state and calls `ppo-controller/predict`.
 2. Result is stored in `pending_action` (overwrites previous pending).
@@ -219,7 +219,7 @@ If MinIO is unreachable or metadata is missing, both `L_root` and `U_status` fal
 
 | Signal | How to Observe |
 |---|---|
-| Prediction loop health | `docker logs ppo-control` — look for `PPO loop started interval=5s` |
+| Prediction loop health | `docker logs ppo-control` — look for `TD3 loop started interval=5s` |
 | State evolution | `docker logs ppo-control` — `state=[...]` every tick |
 | Cycle-boundary logic | `docker logs ppo-control` — `schedule update ok=...` (only at cycle end) or `tick skipped cycle_done=False` |
 | Inference latency | `curl ppo-controller:8080/metrics` → `predict_latency_seconds` histogram |

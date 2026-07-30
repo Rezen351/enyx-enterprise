@@ -1,0 +1,3 @@
+episode,duration_h,cycles,final_L_root,L_growth,avg_D_mist,avg_interval,valve_usage_pct,events
+1,71.97,236,8.2784,0.2784,703.56,769,8.9,{'none': 236}
+2,71.82,241,8.4137,0.4137,723.65,731,8.7,{'none': 241}

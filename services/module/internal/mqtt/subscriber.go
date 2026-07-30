@@ -45,7 +45,7 @@ func New(cfg Config, svc *service.ModuleService) (*Subscriber, error) {
 		SetConnectRetry(true).
 		SetConnectRetryInterval(5 * time.Second).
 		SetKeepAlive(30 * time.Second).
-		SetCleanSession(true)
+		SetCleanSession(false)
 
 	if cfg.Username != "" {
 		opts.SetUsername(cfg.Username)

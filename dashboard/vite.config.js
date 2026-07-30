@@ -28,8 +28,33 @@ export default defineConfig({
       '/snapshots': { target: KONG_URL, changeOrigin: true },
       '/ml': { target: KONG_URL, changeOrigin: true },
       '/notifications': { target: KONG_URL, changeOrigin: true },
-      '/export': { target: KONG_URL, changeOrigin: true },
-      '/hls': { target: KONG_URL, changeOrigin: true },
+      '/hls': {
+        target: KONG_URL,
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            const loc = proxyRes.headers['location'] || proxyRes.headers['Location'];
+            if (loc && typeof loc === 'string' && loc.startsWith('/') && !loc.startsWith('/hls')) {
+              proxyRes.headers['location'] = '/hls' + loc;
+            }
+          });
+        },
+      },
+      '^/.*\\.m3u8': {
+        target: KONG_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.startsWith('/hls') ? path : '/hls' + path,
+      },
+      '^/.*\\.ts': {
+        target: KONG_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.startsWith('/hls') ? path : '/hls' + path,
+      },
+      '^/.*\\.mp4': {
+        target: KONG_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.startsWith('/hls') ? path : '/hls' + path,
+      },
       // WebSocket live telemetry bridge (wsgateway behind Kong).
       // `ws: true` lets Vite forward the WebSocket upgrade handshake so the
       // dashboard's live MQTT monitor works against the dev server on :5173.

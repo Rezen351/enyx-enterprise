@@ -174,10 +174,31 @@ void MqttManager::mqttTask(void* parameter) {
                     String onlinePayload = "{\"status\":\"online\",\"mac\":\"" + macAsli + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"fw\":\"" + Config::FW_VERSION + "\"}";
                     mqttClient->publish(lwtTopic.c_str(), onlinePayload.c_str(), true);
                     
-                    // Publish discovery
-                    publishDiscovery();
-                    
-                } else {
+                     // Publish discovery
+                     publishDiscovery();
+
+                     // Publish discovery periodically every 60 seconds
+                     // so that missed discovery messages (e.g. due to
+                     // startup race conditions) are eventually recovered
+                     // by the module service.
+                     xTaskCreatePinnedToCore(
+                         [](void *param) {
+                             while (true) {
+                                 vTaskDelay(60000 / portTICK_PERIOD_MS);
+                                 if (mqttClient != nullptr && mqttClient->connected()) {
+                                     publishDiscovery();
+                                 }
+                             }
+                         },
+                         "DiscoveryPeriodic",
+                         4096,
+                         NULL,
+                         1,
+                         NULL,
+                         0
+                      );
+
+                 } else {
                     int state = mqttClient->state();
                     addLog(("Conn failed, rc=" + String(state)).c_str());
                     vTaskDelay(5000 / portTICK_PERIOD_MS);

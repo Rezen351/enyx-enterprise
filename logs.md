@@ -3,6 +3,35 @@
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 > **Status:** ✅ Done · 🟡 In Progress · ❌ Blocked · 🔁 Revised · 📝 Note
 
+### Live CCTV Stream Vite Proxy & Model Controller Integration (2026-07-30)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Live CCTV Stream Vite Proxy Fix ([vite.config.js](file:///home/almuzky/TA/Microservices/dashboard/vite.config.js)):** Menambahkan middleware `configure` pada rute `/hls` di `dashboard/vite.config.js` untuk merewrite header 302 `Location` dari MediaMTX (menyisipkan prefix `/hls`), serta menambahkan rute proxy fallback regex (`^/.*\.m3u8` dan `^/.*\.ts`). Pengujian `curl http://localhost:5173/hls/cctv-1/index.m3u8` mengonfirmasi respons 302 `Location: http://localhost:5173/hls/cctv-1/index.m3u8?cookieCheck=1` berjalan 100% sukses. |
+| 2 | ✅ | **Dummy RTSP Stream Generator ([docker-compose.yml](file:///home/almuzky/TA/Microservices/docker-compose.yml)):** Menambahkan service `mediamtx-dummy` berbasis `bluenviron/mediamtx:latest` dengan ffmpeg synthetic test generator (`testsrc`) untuk menyalurkan stream RTSP dummy ke `rtsp://mediamtx-dummy:8554/live1`. |
+| 3 | ✅ | **Model Controller TD3 Configuration ([docker-compose.yml](file:///home/almuzky/TA/Microservices/docker-compose.yml)):** Mengonfigurasi `model-controller` agar menggunakan model TD3 (`MODEL_PATH: "/app/models/aeroponic_td3.zip"` dan `VEC_NORM_PATH: "/app/models/vec_normalize_td3.pkl"`). |
+| 4 | ✅ | **Docker Startup & Matplotlib Optimization:** Menambahkan `MPLCONFIGDIR=/tmp` pada Dockerfile `model-controller` dan `model-control` untuk mencegah delay font cache Matplotlib. Menyesuaikan `start_period: 90s` pada healthcheck `model-controller`. |
+| 5 | ✅ | **End-to-End Verification:** Seluruh container (`auth`, `control`, `minio`, `model-controller`, `model-control`) berjalan **100% Healthy**. Eksekusi `POST http://localhost:8081/trigger-predict` mengembalikan `{"status":"tick executed"}`. |
+
+**Keputusan Teknis:** MediaMTX v1.18+ menjawab request HLS awal dengan pengalihan 302 relatif (`/cctv-1/index.m3u8?cookieCheck=1`). Tanpa proxy location rewrite di dev server Vite, browser ter-redirect ke rute non-proxy port 5173 yang mengembalikan HTML SPA. Penambahan proxy rewrite dan fallback m3u8/ts di Vite dev server mengatasi isu stream CCTV tidak muncul di dashboard. `model-controller` dikonfigurasi menggunakan biner TD3 dengan `MPLCONFIGDIR=/tmp` untuk startup instan.
+
+---
+
+### Standardization of Model Control & Model Controller Services (2026-07-30)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Docker Compose Standardization ([docker-compose.yml](file:///home/almuzky/TA/Microservices/docker-compose.yml)):** Menyelaraskan nama service ke `model-control` dan `model-controller`, memperbarui mount volume `./control-model-training/models:/app/models:ro`, memperbarui environment variable `MODEL_CONTROLLER_URL="http://model-controller:8080"`, dan memperbaiki `depends_on`. |
+| 2 | ✅ | **Kong API Gateway Configuration ([kong.yml](file:///home/almuzky/TA/Microservices/infra/kong/kong.yml)):** Mengganti upstreams `ppo-control-upstream` dan `ppo-controller-upstream` menjadi `model-control-upstream` dan `model-controller-upstream`. Memperbarui rute gateway untuk mendukung `/v1/model-control`, `/v1/model_control`, `/v1/model-controller`, dan `/v1/model_controller`. |
+| 3 | ✅ | **Prometheus Monitoring ([prometheus.yml](file:///home/almuzky/TA/Microservices/infra/prometheus/prometheus.yml)):** Menambahkan job scrape `model-control-service` (`:8081`) dan memperbarui `ppo-controller-service` menjadi `model-controller-service` (`:8080`). |
+| 4 | ✅ | **Microservices Source Code Refactoring:** Memperbarui `APP_NAME`, nama logger, dan client URL di `services/model-control` dan `services/model-controller`. Mengimplementasikan auto-detection loader untuk model PPO/TD3 di `model_loader.py`. |
+| 5 | ✅ | **Test Suite Alignment ([config.py](file:///home/almuzky/TA/Microservices/test/config.py), [unit_test.py](file:///home/almuzky/TA/Microservices/test/unit_test.py)):** Menyelaraskan endpoint inventory dan kelas pengujian `TestModelService` untuk memverifikasi endpoint `/v1/model_controller/health`, `/v1/model_controller/predict`, `/v1/model_control/health`, dan `/v1/model_control/trigger-predict`. |
+| 6 | ✅ | **Integration Documentation ([model-control.md](file:///home/almuzky/TA/Microservices/docs/integration-guides/model-control.md)):** Membuat dokumentasi integrasi lengkap mencakup rute API, variabel lingkungan, NATS topic, dan format state/action 10D/3D. |
+
+**Keputusan Teknis:** Penamaan service sebelumnya bervariasi antara `ppo-control`, `ppo-controller`, dan `td3-controller`. Seluruh penamaan kini diseragamkan secara konsisten menjadi general `model-control` (scheduler/loop service) dan `model-controller` (inference service) agar dapat mendukung model AI apa pun (PPO, TD3, maupun model RL/ML lainnya) secara fleksibel tanpa terikat pada algoritma spesifik.
+
+---
+
 ### ML Control — Jupyter Notebook Code Refactoring & Clean Code (2026-07-26)
 
 | # | Status | Aktivitas |

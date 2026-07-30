@@ -263,7 +263,7 @@ upstreams:
       - target: export-service:8080
         weight: 100
 
-  - name: ppo-control-upstream
+  - name: model-control-upstream
     algorithm: round-robin
     healthchecks:
       active:
@@ -275,10 +275,10 @@ upstreams:
           interval: 5
           http_failures: 2
     targets:
-      - target: ppo-control:8081
+      - target: model-control:8081
         weight: 100
 
-  - name: ppo-controller-upstream
+  - name: model-controller-upstream
     algorithm: round-robin
     healthchecks:
       active:
@@ -290,7 +290,7 @@ upstreams:
           interval: 5
           http_failures: 2
     targets:
-      - target: ppo-controller:8080
+      - target: model-controller:8080
         weight: 100
 
   # MediaMTX HLS — proxied through Kong
@@ -931,17 +931,19 @@ services:
               policy: local
               fault_tolerant: true
 
-  # PPO Control Service — PPO-based aeroponic control scheduler
-  - name: ppo-control-service
-    host: ppo-control-upstream
+  # Model Control Service — aeroponic control scheduler
+  - name: model-control-service
+    host: model-control-upstream
     port: 8081
     protocol: http
     connect_timeout: 5000
     write_timeout: 10000
     read_timeout: 10000
     routes:
-      - name: ppo-control-routes-v1
+      - name: model-control-routes-v1
         paths:
+          - ~/v1/model-control(?<rel_uri>/.*)
+          - ~/v1/model_control(?<rel_uri>/.*)
           - ~/v1/ppo(?<rel_uri>/.*)
         strip_path: false
         plugins:
@@ -955,8 +957,10 @@ services:
               hour: 1000
               policy: local
               fault_tolerant: true
-      - name: ppo-control-routes
+      - name: model-control-routes
         paths:
+          - /model-control
+          - /model_control
           - /ppo
         strip_path: true
         plugins:
@@ -967,17 +971,19 @@ services:
               policy: local
               fault_tolerant: true
 
-  # PPO Controller Service — pure PPO inference (state 10D → action)
-  - name: ppo-controller-service
-    host: ppo-controller-upstream
+  # Model Controller Service — pure model inference (state 10D → action)
+  - name: model-controller-service
+    host: model-controller-upstream
     port: 8080
     protocol: http
     connect_timeout: 5000
     write_timeout: 30000
     read_timeout: 30000
     routes:
-      - name: ppo-controller-routes-v1
+      - name: model-controller-routes-v1
         paths:
+          - ~/v1/model-controller(?<rel_uri>/.*)
+          - ~/v1/model_controller(?<rel_uri>/.*)
           - ~/v1/ppo_controller(?<rel_uri>/.*)
         strip_path: false
         plugins:
@@ -991,8 +997,10 @@ services:
               hour: 8000
               policy: local
               fault_tolerant: true
-      - name: ppo-controller-routes
+      - name: model-controller-routes
         paths:
+          - /model-controller
+          - /model_controller
           - /ppo_controller
         strip_path: true
         plugins:

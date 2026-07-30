@@ -31,7 +31,6 @@ export function ModuleProvider({ children }) {
     setLoadingModules(true);
     try {
       const data = await moduleApi.listModules();
-      // Module Service returns { modules: [...], count }
       const list = (data?.modules || []).map((m) => ({
         id: m.id,
         name: m.name,
@@ -54,14 +53,37 @@ export function ModuleProvider({ children }) {
     } catch (err) {
       console.warn('ModuleContext: Failed to fetch modules', err);
       setModules([]);
-      setSelectedModuleState(null);
+      // Do NOT reset selectedModule to null on transient API failure.
+      // Keep the persisted localStorage value so the dashboard
+      // retains its module selection across service restarts.
     } finally {
       setLoadingModules(false);
     }
   }, []);
 
+  // Retry fetchModules with exponential backoff on failure,
+  // so the dashboard eventually recovers when the backend is ready.
   useEffect(() => {
-    fetchModules();
+    let cancelled = false;
+    let retryCount = 0;
+    const maxRetries = 10;
+    const baseDelay = 2000;
+
+    const tryFetch = async () => {
+      if (cancelled) return;
+      try {
+        await fetchModules();
+      } catch {
+        retryCount++;
+        if (retryCount < maxRetries) {
+          const delay = Math.min(baseDelay * Math.pow(2, retryCount - 1), 30000);
+          setTimeout(tryFetch, delay);
+        }
+      }
+    };
+
+    tryFetch();
+    return () => { cancelled = true; };
   }, [fetchModules]);
 
   return (
