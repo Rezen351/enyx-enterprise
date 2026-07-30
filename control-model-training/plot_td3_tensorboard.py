@@ -6,7 +6,7 @@ Plot TensorBoard training curves from TD3 training events.
 import os
 import sys
 
-sys.path.insert(0, '/home/almuzky/TA/Microservices/ppo-model-training')
+sys.path.insert(0, '/home/almuzky/TA/Microservices/control-model-training')
 
 from tensorboard.backend.event_processing import event_accumulator
 import matplotlib
@@ -177,8 +177,8 @@ def get_latest_tensorboard_log_dir(tensorboard_base_dir):
 
 
 def main():
-    tensorboard_base_dir = '/home/almuzky/TA/Microservices/ppo-model-training/aeroponic_td3_tensorboard'
-    results_dir = '/home/almuzky/TA/Microservices/ppo-model-training/results'
+    tensorboard_base_dir = '/home/almuzky/TA/Microservices/control-model-training/aeroponic_td3_tensorboard'
+    results_dir = '/home/almuzky/TA/Microservices/control-model-training/results'
     os.makedirs(results_dir, exist_ok=True)
 
     log_dir = get_latest_tensorboard_log_dir(tensorboard_base_dir)
