@@ -7,7 +7,7 @@ import os
 import sys
 import csv
 
-sys.path.insert(0, '/home/almuzky/TA/Microservices/ppo-model-training')
+sys.path.insert(0, '/home/almuzky/TA/Microservices/control-model-training')
 
 import numpy as np
 import matplotlib
@@ -22,7 +22,7 @@ from train_td3 import AeroponicGymnasiumEnv
 
 
 def load_model_and_env():
-    base_dir = '/home/almuzky/TA/Microservices/ppo-model-training'
+    base_dir = '/home/almuzky/TA/Microservices/control-model-training'
     model_path = os.path.join(base_dir, 'models', 'aeroponic_td3.zip')
     vec_norm_path = os.path.join(base_dir, 'models', 'vec_normalize_td3.pkl')
 
@@ -628,7 +628,7 @@ def plot_stability_comparison(histories, out_path):
 
 
 def run_evaluation():
-    base_dir = '/home/almuzky/TA/Microservices/ppo-model-training'
+    base_dir = '/home/almuzky/TA/Microservices/control-model-training'
     results_dir = os.path.join(base_dir, 'results')
     os.makedirs(results_dir, exist_ok=True)
 

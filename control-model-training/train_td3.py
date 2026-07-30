@@ -13,7 +13,7 @@ TD3 (Twin Delayed DDPG) is chosen over PPO because:
 import os
 import sys
 
-sys.path.insert(0, '/home/almuzky/TA/Microservices/ppo-model-training')
+sys.path.insert(0, '/home/almuzky/TA/Microservices/control-model-training')
 
 import math
 import random
@@ -247,7 +247,7 @@ def train_td3():
     - VecNormalize for observation and reward normalization
     - Curriculum weather scaling for gradual domain randomization
     """
-    base_dir = '/home/almuzky/TA/Microservices/ppo-model-training'
+    base_dir = '/home/almuzky/TA/Microservices/control-model-training'
     models_dir = os.path.join(base_dir, 'models')
     tensorboard_dir = os.path.join(base_dir, 'aeroponic_td3_tensorboard')
     os.makedirs(models_dir, exist_ok=True)
@@ -256,13 +256,13 @@ def train_td3():
     vec_env = make_vec_env(AeroponicGymnasiumEnv, n_envs=1)
     vec_norm = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
 
-    total_timesteps = 2_000_000
+    total_timesteps = 3_500_000
     lr_schedule = lambda progress_remaining: 1e-4 * progress_remaining
 
     n_actions = vec_env.action_space.shape[-1]
     action_noise = NormalActionNoise(
         mean=np.zeros(n_actions),
-        sigma=np.array([0.1, 0.1, 0.2]),
+        sigma=np.array([0.1, 0.18, 0.2]),
     )
 
     value_norm_callback = ValueNormalizationCallback()
@@ -276,7 +276,14 @@ def train_td3():
     model_path = os.path.join(models_dir, 'aeroponic_td3.zip')
     if os.path.exists(model_path):
         model = TD3.load(model_path, env=vec_norm)
+        model.tensorboard_log = tensorboard_dir
         print(f"Resumed existing model from {model_path} ({model.num_timesteps} timesteps)")
+        model.action_noise = NormalActionNoise(
+            mean=np.zeros(n_actions),
+            sigma=np.array([0.1, 0.18, 0.2]),
+        )
+        model.target_noise_clip = 0.3
+        print(f"Updated hyperparameters: action_noise sigma=[0.1, 0.18, 0.2], target_noise_clip=0.3")
     else:
         model = TD3(
             policy='MlpPolicy',
@@ -292,7 +299,7 @@ def train_td3():
             action_noise=action_noise,
             policy_delay=2,
             target_policy_noise=0.2,
-            target_noise_clip=0.5,
+            target_noise_clip=0.3,
             stats_window_size=100,
             verbose=1,
             tensorboard_log=tensorboard_dir,
@@ -312,8 +319,8 @@ def train_td3():
     print(f"  Gamma: 0.995")
     print(f"  Policy delay: 2")
     print(f"  Target policy noise: 0.2")
-    print(f"  Target noise clip: 0.5")
-    print(f"  Action noise sigma: [0.1, 0.1, 0.2]")
+    print(f"  Target noise clip: 0.3")
+    print(f"  Action noise sigma: [0.1, 0.18, 0.2]")
     print(f"  Valve threshold: 0.0 (action[2] >= 0.0 -> ON)")
     print(f"  device: cpu")
     print(f"  tensorboard_log: {tensorboard_dir}")

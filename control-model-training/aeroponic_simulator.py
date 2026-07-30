@@ -933,8 +933,8 @@ class AeroponicSimulatorEnv:
 
             if d_mist_std > 10.0:
                 P_diversity += 0.4 + 0.8 * min(1.0, (d_mist_std - 10.0) / 40.0)
-            if interval_std > 20.0:
-                P_diversity += 0.2 + 0.4 * min(1.0, (interval_std - 20.0) / 40.0)
+            if interval_std > 15.0:
+                P_diversity += 0.2 + 0.4 * min(1.0, (interval_std - 15.0) / 30.0)
             if a_valve_toggles >= 1:
                 P_diversity += 0.2
 
