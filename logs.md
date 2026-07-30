@@ -3,6 +3,18 @@
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 > **Status:** ✅ Done · 🟡 In Progress · ❌ Blocked · 🔁 Revised · 📝 Note
 
+### Diurnal Cycle Analysis & Aeroponic Simulator Thermal Dynamics Fix (2026-07-30)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Simulator Thermal Accumulation Fix ([aeroponic_simulator.py](file:///home/almuzky/TA/Microservices/control-model-training/aeroponic_simulator.py)):** Memperbaiki bug pada baris 493 di mana `T_in` di-reset paksa ke `T_in_base` pada setiap substep 1 menit. Mengubah kalkulasi suhu internal box (`T_in`) agar mempertahankan akumulasi penurunan suhu dari pendinginan *misting* (*evaporative cooling*) secara kontinyu dari menit ke menit, serta menerapkan perambatan panas alami (*thermal drift*) mendekati `T_out`. |
+| 2 | ✅ | **Evaluation Plot Enhancement ([evaluate_td3.py](file:///home/almuzky/TA/Microservices/control-model-training/evaluate_td3.py)):** Memperbarui fungsi `plot_stability_comparison` pada `evaluate_td3.py` dengan menambahkan *background shading* (Warna **Gold** untuk Siang `06:00-18:00` dan **Navy** untuk Malam `18:00-06:00`) serta memperjelas label sumbu X menjadi `Time (h) [0h = 06:00 AM]` untuk memperjelas pemetaan jam dinding realisme fajar/siang/malam. |
+| 3 | ✅ | **Empirical Evaluation & Physics Verification:** Memverifikasi pengujian simulasi diurnal 24 jam step-by-step. Terkonfirmasi bahwa titik $t=0h$ merepresentasikan jam 06:00 Pagi (fajar), jam 0h-12h merepresentasikan Siang Hari (06:00-18:00, suhu panas 28°C-35°C), dan jam 12h-24h merepresentasikan Malam Hari (18:00-06:00, suhu dingin 22°C-24°C). |
+
+**Keputusan Teknis:** $T_{in}$ merepresentasikan suhu di dalam bilik akar aeroponik, sedangkan $T_{out}$ merepresentasikan suhu luar di greenhouse. Pengabaian akumulasi termal pada simulator lama menyebabkan $T_{in}$ di-reset ke baseline 28°C di setiap menit sehingga misting hanya menurunkan suhu ~0.08°C. Dengan perbaikan ini, pendinginan *misting* terakumulasi secara kontinyu dari menit ke menit. Direkomendasikan melakukan training ulang (*from scratch*) dengan `train_td3.py` menggunakan simulator yang sudah diperbaiki agar agen mempelajari kebijakan *misting* yang optimal.
+
+---
+
 ### Live CCTV Stream Vite Proxy & Model Controller Integration (2026-07-30)
 
 | # | Status | Aktivitas |

@@ -114,20 +114,20 @@ class AeroponicSimulatorEnv:
         self.max_steps = max_steps
         
         if not continuous:
-            # Indonesian daytime initialization (episode starts at 06:00)
-            T_in = random.uniform(26.0, 30.0)
-            H_in = random.uniform(70.0, 85.0)
+            # Indonesian dawn initialization (episode starts at 06:00)
+            T_in = random.uniform(22.0, 24.0)
+            H_in = random.uniform(85.0, 95.0)
             EC = random.uniform(1.4, 2.0)
             pH = random.uniform(5.6, 6.2)
-            T_nut = random.uniform(24.0, 33.0)
+            T_nut = random.uniform(22.0, 26.0)
 
             self.state = [
                 L_root_init,
                 0.95,
                 T_in,
                 H_in,
-                random.uniform(28.0, 33.0),
-                random.uniform(60.0, 75.0),
+                random.uniform(23.0, 26.0),
+                random.uniform(75.0, 85.0),
                 EC,
                 pH,
                 T_nut,
@@ -489,8 +489,9 @@ class AeroponicSimulatorEnv:
             T_out = self._clip(T_out_base, 15.0, 38.0)
             H_out = self._clip(H_out_base, 40.0, 100.0)
             
-            # Update T_in with daily cycle (affected by events)
-            T_in = self._clip(T_in_base, 18.0, 36.0)
+            # Update T_in with continuous thermal dynamics (affected by events & misting cooling)
+            # Drift T_in toward ambient T_out while preserving accumulated cooling history
+            T_in = self._clip(T_in, 18.0, 36.0)
 
             # Evaporative cooling from misting: lowers T_in when misting is active
             # Realistic for 1 m³ grow box (100x100x200 cm)
@@ -499,13 +500,13 @@ class AeroponicSimulatorEnv:
                 base_cooling = 0.08  # 0.08°C per substep = 4.8°C per hour
                 dry_boost = max(0.0, (80.0 - H_in) / 80.0) * 0.4  # up to +0.4 when H_in=30%
                 hot_boost = max(0.0, (T_out - 25.0) / 10.0) * 0.2  # up to +0.2 when T_out=35°C
-                T_in = T_in - base_cooling * (1.0 + dry_boost + hot_boost)
+                T_in = T_in - base_cooling * (1.0 + dry_boost + hot_boost) + (T_out - T_in) * 0.005
                 T_in = max(T_in, 18.0)  # don't cool below physical minimum
 
             # Heat gain when misting is OFF: T_in drifts back toward T_out
-            # Grow box has limited insulation, heat transfer coefficient ~0.01/min
+            # Grow box has limited insulation, heat transfer coefficient ~0.02/min
             if not is_misting_on:
-                T_in = T_in + (T_out - T_in) * 0.01
+                T_in = T_in + (T_out - T_in) * 0.02
 
             # I_day update based on time of day
             hour = int((6 + self.current_time / 3600.0) % 24)

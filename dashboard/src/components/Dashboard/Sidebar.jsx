@@ -15,7 +15,8 @@ import {
   ScrollText,
   ShieldAlert,
   Download,
-  Globe
+  Globe,
+  FileWarning
 } from 'lucide-react';
 
 function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, mobileOpen, setMobileOpen, hidden = false, me = null }) {
@@ -40,6 +41,7 @@ function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, mobileOpen,
     children: [
       { id: 'module', label: 'MODULE', icon: Server },
       { id: 'audit', label: 'AUDIT', icon: ScrollText },
+      { id: 'dlq', label: 'DLQ', icon: FileWarning },
       { id: 'webhook', label: 'WEBHOOK', icon: Globe },
       { id: 'users', label: 'ACCOUNT', icon: User },
     ],

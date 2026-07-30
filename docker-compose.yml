@@ -25,8 +25,8 @@ services:
       test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 45s
+      retries: 20
+      start_period: 600s
     networks:
       - iot-net
 
@@ -168,8 +168,8 @@ services:
       test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 45s
+      retries: 20
+      start_period: 600s
     networks:
       - iot-net
 
@@ -192,8 +192,8 @@ services:
       test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 45s
+      retries: 20
+      start_period: 600s
     networks:
       - iot-net
 
@@ -216,8 +216,8 @@ services:
       test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 45s
+      retries: 20
+      start_period: 600s
     networks:
       - iot-net
 
@@ -240,8 +240,8 @@ services:
       test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 45s
+      retries: 20
+      start_period: 600s
     networks:
       - iot-net
 
@@ -264,8 +264,8 @@ services:
       test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 45s
+      retries: 20
+      start_period: 600s
     networks:
       - iot-net
 
@@ -300,8 +300,9 @@ services:
     volumes:
       - ./volumes/timescaledb-module:/var/lib/postgresql/data
       - ./infra/timescaledb/module/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./infra/timescaledb/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
     healthcheck:
-      test: [ "CMD", "pg_isready", "-U", "${DB_USER}" ]
+      test: [ "CMD", "pg_isready", "-U", "${DB_USER}", "-d", "module_ts" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -328,8 +329,8 @@ services:
       test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 45s
+      retries: 20
+      start_period: 600s
     networks:
       - iot-net
 
@@ -346,8 +347,9 @@ services:
     volumes:
       - ./volumes/timescaledb-analytics:/var/lib/postgresql/data
       - ./infra/timescaledb/analytics/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./infra/timescaledb/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
     healthcheck:
-      test: [ "CMD", "pg_isready", "-U", "${DB_USER}" ]
+      test: [ "CMD", "pg_isready", "-U", "${DB_USER}", "-d", "analytics_ts" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -857,8 +859,8 @@ services:
       test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 45s
+      retries: 20
+      start_period: 600s
     networks:
       - iot-net
 
@@ -881,8 +883,8 @@ services:
       test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 45s
+      retries: 20
+      start_period: 600s
     networks:
       - iot-net
 
