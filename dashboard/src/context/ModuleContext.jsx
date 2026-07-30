@@ -3,6 +3,8 @@ import { moduleApi } from '../api/module';
 
 const ModuleContext = createContext(null);
 
+export { ModuleContext };
+
 export function ModuleProvider({ children }) {
   const [modules, setModules] = useState([]);
   const [loadingModules, setLoadingModules] = useState(true);

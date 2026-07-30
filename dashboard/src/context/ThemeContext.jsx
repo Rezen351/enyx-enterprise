@@ -2,6 +2,8 @@ import { createContext, useState, useEffect } from 'react';
 
 const ThemeContext = createContext();
 
+export { ThemeContext };
+
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
     const savedTheme = localStorage.getItem('theme');

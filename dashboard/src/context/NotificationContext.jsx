@@ -3,6 +3,8 @@ import { getWsUrl } from '../api/client';
 
 const NotificationContext = createContext();
 
+export { NotificationContext };
+
 const MAX_NOTIFICATIONS = 20;
 
 // Categories that count as "actionable" (not just informational pings)
