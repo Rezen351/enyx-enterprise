@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 
 import logging
@@ -22,7 +22,7 @@ if not _logger.handlers:
 
 @app.get("/metrics", include_in_schema=False)
 def metrics():
-    return JSONResponse(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/health")
