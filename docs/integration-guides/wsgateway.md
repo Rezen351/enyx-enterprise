@@ -66,7 +66,22 @@ The signing algorithm must be **HS256** and the secret must match `JWT_SECRET` i
 | `GET /ws/nodes/{node_id}/live` | Streams live MQTT telemetry for a specific node. |
 | `GET /ws/system-status` | Streams system-level notifications (alerts, status changes). |
 
-Both endpoints return `HTTP 401` if the token is missing or invalid, and `HTTP 400` if the `node_id` path parameter is missing or contains invalid characters.
+Both endpoints return `HTTP 401` if the token is missing or invalid, and `HTTP 400` if the `node_id` path parameter is missing or contains invalid characters. All HTTP error responses use the standard platform envelope:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "missing or invalid Authorization header"
+  }
+}
+```
+
+| Status | Code | Message |
+|--------|------|---------|
+| `401` | `UNAUTHORIZED` | Missing token, or token is invalid/expired |
+| `400` | `BAD_REQUEST` | `node_id` is required or contains invalid characters |
 
 ### 2.4 Message Framing
 

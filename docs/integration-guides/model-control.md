@@ -99,6 +99,25 @@ Returned by `model-controller` as JSON:
 | `POST` | `/v1/model_control/trigger-predict` | None | Trigger immediate loop tick |
 | `GET` | `/metrics` | None | Prometheus metrics |
 
+#### Error Response Envelope
+
+All non-2xx responses from `model-control` use the standard platform envelope:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "SERVICE_UNAVAILABLE",
+    "message": "prediction loop is not running; please wait for initialization or restart the service"
+  }
+}
+```
+
+| Status | Code | Message |
+|--------|------|---------|
+| `503` | `SERVICE_UNAVAILABLE` | Loop not started or initialization incomplete |
+| `500` | `INTERNAL_ERROR` | Prediction tick failed (generic; internal details are logged only) |
+
 ---
 
 ## 5. Environment Variables

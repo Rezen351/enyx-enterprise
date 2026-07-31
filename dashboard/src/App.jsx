@@ -122,12 +122,13 @@ function AppContent() {
 
   // Toast for "backend unavailable" on 5xx/network failures.
   const [backendDown, setBackendDown] = useState(false);
+  const [backendError, setBackendError] = useState('');
 
   // Register the server-error handler (5xx/network) so App can show a toast
   // without treating the session as invalid (504 ≠ logout). Throttling is in client.
   registerServerError((msg) => {
     setBackendDown(true);
-    if (msg) console.warn('[api] backend error:', msg);
+    setBackendError(msg || 'Backend unavailable');
   });
 
   // Auto-hide the "session expired" & "backend down" toasts.
@@ -182,7 +183,7 @@ function AppContent() {
     </div>
   ) : backendDown ? (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[120] px-5 py-3 bg-amber-500/15 border border-amber-500/30 backdrop-blur-xl  text-amber-200 text-xs font-black uppercase tracking-widest flex items-center gap-2">
-      <Database className="w-4 h-4" /> Backend unavailable
+      <Database className="w-4 h-4" /> {backendError}
     </div>
   ) : null;
 

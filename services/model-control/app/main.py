@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 
+import json
 import logging
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
@@ -18,6 +19,13 @@ if not _logger.handlers:
     _handler.setFormatter(logging.Formatter("%(message)s"))
     _logger.addHandler(_handler)
     _logger.propagate = False
+
+
+def _error_response(status_code: int, code: str, message: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={"success": False, "error": {"code": code, "message": message}},
+    )
 
 
 @app.get("/metrics", include_in_schema=False)
@@ -43,12 +51,13 @@ def health():
 def trigger_predict():
     loop: PPOLoop = app.state.loop
     if not loop:
-        return JSONResponse(status_code=503, content={"error": "loop not started"})
+        return _error_response(503, "SERVICE_UNAVAILABLE", "prediction loop is not running; please wait for initialization or restart the service")
     try:
         loop._tick()
-        return JSONResponse(status_code=200, content={"status": "tick executed"})
+        return JSONResponse(status_code=200, content={"success": True, "data": {"status": "tick executed"}})
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+        _logger.exception("prediction tick failed")
+        return _error_response(500, "INTERNAL_ERROR", "prediction tick failed")
 
 
 @app.on_event("startup")

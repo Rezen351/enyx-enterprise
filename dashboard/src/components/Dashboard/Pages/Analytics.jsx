@@ -239,20 +239,22 @@ function Analytics() {
     }
     let active = true;
     setTagsLoaded(false);
-    moduleApi
-      .getNodeTags(nodeId)
-      .then((data) => {
-        if (!active) return;
-        setTags(Array.isArray(data?.tags) ? data.tags : []);
+    Promise.all([
+      moduleApi.getNodeTags(nodeId),
+      moduleApi.getActuatorTags(nodeId),
+    ]).then(([tagsRes, actRes]) => {
+      if (!active) return;
+      const sensorTags = Array.isArray(tagsRes?.tags) ? tagsRes.tags : [];
+      const actuatorTags = Array.isArray(actRes?.tags) ? actRes.tags : [];
+      setTags([...sensorTags, ...actuatorTags]);
+      setTagsLoaded(true);
+    }).catch((err) => {
+      console.error('Failed to load node tags for analytics units', err);
+      if (active) {
+        setTags([]);
         setTagsLoaded(true);
-      })
-      .catch((err) => {
-        console.error('Failed to load node tags for analytics units', err);
-        if (active) {
-          setTags([]);
-          setTagsLoaded(true);
-        }
-      });
+      }
+    });
     return () => { active = false; };
   }, [nodeId]);
 
@@ -272,12 +274,12 @@ function Analytics() {
     return all.filter((m) => enabledKeys.has(m));
   }, [nodes, nodeId, tagsLoaded, enabledKeys]);
 
-  // Friendly display name for a metric: use the tag's `label` if set, else the
-  // DB tag name (`tag_name`), else the raw telemetry key. Keeps the dashboard clean.
+  // Simple rule: use display_name if set, otherwise fall back to tag_name (db tag).
   const tagByKey = useMemo(() => {
     const m = {};
     for (const t of tags) {
       if (t.tag_name) m[t.tag_name] = t;
+      if (t.source_key && t.source_key !== t.tag_name) m[t.source_key] = t;
     }
     return m;
   }, [tags]);
@@ -285,14 +287,25 @@ function Analytics() {
     (metric) => {
       const t = tagByKey[metric];
       if (t) {
-        const labelStr = (t.label || '').trim();
-        if (labelStr) return labelStr;
+        const displayStr = (t.display_name || '').trim();
+        if (displayStr) return displayStr;
         const tagNameStr = (t.tag_name || '').trim();
         if (tagNameStr) return tagNameStr;
       }
+      const actuatorPrefix = 'telemetry.outputs.';
+      if (metric.startsWith(actuatorPrefix)) {
+        const outputName = metric.slice(actuatorPrefix.length);
+        const actuatorTag = tags.find((at) => at.kind === 'actuator' && (at.tag_name === outputName || at.source_key === outputName));
+        if (actuatorTag) {
+          const displayStr = (actuatorTag.display_name || '').trim();
+          if (displayStr) return displayStr;
+          const tagNameStr = (actuatorTag.tag_name || '').trim();
+          if (tagNameStr) return tagNameStr;
+        }
+      }
       return metric;
     },
-    [tagByKey]
+    [tagByKey, tags]
   );
 
   const loadData = useCallback(async () => {
@@ -473,7 +486,7 @@ function Analytics() {
         callbacks: {
           label: (c) => {
             const m = c.dataset.label;
-            const tag = tags.find((t) => t.source_key === m || t.tag_name === m);
+            const tag = tags.find((t) => t.source_key === m || t.tag_name === m || t.label === m || t.display_name === m);
             const unit = tag?.unit ? ` ${tag.unit}` : '';
             return `${displayName(m)}: ${fmt(c.parsed.y)}${unit}`;
           },
@@ -658,7 +671,7 @@ function Analytics() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {analogMetrics.map((m) => {
               const s = statsOf(seriesByMetric[m]);
-              const tag = tags.find((t) => t.source_key === m || t.tag_name === m);
+              const tag = tags.find((t) => t.source_key === m || t.tag_name === m || t.label === m || t.display_name === m);
               const unit = tag?.unit ? ` ${tag.unit}` : '';
               return (
                 <Card key={m} title={displayName(m)} icon={Activity}>

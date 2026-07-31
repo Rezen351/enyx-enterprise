@@ -19,6 +19,16 @@ import (
 // by the Module/Alert services so a malformed id cannot be forwarded to NATS.
 var nodeIDRe = regexp.MustCompile(`^[A-Za-z0-9_.:*-]{1,64}$`)
 
+// writeJSONError writes a standard error envelope (AGENTS.md §4.4).
+func writeJSONError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"success": false,
+		"error":   map[string]string{"code": code, "message": message},
+	})
+}
+
 // Handler bridges NATS topics to dashboard websocket clients.
 type Handler struct {
 	nc        *nats.Conn
@@ -61,12 +71,12 @@ type client struct {
 func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request) bool {
 	token := auth.ExtractToken(r.Header.Get("Authorization"), r.URL.Query().Get("token"))
 	if token == "" {
-		http.Error(w, `{"error":"missing token"}`, http.StatusUnauthorized)
+		writeJSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing or invalid Authorization header")
 		return false
 	}
 	if _, err := auth.ValidateToken(token, h.jwtSecret); err != nil {
 		log.Printf("[ws-gateway] auth failed: %v", err)
-		http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
+		writeJSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid or expired token")
 		return false
 	}
 	return true
@@ -102,11 +112,11 @@ func (h *Handler) getLast(nodeID string) []byte {
 func (h *Handler) NodeLive(w http.ResponseWriter, r *http.Request) {
 	nodeID := chi.URLParam(r, "node_id")
 	if nodeID == "" {
-		http.Error(w, "node_id required", http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "BAD_REQUEST", "node_id is required")
 		return
 	}
 	if !nodeIDRe.MatchString(nodeID) {
-		http.Error(w, "node_id contains invalid characters", http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "BAD_REQUEST", "node_id contains invalid characters")
 		return
 	}
 

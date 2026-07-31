@@ -40,6 +40,7 @@ function Profile({ onLogout }) {
   const [sessions, setSessions] = useState([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [sessionPage, setSessionPage] = useState(1);
+  const [sessionError, setSessionError] = useState('');
   const SESSIONS_PER_PAGE = 5;
 
   // ── Delete account ─────────────────────────────────────────────
@@ -54,19 +55,21 @@ function Profile({ onLogout }) {
       setProfile((p) => ({ ...p, ...me }));
       setForm({ username: me.username || '', email: me.email || '' });
       sessionStorage.setItem('user', JSON.stringify(me));
+      setProfileError('');
     } catch (err) {
-      console.warn('Profile: failed to load /auth/me', err);
+      setProfileError(err.message || 'Failed to load profile');
     }
   }, []);
 
   const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
+    setSessionError('');
     try {
       const res = await authApi.getSessions();
       setSessions(res?.sessions || []);
       setSessionPage(1);
     } catch (err) {
-      console.warn('Profile: failed to load sessions', err);
+      setSessionError(err.message || 'Failed to load sessions');
       setSessions([]);
     } finally {
       setLoadingSessions(false);
@@ -244,6 +247,10 @@ function Profile({ onLogout }) {
             {loadingSessions ? (
               <div className="flex items-center justify-center py-8 text-slate-500">
                 <Loader2 className="w-5 h-5 animate-spin" />
+              </div>
+            ) : sessionError ? (
+              <div className="text-xs font-bold text-red-400 flex items-center gap-1.5 py-4">
+                <AlertTriangle className="w-4 h-4 shrink-0" /><span className="break-all">{sessionError}</span>
               </div>
             ) : sortedSessions.length === 0 ? (
               <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider py-4 sm:py-6 text-center">No active sessions</p>

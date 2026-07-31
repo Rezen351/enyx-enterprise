@@ -206,6 +206,14 @@ agar Control/Analytics punya node hidup. Lanjut ke service berikutnya (Analytics
 **Next:** Pastikan NATS subscription jalan (telemetri → tsdb). Bandingkan shape JSON dengan
 komponen Analytics; amati apakah chart 1h/24h menampilkan data (ref: commit "fix 1h blank chart").
 
+**Fix label output digital (2026-07-31):** Halaman Analytics sebelumnya hanya memuat sensor
+tags via `getNodeTags`, sehingga label yang di-set pada Actuator Mapping tidak terbaca di
+grafik digital (`telemetry.outputs.*`). Fix: Analytics.jsx kini memuat juga actuator tags
+via `getActuatorTags` dan menggabungkannya ke dalam lookup label. `displayName` juga
+mengecek `display_name` dan fallback ke actuator tag untuk metric bertopik
+`telemetry.outputs.*`. Verifikasi: ubah label output di Node Configuration → grafik digital
+Analytics harus menampilkan label baru (misal "Alarm") tanpa perlu refresh browser.
+
 **Review kode (AI Agent, 2026-07-15):** `go build` + `go vet` lolos. Ditemukan & diperbaiki
 gap keamanan: range `from`/`to` tidak dibatasi → potensi dump seluruh DB. Fix `validateWindow`
 di `services/analytics/internal/handler/handler.go` (cap 31 hari live / 366 hari export, 400 bila

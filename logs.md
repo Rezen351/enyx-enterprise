@@ -1,7 +1,90 @@
 # 📓 Development Logs — enyx-enterprise
 
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
-> **Status:** ✅ Done · 🟡 In Progress · ❌ Blocked · 🔁 Revised · 📝 Note
+### Analytics Output Label Mapping Fix for Digital Graphs (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Analytics.jsx Actuator Tag Loading ([Analytics.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Pages/Analytics.jsx)):** Memperbaiki halaman Analytics yang sebelumnya hanya memuat sensor tags via `getNodeTags`. Kini memuat juga actuator tags via `getActuatorTags` dan menggabungkannya ke dalam array `tags` yang digunakan untuk lookup label di grafik. |
+| 2 | ✅ | **Display Name Fallback for Actuator Tags ([Analytics.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Pages/Analytics.jsx)):** Memperbarui fungsi `displayName` untuk mengecek field `display_name` selain `label`, dan menambahkan fallback pencarian actuator tag untuk metric bertopik `telemetry.outputs.*`. Ini memastikan label yang di-set di Actuator Mapping (misal "Alarm" untuk `buzzer`) tampil di grafik digital. |
+| 3 | ✅ | **Tag Lookup Robustness ([Analytics.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Pages/Analytics.jsx)):** Memperbarui `tagByKey` untuk mengindeks juga oleh `source_key`, dan memperbarui `tags.find` di tooltip serta per-metric summary agar juga mencocokkan `label` dan `display_name`. Ini memperbaiki lookup unit untuk metric yang memiliki label custom. |
+
+**Keputusan Teknis:** Sebelumnya Analytics hanya memuat sensor tags (`getNodeTags`), sehingga label yang di-set pada Actuator Mapping tidak pernah terbaca di grafik. Selain itu, `displayName` hanya mengecek field `label` (yang digunakan oleh sensor tags) dan tidak mengecek `display_name` (yang digunakan oleh actuator tags). Kombinasi keduanya menyebabkan output digital seperti buzzer tetap menampilkan raw telemetry key `telemetry.outputs.buzzer` meskipun label "Alarm" sudah di-set di Node Configuration. Dengan memuat kedua jenis tag dan menambahkan fallback pencarian berdasarkan prefix `telemetry.outputs.`, label actuator kini tampil konsisten di grafik digital.
+
+---
+### 4xx Error Message Standardization & Explanatory English Responses (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **model-control Error Wrapper Standardization ([main.py](file:///home/almuzky/TA/Microservices/services/model-control/app/main.py)):** Memperbaiki wrapper respons error dari raw `{"error":"..."}` menjadi standar envelope `{"success": false, "error": {"code": "...", "message": "..."}}` sesuai AGENTS.md §4.4. Pesan 503 kini menjelaskan "prediction loop is not running; please wait for initialization or restart the service" dan 500 menggunakan pesan generik "prediction tick failed" untuk mencegah kebocoran detail internal. |
+| 2 | ✅ | **wsgateway Error Response Standardization ([handler.go](file:///home/almuzky/TA/Microservices/services/wsgateway/internal/handler/handler.go)):** Mengganti semua `http.Error` plain-text/raw-JSON dengan helper `writeJSONError` yang menghasilkan envelope standar. 401 auth failures kini menjelaskan "missing or invalid Authorization header" atau "invalid or expired token", dan 400 validasi node_id menjelaskan "node_id is required" atau "node_id contains invalid characters". |
+| 3 | ✅ | **Stream Service Auth Middleware JSON Encoding Fix ([auth.go](file:///home/almuzky/TA/Microservices/services/stream/internal/middleware/auth.go)):** Mengganti `fmt.Fprintf` raw-string JSON dengan `json.NewEncoder` untuk memastikan escape karakter yang benar dan konsisten dengan helper standar di service lain. |
+| 4 | ✅ | **Frontend 5xx Toast Message Display ([App.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/App.jsx)):** Global toast backend unavailable kini menampilkan pesan error aktual dari backend (`backendError` state) alih-alih hardcoded "Backend unavailable". |
+| 5 | ✅ | **Users Page Silent Failure Fix ([Users.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Pages/Users.jsx)):** Error saat load profile dan sessions kini disimpan di state (`profileError`, `sessionError`) dan ditampilkan inline ke pengguna alih-alih hanya dicetak di console. |
+
+**Keputusan Teknis:** Seluruh layanan backend (Go & Python) kini menggunakan envelope error standar `{success:false,error:{code,message}}`. model-control adalah satu-satunya layanan yang sebelumnya tidak patuh; wsgateway menggunakan `http.Error` plain-text yang juga tidak patuh. Di frontend, pesan 5xx dari backend sudah diekstrak oleh `client.js` tetapi disembunyikan oleh toast hardcoded — kini ditampilkan langsung. Users.jsx menelan error silently karena `catch` hanya `console.warn`; kini error disalurkan ke UI.
+
+---
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Backend Error Response Envelope Correction ([auth_handler.go](file:///home/almuzky/TA/Microservices/services/auth/internal/handler/auth_handler.go), [alert handler](file:///home/almuzky/TA/Microservices/services/alert/internal/handler/handler.go), [audit handler](file:///home/almuzky/TA/Microservices/services/audit/internal/handler/handler.go), [module handler](file:///home/almuzky/TA/Microservices/services/module/internal/handler/handler.go)):** Memperbaiki implementasi `respondError` yang sebelumnya memanggil `respond(...)` sehingga membungkus ulang respons error dengan `{"success": true, "data": {...}}`. `respondError` kini langsung menulis envelope `{"success": false, "error": {"code": "UNAUTHORIZED", "message": "invalid email or password"}}` sesuai AGENTS.md §4.4. |
+| 2 | ✅ | **Dashboard API Client 401 Message Parsing ([client.js](file:///home/almuzky/TA/Microservices/dashboard/src/api/client.js)):** Memperbarui fungsi `request` pada `client.js` agar secara tepat mengekstrak pesan error dari objek respons backend (`data?.error?.message` dan fallback `data?.data?.error?.message`), serta memberikan fallback pesan `Invalid email or password` saat HTTP status 401 mengembalikan pesan generic/kosong alih-alih hanya menampilkan `Request failed (401)`. |
+
+**Keputusan Teknis:** Sebelumnya, kesalahan pembungkusan respons ganda pada `respondError` membuat pesan error dari backend bersarang di dalam key `data`, sehingga `client.js` tidak dapat membaca `data.error.message` dan memilih string fallback `Request failed (401)`. Dengan memperbaiki penulisan JSON error di backend Go dan memperluas parsing error di `client.js`, UI Dashboard kini menampilkan pesan autentikasi "Invalid email or password" secara transparan dan sesuai standar AGENTS.md.
+
+---
+
+### MediaMTX HLS Proxy Timeout & Source Fail-Fast Remediation (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **MediaMTX Client Timeout Adjustment ([client.go](file:///home/almuzky/TA/Microservices/services/stream/internal/client/mediamtx/client.go)):** Memperbarui `SourceOnDemandStartTimeout` pada fungsi `AddPath` dari `20s` menjadi `5s`. Saat kamera/sumber RTSP offline atau tidak dapat dijangkau, MediaMTX kini gagal secara cepat (5 detik) dan mengembalikan respons JSON error `500` (`"source of path '<stream>' has timed out"`). |
+| 2 | ✅ | **Kong HLS Gateway Read Timeout ([kong.yml](file:///home/almuzky/TA/Microservices/infra/kong/kong.yml)):** Meningkatkan `read_timeout` pada `mediamtx-hls-service` dan `mediamtx-hls-redirect-service` dari `10000` ms (10 detik) menjadi `15000` ms (15 detik) untuk memberikan batas toleransi gateway yang cukup saat MediaMTX melakukan inisialisasi koneksi RTSP. |
+| 3 | ✅ | **Frontend HLS Error Overlay & Handling ([LiveView.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Pages/LiveView.jsx)):** Menambahkan state `hasError` dan handler `Hls.Events.ERROR` pada komponen `MtxPlayer`. Jika stream HLS offline atau gagal dimuat, UI Dashboard menampilkan pesan error "Stream Offline / Camera Unavailable" secara bersih menggantikan error unhandled console. |
+| 4 | ✅ | **Stale MediaMTX Stream Cleanup & Verification:** Menghapus path uji lama `live1` dari MediaMTX dan `mariadb-stream`. Verifikasi cURL mengonfirmasi `GET /hls/live1/index.m3u8?cookieCheck=1` mengembalikan respons `500` dalam 5,001 detik (`X-Kong-Upstream-Latency: 5001`) tanpa `504 Gateway Time-out`, serta pengujian master test suite (`python3 test/run_all_tests.py`) menghasilkan 8 grafik visual PNG lengkap. |
+
+**Keputusan Teknis:** Sebelumnya `SourceOnDemandStartTimeout: "20s"` pada MediaMTX melebihi `read_timeout` Kong Gateway (10s). Ketika kamera RTSP offline atau tidak dapat dijangkau, MediaMTX menahan request HTTP selama 20 detik sehingga Kong memutus koneksi di detik ke-10 dengan `504 Gateway Time-out` (500 Internal Server Error di browser). Dengan mengubah timeout MediaMTX menjadi `5s` dan `read_timeout` Kong menjadi `15s`, MediaMTX kini merespons error secara cepat dalam 5 detik melalui gateway. Di sisi frontend, `MtxPlayer` menangkap error fatal HLS dan menampilkan UI overlay informasi alih-alih mengalami error unhandled.
+
+---
+
+### Node Pairing Strict Enforcement & Manual Testing Checklist Update (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Client Method Addition ([module.go](file:///home/almuzky/TA/Microservices/services/control/internal/module/module.go)):** Menambahkan metode `IsNodePaired(ctx context.Context, nodeID string) (bool, error)` pada `Client` `Control Service` untuk memeriksa `paired: true` dan `module_id != ""` dari `Module Service`. |
+| 2 | ✅ | **Handler Validation Update ([handler.go](file:///home/almuzky/TA/Microservices/services/control/internal/handler/handler.go)):** Memperbarui `PostCommand` dan `CreateSchedule` agar mengecek `nodePaired` sebelum memproses perintah aktuator atau pembuatan jadwal. Menolak node yang belum dipair dengan `HTTP 400 Bad Request` (`"node is not paired to a module; please pair the node before issuing control commands"`). |
+| 3 | ✅ | **Unit Test Suite Update ([unit_test.py](file:///home/almuzky/TA/Microservices/test/unit_test.py)):** Menambahkan `test_06b_unpaired_node_command_rejected` pada `TestControlService` untuk memastikan penolakan perintah kontrol pada node yang belum di-pair terverifikasi secara otomatis. |
+| 4 | ✅ | **Checklist Document Update ([testing-implementasi-manual.md](file:///home/almuzky/TA/Microservices/docs/testing-implementasi-manual.md)):** Memperbarui seluruh tabel dan list di dokumen `testing-implementasi-manual.md` agar setiap baris skenario memiliki 3 checkbox (`[ ] [ ] [ ]`) untuk melacak status 3 siklus pengujian (Pass 1, Pass 2, Pass 3). |
+
+**Keputusan Teknis:** Dokumen `testing-implementasi-manual.md` kini menggunakan format 3 checkbox (`[ ] [ ] [ ]`) pada kolom `Status (Pass 1 / 2 / 3)` untuk seluruh skenario pengujian visual UI/UX (Bagian 3 - 12), pengujian terminal (Bagian 13), dan Production Gate (Bagian 14) agar Pengguna dapat mencatat progres verifikasi secara bertahap untuk Pass 1, Pass 2, dan Pass 3.
+
+---
+
+### Manual Testing Document v1.3 Update (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Document Standardization ([testing-implementasi-manual.md](file:///home/almuzky/TA/Microservices/docs/testing-implementasi-manual.md)):** Memperbarui dokumen `testing-implementasi-manual.md` ke Versi 1.3 sesuai keadaan sistem terbaru. |
+| 2 | ✅ | **Cleanup Resolved Notes & Issues:** Menghapus seluruh tabel catatan lama dan issue yang sudah teratasi (seperti `📌 Catatan & Known Issues` dan catatan bug masa lalu) agar dokumen bersih & fokus. |
+| 3 | ✅ | **Testing Guidelines & Terminal Commands:** Menambahkan panduan eksekusi testing lengkap beserta contoh perintah terminal (`python3 test/run_all_tests.py`, `python3 test/unit_test.py`, `python3 -m unittest test.unit_test.<TestClass>`, `python3 test/stress_test.py`, `python3 test/resilience_test.py`, dan contoh cURL). |
+| 4 | ✅ | **Backend Test Mapping & Manual UI/UX Scoping:** Memastikan seluruh pengujian koneksi dan logika backend dipetakan secara jelas ke test program di folder `test/` (102 test cases otomatis), sehingga pengguna hanya perlu mengeksekusi script test backend dan menguji tampilan visual UI/UX pada Dashboard React secara manual. |
+
+**Keputusan Teknis:** `testing-implementasi-manual.md` diselaraskan dengan arsitektur microservice terbaru dan 102 test cases otomatis di `test/unit_test.py`. Logika API backend terisolasi 100% pada pengujian terprogram di folder `test/`, sementara dokumen manual difokuskan secara spesifik pada verifikasi elemen visual UI/UX oleh Pengguna di browser.
+
+---
+
+### Model Controller Volume Mount Fix (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Volume Mount Path Alignment ([docker-compose.yml](file:///home/almuzky/TA/Microservices/docker-compose.yml)):** Memperbarui mounting volume service `model-controller` di `docker-compose.yml` dari `./control-model-training/models:/app/models:ro` menjadi `./services/model-controller/models:/app/models:ro` agar service mengambil model inference bawaan dari direktori service-nya sendiri (`services/model-controller/models`). |
+| 2 | ✅ | **Control Model Training Directory Cleanup:** Menghapus penyalinan temporary model dari `control-model-training/models` agar folder tersebut khusus menampung hasil eksekusi training `train_td3.py`. |
+| 3 | ✅ | **Service Health Verification:** Meng-recreate container `model-controller`. Uvicorn berhasil menginstansiasi model loader dari `./services/model-controller/models` dan `GET http://localhost:8080/health` mengembalikan `{"success":true,"data":{"status":"ok","model_loaded":true,"vec_norm_loaded":true}}`. Container `model-controller` berstatus **Up (healthy)**. |
+
+**Keputusan Teknis:** `model-controller` kini membaca berkas model TD3 (`aeroponic_td3.zip` dan `vec_normalize_td3.pkl`) langsung dari `./services/model-controller/models:/app/models:ro` sesuai spesifikasi pengguna. Hal ini memisahkan direktori artifacts hasil training di `control-model-training/models` dari model produksi inference yang dikonsumsi oleh microservice.
+
+---
 
 ### Docker Compose Service Health Audit, WebSocket & Analytics API Fixes (2026-07-31)
 
@@ -2067,3 +2150,42 @@ Catatan: respon Alert Service sengaja TIDAK memakai wrapper standar `{success,da
 | 4 | ✅ | **Documentation Sync ([README.md](file:///home/almuzky/TA/Microservices/ppo-model-training/README.md)):** Update reward table dan action space bounds `[120, 600]` untuk D_mist dan interval. |
 
 **Keputusan Teknis:** Efficiency reward diubah dari binary fixed bonuses menjadi gradual conditional reward agar agent tidak mendapatkan bonus efisiensi saat kondisi lingkungan tidak stabil. Pendekatan conditional mencegah agent mempelajari strategi hemat air yang merusak tanaman (mis. D_mist sangat pendek membuat H_in drop). Gradual scaling memberikan sinyal lebih kaya tentang seberapa efisien suatu aksi, bukan hanya apakah aksi masuk kategori efisien atau tidak. Agent akan belajar: "stability dahulu, efisiensi kedua".
+
+---
+
+### Dashboard UI — Role-Based Menu Filtering (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Sidebar Menu Role Filtering ([Sidebar.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Sidebar.jsx)):** Tambah properti `roles` pada setiap item menu untuk mendefinisikan role yang dapat melihatnya. Menu difilter secara dinamis: viewer hanya melihat MONITOR, ANALYTICS, GALLERY, dan PROFILE; operator melihat seluruh menu viewer ditambah CONTROL, EXPORT, dan MODULE; admin melihat seluruh menu operator ditambah AUDIT, DLQ, WEBHOOK, dan ACCOUNT (di dalam grup ADMINISTRATOR). |
+| 2 | ✅ | **Route Guarding di Layout ([DashboardLayout.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/DashboardLayout.jsx)):** Tambah guard `isAdmin || isOperator` pada case `module`, `control`, `live`, `alerts`, dan `export` untuk memastikan viewer tidak dapat mengakses halaman terlarang meskipun URL diakses secara manual. |
+
+**Keputusan Teknis:** Viewer hanya boleh mengakses MONITOR, ANALYTICS, GALLERY, dan PROFILE sesuai requirement. LIVE dan ALERTS dihapus dari akses viewer dan dibatasi untuk admin/operator. Defense-in-depth diterapkan dengan filter di sidebar dan guard di router agar akses langsung via URL juga diblokir.
+
+---
+
+### Module Service — Fix Node Online Status + Telemetry-only Live Stream (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Fix Default Node Status on Discovery ([repository.go](file:///home/almuzky/TA/Microservices/services/module/internal/repository/repository.go)):** Ubah default status node baru dari `StatusOnline` menjadi `StatusUnknown` pada `UpsertDiscovered` (insert dan update path) agar node tidak langsung muncul sebagai online saat pertama terdeteksi. |
+| 2 | ✅ | **Fix Default Status in HandleDiscovery ([service.go](file:///home/almuzky/TA/Microservices/services/module/internal/service/service.go)):** Ubah default status pada `HandleDiscovery` dari `StatusOnline` menjadi `StatusUnknown` saat discovery message datang tanpa field status. |
+| 3 | ✅ | **Fix PublishLive to Only Forward Telemetry ([subscriber.go](file:///home/almuzky/TA/Microservices/services/module/internal/mqtt/subscriber.go)):** Tambah filter `strings.HasSuffix(topic, "/telemetry")` pada `PublishLive` agar hanya payload telemetry yang diteruskan ke NATS `mqtt.{node_id}` untuk WebSocket live monitor. Sebelumnya, semua MQTT payload (termasuk actuator, status, discovery) dikirim ke live monitor. |
+| 4 | ✅ | **Verifikasi Build & Test:** `go build ./...` sukses, 31 unit tests `go test ./internal/...` PASS. |
+
+**Keputusan Teknis:** 
+- Node baru mulai dengan status `unknown`, bukan `online`. Node hanya menjadi online setelah mengirim MQTT payload (`TouchNode`) atau status message `online` (`HandleStatus`).
+- Live stream (`mqtt.*`) kini hanya meneruskan telemetry, bukan seluruh traffic MQTT. `TouchNode` tetap dipanggil untuk semua payload agar `last_seen_at` tetap segar, tetapi `PublishLive` hanya dipanggil untuk topic ending `/telemetry`.
+- Hasilnya: Live MQTT Monitor di dashboard (NodeConfigPage) hanya menampilkan telemetry, dan fitur "Detect keys" hanya mengumpulkan kunci telemetry, bukan kunci actuator.
+
+---
+
+### Kong Routing — Tambah DLQ Service Route (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Tambahkan DLQ upstream, service, dan routes di Kong declarative config ([kong.yml](file:///home/almuzky/TA/Microservices/infra/kong/kong.yml)):** Tambah `dlq-upstream` (target `dlq:8080`) beserta service `dlq-service` dengan route `~/v1(?<rel_uri>/dlq.*)` dan `/dlq`. |
+| 2 | ✅ | **Update nginx proxy regex ([nginx.conf](file:///home/almuzky/TA/Microservices/dashboard/nginx.conf)):** Tambah `dlq` ke daftar path yang diproxy ke Kong agar request `/v1/dlq/...` dari browser melewati nginx dengan benar. |
+| 3 | ✅ | **Verifikasi:** `curl http://localhost:8000/v1/dlq/messages?limit=1` mengembalikan `HTTP 401` dari DLQ service (bukan lagi 404 "no Route matched"), membuktikan route Kong aktif. |
+
+**Keputusan Teknis:** DLQ service sebelumnya berjalan healthy di container terpisah tetapi tidak terdaftar di Kong, sehingga frontend menerima 404. Dengan menambahkan upstream, service, dan route di declarative config serta memperbarui nginx proxy regex, DLQ endpoint sekarang dapat diakses konsisten seperti service lain.
