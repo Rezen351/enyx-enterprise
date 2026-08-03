@@ -469,8 +469,8 @@ func bucketAndKeyFromURL(raw string) (string, string) {
 
 // writeToResultBucket stores the captured frame, the optional annotated image
 // (mirrored from the ML bucket), and a result JSON record into the shared
-// mlbucket bucket. Best-effort: any failure is logged and skipped so the
-// primary snapshot/detection DB row is never affected.
+// mlbucket bucket. Best-effort: each upload is attempted independently and
+// failures are logged so one bad write never prevents the others.
 func (s *StreamService) writeToResultBucket(streamName string, data []byte, ct string, result *mlclient.DetectResult) {
 	bucket := "mlbucket"
 	ts := time.Now().UTC().Format("20060102_150405")
@@ -479,35 +479,34 @@ func (s *StreamService) writeToResultBucket(streamName string, data []byte, ct s
 	frameURL, err := s.minio.UploadObjectToBucket(bucket, frameKey, ct, data)
 	if err != nil {
 		log.Printf("[result-bucket] frame upload failed: %v", err)
-		return
-	}
-
-	detMap := map[string]any{
-		"detection_uid":  result.DetectionUID,
-		"model_id":       result.ModelID,
-		"model_name":     result.ModelName,
-		"num_detections": result.NumDetections,
-		"classes":        result.Classes,
-		"detections":     result.Detections,
-		"confidence_avg": result.ConfidenceAvg,
-		"root_length_cm": result.RootLengthCM,
-		"tuber_size_cm":  result.TuberSizeCM,
-		"condition":      result.Condition,
-	}
-	record := map[string]any{
-		"captured_at": time.Now().UTC().Format(time.RFC3339),
-		"stream":      streamName,
-		"trigger":     "user",
-		"source_rtsp": fmt.Sprintf("mediamtx:%s", streamName),
-		"frame_key":   frameKey,
-		"frame_url":   frameURL,
-		"detection":   detMap,
-	}
-	recordBytes, err := json.MarshalIndent(record, "", "  ")
-	if err != nil {
-		log.Printf("[result-bucket] record marshal failed: %v", err)
-	} else if _, err := s.minio.UploadObjectToBucket(bucket, fmt.Sprintf("results/%s/%s.json", streamName, ts), "application/json", recordBytes); err != nil {
-		log.Printf("[result-bucket] result json upload failed: %v", err)
+	} else {
+		detMap := map[string]any{
+			"detection_uid":  result.DetectionUID,
+			"model_id":       result.ModelID,
+			"model_name":     result.ModelName,
+			"num_detections": result.NumDetections,
+			"classes":        result.Classes,
+			"detections":     result.Detections,
+			"confidence_avg": result.ConfidenceAvg,
+			"root_length_cm": result.RootLengthCM,
+			"tuber_size_cm":  result.TuberSizeCM,
+			"condition":      result.Condition,
+		}
+		record := map[string]any{
+			"captured_at": time.Now().UTC().Format(time.RFC3339),
+			"stream":      streamName,
+			"trigger":     "user",
+			"source_rtsp": fmt.Sprintf("mediamtx:%s", streamName),
+			"frame_key":   frameKey,
+			"frame_url":   frameURL,
+			"detection":   detMap,
+		}
+		recordBytes, merr := json.MarshalIndent(record, "", "  ")
+		if merr != nil {
+			log.Printf("[result-bucket] record marshal failed: %v", merr)
+		} else if _, uerr := s.minio.UploadObjectToBucket(bucket, fmt.Sprintf("results/%s/%s.json", streamName, ts), "application/json", recordBytes); uerr != nil {
+			log.Printf("[result-bucket] result json upload failed: %v", uerr)
+		}
 	}
 
 	if result.AnnotatedURL != "" {
@@ -582,12 +581,19 @@ func (s *StreamService) StartRecording(ctx context.Context, id string) error {
 	outPath := filepath.Join(os.TempDir(), "rec-"+uuid.New().String()+".mp4")
 	// Pull from the MediaMTX RTSP relay (which triggers the on-demand source).
 	// Transcode to browser-playable H.264 video and AAC audio with +faststart.
-	cmd := exec.Command("ffmpeg", "-analyzeduration", "2000000", "-probesize", "32M",
-		"-rtsp_transport", "tcp", "-y",
+	cmd := exec.Command("ffmpeg",
+		"-rtsp_transport", "tcp",
+		"-analyzeduration", "2000000", "-probesize", "10M",
+		"-y",
 		"-i", fmt.Sprintf("rtsp://mediamtx:8554/%s", st.Name),
-		"-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-		"-pix_fmt", "yuv420p", "-movflags", "+faststart",
-		"-c:a", "aac", "-map", "0:v?", "-map", "0:a?",
+		// ultrafast+zerolatency: minimal encoding latency so ffmpeg keeps pace
+		// with the RTSP source in realtime (avoids 0-byte output on short clips).
+		// NOTE: -pix_fmt yuv420p is intentionally omitted — the input H264 stream
+		// is already yuv420p, so the flag creates an unnecessary libavfilter graph
+		// that cannot be cleanly flushed on SIGINT ("Error marking filters as
+		// finished"), resulting in a 0-byte output file.
+		"-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-crf", "28",
+		"-map", "0:v?", "-map", "0:a?",
 		outPath)
 	if err := cmd.Start(); err != nil {
 		s.recMu.Unlock()
@@ -615,10 +621,10 @@ func (s *StreamService) StartRecording(ctx context.Context, id string) error {
 	}()
 
 	// Liveness probe: if ffmpeg dies immediately (e.g. source offline) remove the
-	// job so StopRecording reports a clear error. It does NOT call Wait() (owned
-	// by the reaper) — it only removes the orphan temp file.
+	// job so StopRecording reports a clear error. Extended to 3 s to give ffmpeg
+	// enough time to negotiate the RTSP session before being falsely marked dead.
 	go func() {
-		time.Sleep(1500 * time.Millisecond)
+		time.Sleep(3000 * time.Millisecond)
 		s.recMu.Lock()
 		cur, still := s.recJobs[id]
 		s.recMu.Unlock()
@@ -645,6 +651,15 @@ func (s *StreamService) StopRecording(ctx context.Context, id string) (*model.Sn
 	}
 	delete(s.recJobs, id)
 	s.recMu.Unlock()
+
+	// Enforce a minimum recording window: ffmpeg needs ~5–6 s to complete RTSP
+	// negotiation and stream analysis before it starts encoding frames. At 5 s
+	// SIGINT, 0 frames were written ("Error marking filters as finished"). 12 s
+	// guarantees enough buffered data even if startup takes its maximum time.
+	const minRecordingDuration = 12 * time.Second
+	if elapsed := time.Since(job.startTime); elapsed < minRecordingDuration {
+		time.Sleep(minRecordingDuration - elapsed)
+	}
 
 	// Take ownership of the file: it was removed from the map so the reaper
 	// (which owns cmd.Wait()) will NOT delete it once ffmpeg exits. We need it

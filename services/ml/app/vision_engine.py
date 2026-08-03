@@ -326,13 +326,30 @@ class ModelRegistry:
     ) -> Optional[dict]:
         """Idempotently register a bundled weights file in the registry.
 
-        Used to make a trained model (e.g. ``vision-aeroponik-model-test.pt``)
+        Used to make a trained model (e.g. ``vision-aeroponik-model-root.pt``)
         available out of the box. If a model with the same id already exists it
-        is left untouched. The seed only claims the default slot when no model
-        is currently default, so it never clobbers an operator's choice.
+        is left untouched unless the bundled weights file has changed (e.g.
+        after a model update), in which case the file_path is refreshed. The
+        seed only claims the default slot when no model is currently default,
+        so it never clobbers an operator's choice.
         """
-        if self.get_model(model_id):
-            return self.get_model(model_id)
+        existing = self.get_model(model_id)
+        if existing:
+            path = os.path.join(settings.models_dir, weights_filename)
+            if os.path.exists(path) and self._within_models_dir(path):
+                if existing.get("file_path") != path:
+                    try:
+                        with SessionLocal() as session:
+                            row = session.get(VisionModel, model_id)
+                            if row:
+                                row.file_path = path
+                                session.commit()
+                                self._loaded.pop(model_id, None)
+                                existing["file_path"] = path
+                                logger.info("updated seeded model %s weights to %s", model_id, path)
+                    except Exception as exc:
+                        logger.warning("failed to update seeded model weights: %s", exc)
+            return existing
         path = os.path.join(settings.models_dir, weights_filename)
         if not os.path.exists(path) or not self._within_models_dir(path):
             logger.warning("seed model weights not found: %s", path)

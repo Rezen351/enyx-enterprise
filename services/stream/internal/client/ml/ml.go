@@ -91,11 +91,11 @@ func (c *Client) mintToken() (string, error) {
 }
 
 // Detect runs inference on a single JPEG frame and returns the first result.
-// It returns (nil, nil) when detection is unavailable (e.g. ML not configured),
-// so the caller can still store the plain snapshot.
+// It returns (nil, error) when the client is not configured or the request
+// fails, so callers can surface a clear error instead of silently skipping.
 func (c *Client) Detect(ctx context.Context, imageBytes []byte, filename string) (*DetectResult, error) {
 	if c.baseURL == "" || c.jwtSecret == "" {
-		return nil, nil
+		return nil, fmt.Errorf("ml client not configured: baseURL=%q jwtSecret=%q", c.baseURL, c.jwtSecret)
 	}
 	token, err := c.mintToken()
 	if err != nil {
@@ -150,11 +150,22 @@ func (c *Client) Detect(ctx context.Context, imageBytes []byte, filename string)
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return nil, fmt.Errorf("ml decode: %w", err)
 	}
-	payload := data
-	if len(envelope.Data) > 0 {
-		payload = envelope.Data
-	} else if !envelope.Success && payload == nil {
+	if !envelope.Success {
+		var errEnvelope struct {
+			Error struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(data, &errEnvelope); err == nil && errEnvelope.Error.Message != "" {
+			return nil, fmt.Errorf("ml error %s: %s", errEnvelope.Error.Code, errEnvelope.Error.Message)
+		}
 		return nil, fmt.Errorf("ml detect failed: %s", strings.TrimSpace(string(data)))
+	}
+
+	payload := envelope.Data
+	if len(payload) == 0 {
+		payload = data
 	}
 
 	var parsed mlDetectResponse

@@ -302,7 +302,7 @@ services:
       - ./infra/timescaledb/module/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - ./infra/timescaledb/postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - ./infra/timescaledb/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
-    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    command: [ "postgres", "-c", "config_file=/etc/postgresql/postgresql.conf" ]
     healthcheck:
       test: [ "CMD", "pg_isready", "-U", "${DB_USER}", "-d", "module_ts" ]
       interval: 10s
@@ -351,7 +351,7 @@ services:
       - ./infra/timescaledb/analytics/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - ./infra/timescaledb/postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - ./infra/timescaledb/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
-    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    command: [ "postgres", "-c", "config_file=/etc/postgresql/postgresql.conf" ]
     healthcheck:
       test: [ "CMD", "pg_isready", "-U", "${DB_USER}", "-d", "analytics_ts" ]
       interval: 10s
@@ -1021,6 +1021,10 @@ services:
     volumes:
       # Persisted, pre-seeded with best.pt (your trained YOLO weights).
       - ./volumes/ml-models:/app/models
+      # Bind-mount application code for live development without rebuild.
+      # Python dependencies stay in the image; only source files are
+      # overridden from the host so code changes take effect instantly.
+      - ./services/ml/app:/app/app:ro
     depends_on:
       mariadb-ml:
         condition: service_healthy
@@ -1094,7 +1098,7 @@ services:
       NATS_URL: "nats://nats:4222"
       JWT_SECRET: "${JWT_SECRET}"
     volumes:
-      - ./control-model-training/models:/app/models:ro
+      - ./services/model-controller/models:/app/models:ro
     depends_on:
       nats:
         condition: service_started
@@ -1122,7 +1126,7 @@ services:
       OUTPUT_NAME: "load1"
       VALVE_OUTPUT_NAME: "load2"
       MODULE_ID: "ee8831ff-c2dd-45c9-abb6-fb3def8fd513"
-      PUMP_SCHEDULE_ID: "35461f5f-d6ef-4c30-abfc-9eb680b5dfe7"
+      PUMP_SCHEDULE_ID: "48b7ca43-d165-4d5c-a8c9-51139ba08fce"
       PREDICTION_INTERVAL_SEC: "5"
       CONTROL_URL: "http://control:8080"
       MODEL_CONTROLLER_URL: "http://model-controller:8080"

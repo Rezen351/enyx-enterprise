@@ -67,7 +67,7 @@ def create_app() -> FastAPI:
         init_db()
         # Make the bundled aeroponic vision model available out of the box.
         registry.ensure_seeded_model(
-            weights_filename="vision-aeroponik-model-test.pt",
+            weights_filename="vision-aeroponik-model-root.pt",
             model_id="vision-aeroponik",
             slug="vision-aeroponik",
             name="Vision Aeroponik",

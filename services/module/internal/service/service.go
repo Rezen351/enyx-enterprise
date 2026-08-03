@@ -248,7 +248,7 @@ func (s *ModuleService) HandleDiscovery(ctx context.Context, msg model.Discovery
 	}
 	status := msg.Status
 	if status == "" {
-		status = model.StatusOnline
+		status = model.StatusUnknown
 	}
 	n := &model.Node{
 		NodeID:    msg.NodeID,

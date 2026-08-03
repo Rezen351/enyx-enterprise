@@ -102,7 +102,9 @@ func (s *Subscriber) onMessage(_ mqtt.Client, m mqtt.Message) {
 	nodeID, _ := s.nodeIDFromTopic(topic, payload)
 	if nodeID != "" {
 		s.svc.TouchNode(nodeID)
-		s.svc.PublishLive(nodeID, topic, payload)
+		if strings.HasSuffix(topic, "/telemetry") {
+			s.svc.PublishLive(nodeID, topic, payload)
+		}
 	}
 
 	switch {

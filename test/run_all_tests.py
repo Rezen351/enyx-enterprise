@@ -103,7 +103,7 @@ def run_master_test_suite():
     seed_test_nodes()
 
     # 1. Execute Unit & Feature Test Suite
-    print("\n[PHASE 1] Running Unit & Feature Test Suite (102 Test Cases)...")
+    print("\n[PHASE 1] Running Unit & Feature Test Suite (106 Test Cases)...")
     unit_start = time.time()
     unit_success, service_names, pass_counts, skip_counts, fail_counts, exec_times = unit_test.run_unit_tests()
     unit_duration = time.time() - unit_start

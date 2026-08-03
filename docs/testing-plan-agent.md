@@ -561,7 +561,7 @@ hasil `original`+`annotated` tersimpan di MinIO `mlbucket`.
     `services/ml/app/routes_results.py` agar terbungkus `{success,data}`. Verifikasi:
     `GET /ml/results` → `{"success":true,"data":{"total":0,"items":[]}}`.
 
-**Catatan env (bukan blocker):** seed weights `vision-aeroponik-model-test.pt`
+**Catatan env (bukan blocker):** seed weights `vision-aeroponik-model-root.pt`
 hanya ada di `services/ml/models/` (lihat `volumes/ml-models` KOSONG) → seeding
 gagal ("seed model weights not found") & `POST /ml/detect` → 404 "No active model".
 Fix env: salin weights ke `volumes/ml-models/` (sudah dilakukan utk sesi ini) agar

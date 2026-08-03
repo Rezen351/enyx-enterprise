@@ -250,7 +250,7 @@ Clients may send:
 
 ### 3.3 Internal Startup Seeding
 
-At startup, the service attempts to register a bundled weights file (`vision-aeroponik-model-test.pt`) as the default model if no default exists. The file must be present in the mounted `./volumes/ml-models:/app/models` volume.
+At startup, the service attempts to register a bundled weights file (`vision-aeroponik-model-root.pt`) as the default model if no default exists. The file must be present in the mounted `./volumes/ml-models:/app/models` volume.
 
 ---
 
@@ -448,7 +448,7 @@ All paths must resolve inside `MODELS_DIR` (`/app/models`). Arbitrary filesystem
 
 ### 7.4 Seeded Model
 
-The service ships with a bundled test weights file (`vision-aeroponik-model-test.pt`) in `./models/`. At startup, if no model exists with id `vision-aeroponik`, the service registers it automatically:
+The service ships with a bundled root weights file (`vision-aeroponik-model-root.pt`) in `./models/`. At startup, if no model exists with id `vision-aeroponik`, the service registers it automatically:
 
 - `model_id`: `vision-aeroponik`
 - `slug`: `vision-aeroponik`
@@ -607,7 +607,7 @@ services/ml/
 ├── requirements.txt
 ├── models/
 │   ├── .gitkeep
-│   └── vision-aeroponik-model-test.pt   # pre-seeded test weights
+│   └── vision-aeroponik-model-root.pt   # pre-seeded root weights
 ├── tests/
 │   ├── test_detect_shape.py
 │   ├── test_registry.py

@@ -132,7 +132,16 @@ func (h *Handler) CaptureSnapshot(w http.ResponseWriter, r *http.Request) {
 	detect := r.URL.Query().Get("detect") == "true" || r.URL.Query().Get("detect") == "1"
 	view, err := h.svc.CaptureSnapshot(r.Context(), id, detect)
 	if err != nil {
-		respondError(w, http.StatusBadGateway, err.Error())
+		switch {
+		case errors.Is(err, service.ErrNotFound):
+			respondError(w, http.StatusNotFound, "stream not found")
+		case errors.Is(err, service.ErrMinIO):
+			respondError(w, http.StatusServiceUnavailable, sanitizeMsg(err.Error()))
+		case errors.Is(err, service.ErrMediaMTX):
+			respondError(w, http.StatusBadGateway, sanitizeMsg(err.Error()))
+		default:
+			respondError(w, http.StatusInternalServerError, sanitizeMsg(err.Error()))
+		}
 		return
 	}
 	respond(w, http.StatusCreated, view)

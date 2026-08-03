@@ -6,7 +6,9 @@ ALIAS="m"
 
 : "${MINIO_ACCESS_KEY:=minioadmin}"
 : "${MINIO_SECRET_KEY:=minioadmin}"
+: "${MINIO_STREAM_ACCESS_KEY:=stream-svc}"
 : "${MINIO_STREAM_SECRET_KEY:=change-me-stream}"
+: "${MINIO_ML_ACCESS_KEY:=ml-svc}"
 : "${MINIO_ML_SECRET_KEY:=change-me-ml}"
 
 echo "[init] waiting for minio:9000..."
@@ -48,11 +50,11 @@ JSON
 "$MC" admin policy create "$ALIAS" ml-svc-policy-full /tmp/ml-svc-policy.json >/dev/null 2>&1 || true
 
 echo "[init] creating users..."
-"$MC" admin user add "$ALIAS" stream-svc "${MINIO_STREAM_SECRET_KEY}" >/dev/null 2>&1 || true
-"$MC" admin user add "$ALIAS" ml-svc "${MINIO_ML_SECRET_KEY}" >/dev/null 2>&1 || true
+"$MC" admin user add "$ALIAS" "${MINIO_STREAM_ACCESS_KEY}" "${MINIO_STREAM_SECRET_KEY}" >/dev/null 2>&1 || true
+"$MC" admin user add "$ALIAS" "${MINIO_ML_ACCESS_KEY}" "${MINIO_ML_SECRET_KEY}" >/dev/null 2>&1 || true
 
 echo "[init] attaching policies..."
-"$MC" admin policy attach "$ALIAS" stream-svc-policy-v2 --user stream-svc >/dev/null 2>&1 || true
-"$MC" admin policy attach "$ALIAS" ml-svc-policy-full --user ml-svc >/dev/null 2>&1 || true
+"$MC" admin policy attach "$ALIAS" stream-svc-policy-v2 --user "${MINIO_STREAM_ACCESS_KEY}" >/dev/null 2>&1 || true
+"$MC" admin policy attach "$ALIAS" ml-svc-policy-full --user "${MINIO_ML_ACCESS_KEY}" >/dev/null 2>&1 || true
 
 echo "[init] minio provisioning complete."

@@ -126,15 +126,15 @@ func unmarshalTags(body []byte, out *struct {
 	return json.Unmarshal(body, out)
 }
 
-// IsNodeRegistered reports whether a node_id is known to the Module Service.
-// Used by the Control Service to reject commands/schedules targeted at
-// unregistered nodes (prevents node-id spoofing).
-func (c *Client) IsNodeRegistered(ctx context.Context, nodeID string) (bool, error) {
+// IsNodePaired reports whether a node_id is registered AND paired to a module
+// in the Module Service. Used by the Control Service to reject control
+// commands/schedules targeted at unpaired or unregistered nodes.
+func (c *Client) IsNodePaired(ctx context.Context, nodeID string) (bool, error) {
 	if c.baseURL == "" {
 		return false, fmt.Errorf("module service url not configured")
 	}
 	url := fmt.Sprintf("%s/nodes/%s", c.baseURL, nodeID)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return false, err
 	}
@@ -146,13 +146,49 @@ func (c *Client) IsNodeRegistered(ctx context.Context, nodeID string) (bool, err
 		return false, err
 	}
 	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case http.StatusOK:
-		return true, nil
-	case http.StatusNotFound:
+
+	if resp.StatusCode == http.StatusNotFound {
 		return false, nil
-	default:
+	}
+	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
 		return false, fmt.Errorf("module service returned %d: %s", resp.StatusCode, string(body))
 	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, err
+	}
+
+	var env struct {
+		Data struct {
+			Paired   bool    `json:"paired"`
+			ModuleID *string `json:"module_id"`
+		} `json:"data"`
+		Paired   bool    `json:"paired"`
+		ModuleID *string `json:"module_id"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return false, err
+	}
+
+	isPaired := env.Data.Paired || env.Paired
+	modID := env.Data.ModuleID
+	if modID == nil {
+		modID = env.ModuleID
+	}
+
+	if !isPaired || modID == nil || *modID == "" {
+		return false, nil
+	}
+
+	return true, nil
 }
+
+// IsNodeRegistered reports whether a node_id is known to the Module Service.
+// Used by the Control Service to reject commands/schedules targeted at
+// unregistered nodes (prevents node-id spoofing).
+func (c *Client) IsNodeRegistered(ctx context.Context, nodeID string) (bool, error) {
+	return c.IsNodePaired(ctx, nodeID)
+}
+

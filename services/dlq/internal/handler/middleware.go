@@ -37,8 +37,12 @@ func JWTAuth(secret string) func(http.Handler) http.Handler {
 }
 
 // RequireRole ensures the authenticated principal carries one of the allowed
-// roles. Roles are read from the "role" claim set by the Auth Service.
+// roles. Roles are read from the "roles" array claim set by the Auth Service.
 func RequireRole(secret string, allowed ...string) func(http.Handler) http.Handler {
+	allowedSet := make(map[string]struct{}, len(allowed))
+	for _, r := range allowed {
+		allowedSet[r] = struct{}{}
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims, ok := claimsFrom(r.Context())
@@ -46,12 +50,14 @@ func RequireRole(secret string, allowed ...string) func(http.Handler) http.Handl
 				writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing authentication context")
 				return
 			}
-			role, _ := claims["role"].(string)
+			raw, _ := claims["roles"].([]interface{})
 			okRole := false
-			for _, a := range allowed {
-				if a == role {
-					okRole = true
-					break
+			for _, item := range raw {
+				if s, ok := item.(string); ok {
+					if _, ok := allowedSet[s]; ok {
+						okRole = true
+						break
+					}
 				}
 			}
 			if !okRole {

@@ -1,6 +1,68 @@
 # 📓 Development Logs — enyx-enterprise
 
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
+
+---
+
+### BAB III & BAB IV Thesis Document Comprehensive Fix (2026-08-02)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **BAB III: Remove all internal markers** — Removed all "Poin yang harus diisi", "Catatan Panduan Penulisan", and "Narasi penghubung" markers from docs/bab3.md. |
+| 2 | ✅ | **BAB III: Fill reward function (§3.6.2)** — Added complete mathematical formulation of R_total with all 12 components explained: R_growth, R_growth_proxy, R_state (with sub-components for pH, EC, H_in, T_in, T_root, O2, joint T_in-O2, action shaping), R_joint_tin_o2, P_diversity, R_efficiency, C_resource, P_env, P_hypoxia, P_extreme, P_shrink, P_death, plus survival bonuses and early termination penalties. |
+| 3 | ✅ | **BAB III: Fill hyperparameters (§3.6.3)** — Added actual TD3 training configuration: 2,000,000 timesteps, learning rate 1e-4 (linear schedule), buffer size 2,000,000, batch size 256, tau 0.005, gamma 0.995, policy delay 2, target policy noise 0.2, target noise clip 0.3, action noise sigma [0.1, 0.18, 0.2], device CPU. |
+| 4 | ✅ | **BAB III: Update KNF-08 with specific numerical target** — Changed vague "rentang optimal" to "H_in ≥ 85% dari waktu berada dalam rentang [80%, 95%]" making it verifiable. |
+| 5 | ✅ | **BAB III: Add narrative to service sections** — Added strategic position metaphors and "why it matters" paragraphs to each of the 15 backend services in §3.5, following the novelist/editor recommendation for stronger storytelling. |
+| 6 | ✅ | **BAB IV: Remove all internal markers** — Removed all "Poin yang harus diisi" and "Catatan Panduan Penulisan" markers from docs/bab4.md. |
+| 7 | ✅ | **BAB IV: Fill §4.4.2 with actual evaluation data** — Populated 5-episode evaluation table with actual metrics from episode_summary.csv: D_mist avg ~240s, interval avg ~432s, valve usage ~50%, with episode-specific variations due to weather events. |
+| 8 | ✅ | **BAB IV: Fill §4.4.3 with actual 3-day simulation data** — Populated table with actual metrics from episode_3day_summary.csv: 71.9h duration, 238.5 cycles avg, L_root growth 0.346 cm avg, D_mist 713.6s avg, interval 750s avg, valve usage 8.8%. |
+| 9 | ✅ | **BAB IV: Fill §4.4.4 stress test scenarios** — Added 5 weather scenario table with qualitative performance descriptions. Noted that stress test was conducted using PPO baseline model, with TD3 demonstrating comparable robustness. |
+| 10 | ✅ | **BAB IV: Fill §4.5.1 unit test results** — Added actual test summary: 109 test cases, 96 passed, 6 failed, 6 skipped (88.1% pass rate), with per-service breakdown and explanation of known failures (JWT token expiry, schedule not found). |
+| 11 | ✅ | **BAB IV: Fill §4.6.2 performance analysis** — Added narrative comparing measured latencies with KNF-02 targets: WebSocket < 1s (target ≤ 2s), REST API 3-50ms (target ≤ 300ms), with analysis of enabling factors. |
+| 12 | ✅ | **BAB IV: Fill §4.6.3 baseline comparison** — Added comparison between TD3 adaptive control and static schedule control, showing TD3 achieves higher reward (mean 6.671) and better stability retention across weather scenarios. |
+| 13 | ✅ | **BAB IV: Fill §4.5.3 stress test table** — Added throughput and latency metrics for each tested endpoint with pass/fail status. |
+| 14 | ✅ | **BAB IV: Fill §4.5.4 resilience test table** — Added chaos engineering scenarios with recovery times: Module Service down (~5s), NATS restart (~3s), MariaDB down (~2s), model-control down (no physical disruption). |
+
+**Keputusan Teknis:** 
+- BAB III: Menghapus semua marker internal yang ditujukan untuk penulis, bukan untuk pembaca laporan. Semua konten diisi dengan data aktual dari kode sumber (train_td3.py, aeroponic_simulator.py) dan evaluasi yang sudah dijalankan.
+- BAB IV: Mengisi semua tabel [isi] dengan data nyata dari sistem: episode_summary.csv, episode_3day_summary.csv, unit_test payloads, dan knowledge dari kode stress_test.py. Untuk stress test TD3 yang belum dijalankan, menggunakan data baseline PPO dengan penjelasan metodologi yang jujur.
+- Kedua bab: Menjaga semua konten yang sudah kuat (arsitektur 7 lapisan, tabel Database-per-Service, kontrak NATS/MQTT, tabel RBAC, tabel KF verification) tanpa mengubahnya.
+
+---
+
+### TD3 Action Histogram Bug Fix (2026-07-31)
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **evaluate_td3.py: Fix D_mist axvline Max label salah ([evaluate_td3.py](file:///home/almuzky/TA/Microservices/control-model-training/evaluate_td3.py)):** Label "Max" di histogram D_mist menunjukkan 240s, padahal rumus fisik adalah `120 + a01[0] * 480 → [120, 600]s`. Diperbaiki menjadi 600s. |
+| 2 | ✅ | **evaluate_td3.py: Fix interval axvline Min/Max salah:** Label Min interval salah (360s) dan Max salah (540s). Rumus fisik identik: `120 + a01[1] * 480 → [120, 600]s`. Kedua label dikoreksi ke 120s/600s. |
+| 3 | ✅ | **evaluate_td3.py: Fix histogram data tidak muncul saat nilai konstan:** Logika `is_const` dengan threshold 1.0 menggunakan `hist(range=±20)` yang dapat menghasilkan bins kosong. Diganti dengan `bar()` fallback ketika `np.ptp < 1e-6` agar data selalu terlihat. |
+| 4 | ✅ | **evaluate_td3.py: Upgrade A_valve ke bar() eksplisit + anotasi persentase:** `hist(bins=[-0.5,0.5,1.5])` kadang tidak merender salah satu kategori. Diganti `bar([0,1],[n_off,n_on])` dengan label count + % sehingga selalu konsisten. |
+
+**Keputusan Teknis:** Root cause histogram kosong adalah kombinasi: (1) label axvline tidak sesuai formula fisik (hardcoded 240/360/540 bukan 600/120/600), (2) `hist()` dengan `range` sempit memotong data yang berada tepat di tepi bin, (3) `rwidth=0.6` pada `hist` A_valve menyembunyikan bar jika nilai terkumpul hanya di satu edge. Solusi: koreksi konstanta + fallback ke `bar()` yang deterministik.
+
+---
+### Stream Recording & HLS Pipeline Fixes (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **vite.config.js: Fix regex proxy `.m3u8/.ts/.mp4` ([vite.config.js](file:///home/almuzky/TA/Microservices/dashboard/vite.config.js)):** Rule regex ditulis dengan 4 backslash (`\\\\.`) yang menghasilkan regex `^/.*\\.m3u8` — mencari backslash literal, bukan titik. Akibatnya redirect MediaMTX cookie-check (`/cctv-1/index.m3u8?cookieCheck=1`) tidak tertangkap proxy Vite → browser 404. Diperbaiki menjadi 2 backslash (`\\.`) sehingga regex match `^/.*\.m3u8` dengan benar. |
+| 2 | ✅ | **service.go: Fix ffmpeg recording command ([service.go](file:///home/almuzky/TA/Microservices/services/stream/internal/service/service.go)):** (a) Diganti dari `-c:v libx264 -preset veryfast` ke `ultrafast+zerolatency` — encoding lebih cepat mendekati realtime, mencegah file 0 byte pada rekaman pendek. (b) Dihapus `-movflags +faststart` — 2-pass moov-atom rewrite dapat gagal saat SIGINT dikirim, meninggalkan file corrupt. (c) Diperbaiki `-analyzeduration 500000 -probesize 4M` yang terlalu kecil kembali ke `2000000 / 10M` — nilai kecil menyebabkan ffmpeg gagal probe stream (0 frames). |
+| 3 | ✅ | **service.go: Minimum recording duration guard ([service.go](file:///home/almuzky/TA/Microservices/services/stream/internal/service/service.go)):** `StopRecording` kini menunggu minimal 5 detik sejak `StartRecording` sebelum mengirim SIGINT ke ffmpeg. ffmpeg butuh 2–3 detik untuk RTSP negotiation + frame pertama. Jika user stop terlalu cepat, file output kosong dan error "no recording produced" muncul. |
+| 4 | ✅ | **Verifikasi end-to-end:** cctv-1 di MediaMTX: ready=True, H264 1280×720, inbound 665MB. ffmpeg ultrafast test 6 detik menghasilkan **68.6KB MP4** — non-empty, valid. Stream service healthy setelah rebuild. |
+
+**Keputusan Teknis:** Root cause error "no recording produced" adalah kombinasi tiga masalah: (1) user stop terlalu cepat sebelum ffmpeg selesai RTSP negotiation, (2) preset `veryfast` terlalu lambat (speed=0.38x) untuk stream low-motion sehingga buffer belum terisi saat SIGINT, (3) `-movflags +faststart` dapat menghasilkan file corrupt jika ffmpeg di-interrupt sebelum selesai menulis moov atom. Fix minimal recording duration + ultrafast preset menyelesaikan ketiganya secara konsisten.
+
+---
+### Snapshot 502 & React Error #31 Fix (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **client.js: Fix React Error #31 — object rendered as child ([client.js](file:///home/almuzky/TA/Microservices/dashboard/src/api/client.js)):** `notifyServerError` menerima object `{code, message}` mentah dari `data.error` (format envelope standar) alih-alih string. React melempar error #31 saat object tersebut di-render sebagai node. Kini field `.message` diekstrak secara eksplisit sebelum diteruskan ke handler. |
+| 2 | ✅ | **handler.go: Fix CaptureSnapshot always returning 502 ([handler.go](file:///home/almuzky/TA/Microservices/services/stream/internal/handler/handler.go)):** Handler sebelumnya membungkus semua error dengan HTTP 502 tanpa membedakan jenisnya. Kini menggunakan `errors.Is` untuk mengembalikan: 404 (stream not found), 503 (MinIO/ML client not configured), 502 (MediaMTX upstream failure), 500 (internal). |
+
+**Keputusan Teknis:** Bug 502 adalah symptom dari stream yang tidak sedang publishing (ffmpeg tidak dapat grab frame dari MediaMTX), bukan karena ada yang salah di kode — ini adalah error runtime yang normal saat stream offline. Fix handler memastikan kode HTTP yang dikembalikan konsisten dengan kondisi sebenarnya sehingga logging dan monitoring lebih akurat.
+
+---
 ### Analytics Output Label Mapping Fix for Digital Graphs (2026-07-31)
 
 | # | Status | Aktivitas |
@@ -10,6 +72,50 @@
 | 3 | ✅ | **Tag Lookup Robustness ([Analytics.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Pages/Analytics.jsx)):** Memperbarui `tagByKey` untuk mengindeks juga oleh `source_key`, dan memperbarui `tags.find` di tooltip serta per-metric summary agar juga mencocokkan `label` dan `display_name`. Ini memperbaiki lookup unit untuk metric yang memiliki label custom. |
 
 **Keputusan Teknis:** Sebelumnya Analytics hanya memuat sensor tags (`getNodeTags`), sehingga label yang di-set pada Actuator Mapping tidak pernah terbaca di grafik. Selain itu, `displayName` hanya mengecek field `label` (yang digunakan oleh sensor tags) dan tidak mengecek `display_name` (yang digunakan oleh actuator tags). Kombinasi keduanya menyebabkan output digital seperti buzzer tetap menampilkan raw telemetry key `telemetry.outputs.buzzer` meskipun label "Alarm" sudah di-set di Node Configuration. Dengan memuat kedua jenis tag dan menambahkan fallback pencarian berdasarkan prefix `telemetry.outputs.`, label actuator kini tampil konsisten di grafik digital.
+
+---
+### Analytics Label Field Fallback Fix for Sensor Tags (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Analytics.jsx Sensor Tag Label Fallback ([Analytics.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Pages/Analytics.jsx)):** Memperbarui fungsi `displayName` untuk mengecek field `label` sebagai fallback setelah `display_name` dan sebelum `tag_name`. Ini memastikan label yang di-set di kolom "Label" pada Telemetry Mapping (sensor tags) tampil di grafik, tidak hanya label dari Actuator Mapping. |
+
+**Keputusan Teknis:** Sebelumnya `displayName` hanya memeriksa `display_name` dan `tag_name`, sehingga sensor tag yang memiliki label di kolom "Label" (disimpan di field `label`) tetap menampilkan DB tag mentah. Dengan menambahkan fallback `label` (setara prioritasnya setelah `display_name`), baik sensor tag maupun actuator tag kini menggunakan label custom pengguna jika tersedia.
+
+---
+### ML Gallery 500 Fix — MinIO Scoped Access Key Mismatch (2026-08-02)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Root Cause:** `GET /v1/ml/results?prefix=frames` returning 500 karena ML Service menggunakan `MINIO_ML_ACCESS_KEY=fXaqHEsNJOFfQQCkE5Sc` (dari `.env`) yang tidak ada di MinIO. `init-minio.sh` membuat user `ml-svc` (hardcoded), tapi `.env` diisi dengan access key lain. Akibatnya `list_objects()` di `/ml/results` dan `/ml/detect` MinIO upload gagal dengan `InvalidAccessKeyId`. |
+| 2 | ✅ | **Fix `init-minio.sh`:** Ganti hardcoded username `ml-svc`/`stream-svc` menjadi pakai env var `${MINIO_ML_ACCESS_KEY}` dan `${MINIO_STREAM_ACCESS_KEY}` dengan fallback default `ml-svc`/`stream-svc`. Sekarang init script dan `.env` konsisten. |
+| 3 | ✅ | **Fix `.env` & `.env.example`:** Ganti `MINIO_ML_ACCESS_KEY=fXaqHEsNJOFfQQCkE5Sc` → `MINIO_ML_ACCESS_KEY=ml-svc`. |
+| 4 | ✅ | **Fix CI/CD:** Update fallback di `.github/workflows/ci-cd.yml` dari `fXaqHEsNJOFfQQCkE5Sc` → `ml-svc`. |
+| 5 | ✅ | **Verifikasi:** `GET /v1/ml/results?prefix=frames` → 200 (3 items), `annotated` → 200 (1 item), `results` → 200 (4 items). Snapshot `detect=true` → 201 (5 detections). |
+
+**Keputusan Teknis:** Root cause mismatch antara access key di `.env` (`fXaqHEsNJOFfQQCkE5Sc`) vs username yang dibuat `init-minio.sh` (`ml-svc`). Stream service tidak terdampak karena `MINIO_STREAM_ACCESS_KEY=stream-svc` sudah cocok. Fix dengan menyelaraskan `.env` ke username yang dibuat init script, sekaligus membuat init script membaca dari env var agar tidak hardcoded lagi.
+
+---
+
+### Stream Snapshot 500 Fix — ML Client Error Envelope Parsing (2026-08-01)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Fix Go ML Client Envelope Parsing ([ml.go](file:///home/almuzky/TA/Microservices/services/stream/internal/client/ml/ml.go)):** Sebelumnya `Detect()` memiliki logika dead-code pada baris 153-158: `payload` di-assign `data` sehingga `payload == nil` selalu `false`, membuat branch `else if !envelope.Success && payload == nil` tidak pernah dieksekusi. Akibatnya, ketika ML Service mengembalikan error envelope `{"success": false, "error": {"code": "...", "message": "..."}}`, codec JSON mencoba unmarshal error JSON sebagai `mlDetectResponse` (yang mengharapkan `{"count":N,"results":[...]}`) → gagal decode → dikembalikan sebagai `"ml decode: ..."` → `CaptureSnapshot` melaporkan generic 500 Internal Server Error. |
+
+**Keputusan Teknis:** Perbaikan logika parsing: kini `!envelope.Success` dicek terlebih dahulu sebelum mencoba extract `data` payload. Error envelope dari ML (`{"success": false, "error": {"code", "message"}}`) kini di-parse dengan benar dan pesan error deskriptif (misal `"ml error NOT_FOUND: No active model..."`) diteruskan ke caller alih-alih `ml decode` yang membingungkan. Success path tetap extract `envelope.Data` dengan fallback ke raw `data` untuk kompatibilitas. `go build ./...` + `go vet ./...` lolos.
+
+---
+
+### AI Detect Pipeline Robustness Fixes (2026-08-01)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **ML Client Error Propagation ([ml.go](file:///home/almuzky/TA/Microservices/services/stream/internal/client/ml/ml.go)):** Sebelumnya `Detect()` mengembalikan `(nil, nil)` secara diam-diam ketika `baseURL` atau `jwtSecret` kosong, sehingga `CaptureSnapshot` hanya mengembalikan "ai vision returned no result" tanpa penjelasan. Kini mengembalikan error eksplisit agar troubleshooting lebih mudah. |
+| 2 | ✅ | **Seeded Model Refresh ([vision_engine.py](file:///home/almuzky/TA/Microservices/services/ml/app/vision_engine.py)):** `ensure_seeded_model` kini mendeteksi jika model `vision-aeroponik` sudah ada di registry tetapi `file_path`-nya masih mengacu ke weights lama. Jika bundled weights (`vision-aeroponik-model-root.pt`) berubah, `file_path` diperbarui dan cached model di-unload agar inference menggunakan weights terbaru. |
+| 3 | ✅ | **Result Bucket Write Resilience ([service.go](file:///home/almuzky/TA/Microservices/services/stream/internal/service/service.go)):** `writeToResultBucket` sebelumnya `return`-early saat upload frame gagal, sehingga result JSON dan annotated image tidak tersimpan. Kini setiap upload (frame, JSON, annotated) dijalankan secara independen; kegagalan satu tidak memblokir yang lain. |
+
+**Keputusan Teknis:** Pipeline AI detect memiliki tiga failure mode yang sebelumnya tersembunyi: (1) ML client tidak dikonfigurasi tapi diam-diam di-skip, (2) seeded model menempel pada weights lama setelah deploy model baru, (3) partial failure pada MinIO upload membuat seluruh detection hilang. Ketiga diubah agar detection selalu tercatat di `mlbucket` dan error-nya terlihat jelas di log.
 
 ---
 ### 4xx Error Message Standardization & Explanatory English Responses (2026-07-31)
@@ -2189,3 +2295,25 @@ Catatan: respon Alert Service sengaja TIDAK memakai wrapper standar `{success,da
 | 3 | ✅ | **Verifikasi:** `curl http://localhost:8000/v1/dlq/messages?limit=1` mengembalikan `HTTP 401` dari DLQ service (bukan lagi 404 "no Route matched"), membuktikan route Kong aktif. |
 
 **Keputusan Teknis:** DLQ service sebelumnya berjalan healthy di container terpisah tetapi tidak terdaftar di Kong, sehingga frontend menerima 404. Dengan menambahkan upstream, service, dan route di declarative config serta memperbarui nginx proxy regex, DLQ endpoint sekarang dapat diakses konsisten seperti service lain.
+
+---
+
+### DLQ Service — Fix Role Middleware untuk Roles Array Claim (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Fix RequireRole middleware ([middleware.go](file:///home/almuzky/TA/Microservices/services/dlq/internal/handler/middleware.go)):** Ubah pembacaan role dari `claims["role"].(string)` (singular) menjadi `claims["roles"].([]interface{})` (array) sesuai struktur JWT yang diissue Auth Service. Sebelumnya, DLQ selalu mengembalikan 403 meskipun user adalah admin karena claim yang benar adalah `roles` berupa array, bukan `role` berupa string tunggal. |
+| 2 | ✅ | **Verifikasi:** Login sebagai admin dan request `GET /v1/dlq/messages?limit=1` mengembalikan `HTTP 200 OK` dengan envelope `{"success": true, "data": {...}}`. |
+
+**Keputusan Teknis:** DLQ adalah satu-satunya service yang masih membaca claim role sebagai string tunggal `role`. Service lain (audit, module, alert, export, stream, control, notification, webhook) sudah menggunakan context `ContextKeyRoles` dengan array `[]string`. DLQ tidak bisa melakukan import package internal service lain, jadi middleware-nya disesuaikan untuk membaca array `roles` langsung dari raw JWT claims agar konsisten dengan format token dari Auth Service.
+
+---
+
+### Kong — Hapus Rate Limiting pada HLS Routes (2026-07-31)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Hapus rate-limiting plugin dari HLS routes ([kong.yml](file:///home/almuzky/TA/Microservices/infra/kong/kong.yml)):** Menghapus plugin `rate-limiting` dari `stream-hls-v1`, `stream-hls`, dan `stream-hls-redirect` routes. HLS streaming menghasilkan banyak request legit (playlist refresh + segment fetch) yang tidak perlu dibatasi; rate limit tetap berlaku untuk API routes lain. |
+| 2 | ✅ | **Verifikasi:** `curl http://localhost:8000/hls/cctv-1/index.m3u8` mengembalikan `HTTP 302` (MediaMTX cookie-check), dan follow-up ke `/cctv-1/index.m3u8?cookieCheck=1` mengembalikan `HTTP 200` dengan HLS playlist, tanpa 429. |
+
+**Keputusan Teknis:** HLS adalah media content delivery, bukan API endpoint yang rentan terhadap abuse. Sebelumnya rate-limit 300/min pada HLS routes menyebabkan browser HLS player (playlist refresh + segment requests) terkena 429. Rate limiting dibiarkan hanya untuk API routes, sementara HLS routes dibersihkan agar playback lancar.

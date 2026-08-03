@@ -178,7 +178,7 @@ func (r *Repository) UpsertDiscovered(ctx context.Context, n *model.Node) (bool,
 		n.DiscoveredAt, n.CreatedAt, n.UpdatedAt = now, now, now
 		n.LastSeenAt = &now
 		if n.Status == "" {
-			n.Status = model.StatusOnline
+			n.Status = model.StatusUnknown
 		}
 		_, err := r.db.ExecContext(ctx,
 			`INSERT INTO nodes (id, node_id, module_id, name, mac, ip, fw_version, status, paired, last_seen_at, discovered_at, created_at, updated_at)
@@ -198,7 +198,7 @@ func (r *Repository) UpsertDiscovered(ctx context.Context, n *model.Node) (bool,
 	}
 	status := n.Status
 	if status == "" {
-		status = model.StatusOnline
+		status = model.StatusUnknown
 	}
 	_, err = r.db.ExecContext(ctx,
 		`UPDATE nodes SET mac = ?, ip = ?, fw_version = ?, status = ?, last_seen_at = ?, updated_at = ? WHERE node_id = ?`,

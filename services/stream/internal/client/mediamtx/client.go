@@ -84,7 +84,7 @@ func (c *Client) AddPath(ctx context.Context, name, source string) error {
 	body, _ := json.Marshal(addPathConf{
 		Source:                     source,
 		SourceOnDemand:             true,
-		SourceOnDemandStartTimeout: "20s",
+		SourceOnDemandStartTimeout: "5s",
 		SourceOnDemandCloseAfter:   "15s",
 		Record:                     false,
 	})

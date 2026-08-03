@@ -390,7 +390,9 @@ func respond(w http.ResponseWriter, status int, v any) {
 // respondError emits the standard error envelope (AGENTS.md §4.4):
 // { success:false, error:{ code, message } }.
 func respondError(w http.ResponseWriter, status int, msg string) {
-	respond(w, status, map[string]any{
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"success": false,
 		"error":   map[string]string{"code": errorCode(status), "message": msg},
 	})

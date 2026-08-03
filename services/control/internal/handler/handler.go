@@ -40,12 +40,12 @@ func bearerToken(r *http.Request) string {
 	return strings.TrimSpace(strings.TrimPrefix(header, prefix))
 }
 
-// nodeRegistered checks the Module Service whether nodeID is a registered node.
-// Used to reject commands/schedules targeted at unregistered nodes (spoofing).
-func (h *Handler) nodeRegistered(r *http.Request, nodeID string) (bool, error) {
+// nodePaired checks the Module Service whether nodeID is paired to a module.
+// Used to reject commands/schedules targeted at unpaired or unregistered nodes.
+func (h *Handler) nodePaired(r *http.Request, nodeID string) (bool, error) {
 	token := bearerToken(r)
 	c := module.NewClient(h.moduleURL, token)
-	return c.IsNodeRegistered(r.Context(), nodeID)
+	return c.IsNodePaired(r.Context(), nodeID)
 }
 
 // ─── Health ───────────────────────────────────────────────────────────────────
@@ -71,15 +71,15 @@ func (h *Handler) PostCommand(w http.ResponseWriter, r *http.Request) {
 	} else {
 		src = h.actuatorSourceFor(r)
 	}
-	// Reject commands targeted at an unregistered node (prevents node-id spoofing).
+	// Reject commands targeted at an unpaired node (prevents control of unassigned hardware).
 	if req.NodeID != "" {
-		registered, err := h.nodeRegistered(r, req.NodeID)
+		paired, err := h.nodePaired(r, req.NodeID)
 		if err != nil {
-			respondError(w, http.StatusBadGateway, "failed to verify node registration")
+			respondError(w, http.StatusBadGateway, "failed to verify node pairing status")
 			return
 		}
-		if !registered {
-			respondError(w, http.StatusBadRequest, "node not registered")
+		if !paired {
+			respondError(w, http.StatusBadRequest, "node is not paired to a module; please pair the node before issuing control commands")
 			return
 		}
 	}
@@ -200,13 +200,13 @@ func (h *Handler) CreateSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.NodeID != "" {
-		registered, err := h.nodeRegistered(r, req.NodeID)
+		paired, err := h.nodePaired(r, req.NodeID)
 		if err != nil {
-			respondError(w, http.StatusBadGateway, "failed to verify node registration")
+			respondError(w, http.StatusBadGateway, "failed to verify node pairing status")
 			return
 		}
-		if !registered {
-			respondError(w, http.StatusBadRequest, "node not registered")
+		if !paired {
+			respondError(w, http.StatusBadRequest, "node is not paired to a module; please pair the node before issuing control commands")
 			return
 		}
 	}
