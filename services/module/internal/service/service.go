@@ -398,6 +398,15 @@ func (s *ModuleService) SaveNodeTags(ctx context.Context, nodeID string, reqs []
 			keepIDs = append(keepIDs, t.ID)
 		}
 	}
+	if len(keepIDs) == 0 {
+		existing, err := s.repo.ListNodeTags(ctx, nodeID)
+		if err != nil {
+			return err
+		}
+		if len(existing) > 0 {
+			return errors.New("refusing to clear all sensor tags: send at least one existing tag id to preserve the mapping, or delete tags individually first")
+		}
+	}
 	if err := s.repo.DeleteSensorTagsExcept(ctx, nodeID, keepIDs); err != nil {
 		return err
 	}

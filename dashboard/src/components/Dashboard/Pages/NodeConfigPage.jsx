@@ -230,13 +230,18 @@ function NodeConfigPage({ node, onBack }) {
   };
 
   const handleSave = async () => {
+    const sensorPayload = tags.map(t => ({
+      id: t.id, source_key: t.source_key, tag_name: t.tag_name, display_name: t.display_name,
+      label: t.label, unit: t.unit, data_type: t.data_type, enabled: t.enabled,
+    }));
+    if (sensorPayload.length === 0) {
+      const confirmed = window.confirm('This will remove ALL sensor tag mappings for this node. This cannot be undone. Continue?');
+      if (!confirmed) return;
+    }
     setIsSaving(true);
     setTagError('');
     try {
-      await moduleApi.saveNodeTags(nodeId, tags.map(t => ({
-        id: t.id, source_key: t.source_key, tag_name: t.tag_name, display_name: t.display_name,
-        label: t.label, unit: t.unit, data_type: t.data_type, enabled: t.enabled,
-      })));
+      await moduleApi.saveNodeTags(nodeId, sensorPayload);
       const data = await moduleApi.getNodeTags(nodeId);
       setTags(Array.isArray(data?.tags) ? data.tags : []);
     } catch (err) {

@@ -1255,8 +1255,9 @@
 | 5 | ✅ | Re-pair 3 node (`node-02`, `node-08`, `ECE334219870`) ke `Greenhouse-A` agar Control/Analytics punya node hidup pascari-set DB. |
 | 6 | 📝 | Open note: `M23` (Core NATS reconnect guard) belum diuji ulang lewat restart paksa module; kode guard sudah ada di `main.go` (DisconnectErrHandler/ReconnectHandler + health-check 30s). Optional retest nanti. |
 | 7 | ✅ | Audit trail terverifikasi: event `module.created`/`module.updated`/`module.deleted` & `node.paired`/`node.unpaired`/`node.deleted` terpublish ke NATS `audit.log` & masuk `mariadb-audit` (cek via `GET /audit/logs`). |
+| 8 | 🔁 | **BUG FIX 3 (telemetry tag mapping hilang sendiri):** `SaveNodeTags` menggunakan strategi replace-all (`DeleteSensorTagsExcept` lalu upsert). Jika request masuk dengan `keepIDs` kosong (mis. state frontend ter-reset, API gagal saat load, atau multi-tab race), seluruh sensor tags terhapus tanpa aman. Actuator map tetap ada karena menggunakan endpoint terpisah. **Fix:** tambah guard di `services/module/internal/service/service.go` — jika `keepIDs` kosong tapi node masih punya sensor tags di DB, return error alih-alih menghapus. Tambah konfirmasi `window.confirm` di `NodeConfigPage.jsx` sebelum save jika array sensor tags kosong. Verifikasi: `go vet ./internal/service/...` lolos, unit test `TestSaveNodeTags` lolos, save dengan array kosong + existing tags → 400 error message; save dengan 1 tag yang valid → 200 + tag tersimpan. |
 
-**Keputusan Teknis:** Module Service dinyatakan **SELESAI (clean)** — seluruh checklist fitur (M1–M22) & keamanan lulus, 2 bug (dictionary corruption + stale binary) ditemukan, di-fix, dan terverifikasi ulang tanpa regresi.
+**Keputusan Teknis:** Module Service dinyatakan **SELESAI (clean)** — seluruh checklist fitur (M1–M22) & keamanan lulus, 3 bug (dictionary corruption + stale binary + telemetry tag wipe) ditemukan, di-fix, dan terverifikasi ulang tanpa regresi.
 
 ---
 
