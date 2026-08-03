@@ -66,8 +66,10 @@ function formatDuration(totalSeconds) {
 function MtxPlayer({ name, enabled }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
+    setHasError(false);
     if (!enabled || !videoRef.current) return;
 
     const src = `/hls/${encodeURIComponent(name)}/index.m3u8`;
@@ -93,14 +95,27 @@ function MtxPlayer({ name, enabled }) {
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
             videoRef.current?.play().catch(() => {});
           });
+          hls.on(Hls.Events.ERROR, (_evt, data) => {
+            if (data.fatal) {
+              if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                hls.recoverMediaError();
+              } else {
+                if (!cancelled) setHasError(true);
+                hls.destroy();
+              }
+            }
+          });
         } else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
           videoRef.current.src = src;
           videoRef.current.addEventListener('loadedmetadata', () => {
             videoRef.current?.play().catch(() => {});
           });
+          videoRef.current.addEventListener('error', () => {
+            if (!cancelled) setHasError(true);
+          });
         }
       } catch {
-        // silent
+        if (!cancelled) setHasError(true);
       }
     }
 
@@ -116,6 +131,16 @@ function MtxPlayer({ name, enabled }) {
   if (!enabled) {
     return (
       <div className="relative w-full bg-black" style={{ aspectRatio: '16 / 9' }} />
+    );
+  }
+
+  if (hasError) {
+    return (
+      <div className="relative w-full bg-black flex flex-col items-center justify-center gap-2 p-4 text-center text-slate-400" style={{ aspectRatio: '16 / 9' }}>
+        <AlertTriangle className="w-8 h-8 text-amber-500/80" />
+        <span className="text-xs font-semibold">Stream Offline / Camera Unavailable</span>
+        <span className="text-[10px] text-slate-500 font-mono">/hls/{name}/index.m3u8</span>
+      </div>
     );
   }
 

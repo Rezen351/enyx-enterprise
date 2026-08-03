@@ -382,11 +382,10 @@ function NodeConfigPage({ node, onBack }) {
             <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1.5 sm:gap-2">
               <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Live MQTT Monitor
             </h4>
-            <span className={`flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-[10px] font-black uppercase tracking-wider border ${
-              connState === 'open' ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
-                : connState === 'error' || connState === 'closed' ? 'text-red-400 border-red-500/30 bg-red-500/10'
+            <span className={`flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-[10px] font-black uppercase tracking-wider border ${connState === 'open' ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
+              : connState === 'error' || connState === 'closed' ? 'text-red-400 border-red-500/30 bg-red-500/10'
                 : 'text-amber-400 border-amber-500/30 bg-amber-500/10'
-            }`}>
+              }`}>
               {connState === 'open' ? <Wifi className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> : <WifiOff className="w-2.5 h-2.5 sm:w-3 sm:h-3" />}
               {connState}
             </span>
@@ -430,6 +429,9 @@ function NodeConfigPage({ node, onBack }) {
           <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
             <Tags className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Telemetry Mapping
           </h4>
+          <p className="text-[10px] sm:text-xs text-slate-400 mb-2 sm:mb-3">
+            Firmware publishes outputs as <b className="text-emerald-300 font-mono">telemetry.&lt;name&gt;.&lt;name&gt;</b> (e.g. <b className="text-emerald-300 font-mono">telemetry.inputs.input1</b>). Map them to a DB tag — the stored key is the raw output name (<b className="text-emerald-300 font-mono">telemetry.inputs.input1</b>) sent back to the firmware. Mapped telemetry appear as targets in the <b>Analytics</b> menu. Use <b>Detect Keys</b> to auto-scan from live MQTT.
+          </p>
           {tagError && (
             <div className="mb-2 sm:mb-3 p-2 sm:p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] sm:text-xs flex items-center gap-1.5 sm:gap-2">
               <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> {tagError}

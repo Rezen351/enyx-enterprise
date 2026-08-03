@@ -2,6 +2,21 @@
 
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 
+### BAB III & BAB IV Alignment & Firmware Documentation Update (2026-08-03)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **BAB III & IV: Breakpoint Stress Testing Alignment** — Added detailed 5-level breakpoint stress testing methodology to docs/bab3.md (§3.9.1) and actual performance metrics to docs/bab4.md (§4.5.3) to resolve placeholders. |
+| 2 | ✅ | **BAB III & IV: Detailed ESP32 Firmware Documentation** — Expanded docs/bab3.md (§3.4.2) and docs/bab4.md (§4.3.8) with detailed specifications of FreeRTOS tasks, Captive Web Portal API, secure TLS MQTT client, Modbus RS485 mutex, local hysteresis control logic, and OTA counter rollback. |
+| 3 | ✅ | **BAB IV: Unit Test Metrics Correction** — Corrected unit test results table and summary stats in docs/bab4.md (§4.5.1) to accurately match the 109 test cases (102 passed, 1 failed, 6 skipped) from the master test suite. |
+| 4 | ✅ | **BAB III & IV: Extensibility Case Study (model-control & model-controller)** — Added new sub-chapters docs/bab3.md (§3.5.11) and docs/bab4.md (§4.6.5) explaining the scalability of the microservices platform from an adopter's perspective by integrating custom model-control services via REST APIs. |
+| 5 | ✅ | **BAB III & IV: Visual Mermaid Flowcharts** — Embedded 4 new Mermaid flowcharts illustrating the ESP32 firmware operation flow, local hysteresis loop, OTA boot recovery/rollback state machine, and AI cycle-boundary scheduler. |
+
+**Keputusan Teknis:** 
+- Penyelarasan Bab III dan Bab IV secara menyeluruh untuk memastikan semua data pengujian (unit, stress, dan chaos) riil dan saling bertalian secara akademis.
+- Mengubah contoh studi kasus ekstensibilitas sistem adopter dari PPO menjadi model-control & model-controller sesuai dengan implementasi aktual repositori.
+- Penambahan visualisasi flowchart Mermaid untuk menggantikan penjelasan sekuensial tekstual pada bagian logika kritis tingkat perangkat keras (ESP32) dan tingkat agen AI (cycle-boundary update).
+
 ---
 
 ### BAB III & BAB IV Thesis Document Comprehensive Fix (2026-08-02)

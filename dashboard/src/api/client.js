@@ -204,15 +204,31 @@ export async function request(path, { method = 'GET', body, auth = false, header
 
     // Klasifikasi error agar UI tahu apa yang terjadi.
     if (res.status >= 500 && !quiet) {
-      notifyServerError(data?.error || data?.message || `Server error (${res.status})`);
+      // data.error may be an object { code, message } — always extract a string.
+      const serverErrMsg =
+        (data?.error && typeof data.error === 'object'
+          ? data.error.message
+          : data?.error) ||
+        data?.message ||
+        `Server error (${res.status})`;
+      notifyServerError(serverErrMsg);
     }
 
+    const rawMessage =
+      (data?.error && typeof data.error === 'object'
+        ? data.error.message
+        : data?.error) ||
+      (data?.data?.error && typeof data.data.error === 'object'
+        ? data.data.error.message
+        : data?.data?.error) ||
+      data?.message;
+
     const message =
-    (data?.error && typeof data.error === 'object'
-      ? data.error.message
-      : data?.error) ||
-    data?.message ||
-    `Request failed (${res.status})`;
+      rawMessage && rawMessage.toLowerCase() !== 'unauthorized'
+        ? rawMessage
+        : res.status === 401
+        ? 'Invalid email or password'
+        : `Request failed (${res.status})`;
     const err = new Error(message);
     err.status = res.status;
     err.type = res.status === 401 ? 'unauthorized' : res.status >= 500 ? 'server' : 'client';

@@ -84,6 +84,7 @@ function DashboardContent({ onLogout }) {
     }
   })();
   const isAdmin = Array.isArray(me?.roles) && me.roles.includes('admin');
+  const isOperator = Array.isArray(me?.roles) && me.roles.includes('operator');
 
   // Clock tick is isolated in <ClockWidget /> so its 1s interval does not
   // re-render the rest of the dashboard (charts, tables, etc.).
@@ -104,27 +105,27 @@ function DashboardContent({ onLogout }) {
       case 'profile':
         return <Profile onLogout={onLogout} />;
       case 'module':
-        return <ModuleManagement onOpenNodeConfig={setNodeConfig} />;
+        return isAdmin || isOperator ? <ModuleManagement onOpenNodeConfig={setNodeConfig} /> : <Profile onLogout={onLogout} />;
       case 'control':
-        return <ControlPanel />;
+        return isAdmin || isOperator ? <ControlPanel /> : <Profile onLogout={onLogout} />;
       case 'analytics':
         return <Analytics />;
       case 'live':
-        return <LiveView />;
+        return isAdmin || isOperator ? <LiveView /> : <Profile onLogout={onLogout} />;
       case 'monitor':
         return <Monitor />;
       case 'snapshot':
         return <Snapshot />;
       case 'audit':
-        return <Audit />;
+        return isAdmin ? <Audit /> : <Profile onLogout={onLogout} />;
       case 'alerts':
-        return <Alerts />;
+        return isAdmin || isOperator ? <Alerts /> : <Profile onLogout={onLogout} />;
       case 'export':
-        return <Export />;
+        return isAdmin || isOperator ? <Export /> : <Profile onLogout={onLogout} />;
       case 'webhook':
-        return <Webhook />;
+        return isAdmin ? <Webhook /> : <Profile onLogout={onLogout} />;
       case 'dlq':
-        return <DLQ />;
+        return isAdmin ? <DLQ /> : <Profile onLogout={onLogout} />;
       case 'users':
         return isAdmin ? <UserManagement /> : <Profile onLogout={onLogout} />;
       default:

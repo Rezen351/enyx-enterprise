@@ -316,35 +316,68 @@ def plot_action_histograms(histories, out_path):
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 
     ax1 = axes[0]
-    ax1.hist(all_D_mist, bins=30, color='tab:blue', alpha=0.7, edgecolor='black')
+    # Physical range: D_mist = 120 + a01[0] * 480  →  [120, 600] s
+    D_MIST_MIN, D_MIST_MAX = 120.0, 600.0
+    if np.ptp(all_D_mist) < 1e-6:
+        # All values identical — use bar() so data is always visible
+        val_D = float(np.mean(all_D_mist))
+        ax1.bar([val_D], [len(all_D_mist)], width=20.0,
+                color='tab:blue', alpha=0.7, edgecolor='black')
+        ax1.set_xlim(val_D - 50.0, val_D + 50.0)
+    else:
+        ax1.hist(all_D_mist, bins=30, color='tab:blue', alpha=0.7, edgecolor='black')
     ax1.set_xlabel('D_mist (s)')
     ax1.set_ylabel('Count')
     ax1.set_title('Misting Duration Distribution')
-    ax1.axvline(x=120, color='tab:green', linestyle='--', linewidth=2, label='Min (120s)')
-    ax1.axvline(x=240, color='tab:red', linestyle='--', linewidth=2, label='Max (240s)')
+    ax1.axvline(x=D_MIST_MIN, color='tab:green', linestyle='--', linewidth=2, label=f'Min ({D_MIST_MIN:.0f}s)')
+    ax1.axvline(x=D_MIST_MAX, color='tab:red', linestyle='--', linewidth=2, label=f'Max ({D_MIST_MAX:.0f}s)')
     ax1.axvline(x=np.mean(all_D_mist), color='tab:orange', linestyle='--', linewidth=2, label=f'Mean: {np.mean(all_D_mist):.2f}s')
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
     ax2 = axes[1]
-    ax2.hist(all_interval, bins=30, color='tab:green', alpha=0.7, edgecolor='black')
+    # Physical range: interval = 120 + a01[1] * 480  →  [120, 600] s
+    INTERVAL_MIN, INTERVAL_MAX = 120.0, 600.0
+    if np.ptp(all_interval) < 1e-6:
+        # All values identical — use bar() so data is always visible
+        val_I = float(np.mean(all_interval))
+        ax2.bar([val_I], [len(all_interval)], width=20.0,
+                color='tab:green', alpha=0.7, edgecolor='black')
+        ax2.set_xlim(val_I - 50.0, val_I + 50.0)
+    else:
+        ax2.hist(all_interval, bins=30, color='tab:green', alpha=0.7, edgecolor='black')
     ax2.set_xlabel('Interval (s)')
     ax2.set_ylabel('Count')
     ax2.set_title('Misting Interval Distribution')
-    ax2.axvline(x=360, color='tab:green', linestyle='--', linewidth=2, label='Min (360s)')
-    ax2.axvline(x=540, color='tab:red', linestyle='--', linewidth=2, label='Max (540s)')
+    ax2.axvline(x=INTERVAL_MIN, color='tab:green', linestyle='--', linewidth=2, label=f'Min ({INTERVAL_MIN:.0f}s)')
+    ax2.axvline(x=INTERVAL_MAX, color='tab:red', linestyle='--', linewidth=2, label=f'Max ({INTERVAL_MAX:.0f}s)')
     ax2.axvline(x=np.mean(all_interval), color='tab:orange', linestyle='--', linewidth=2, label=f'Mean: {np.mean(all_interval):.0f}s')
     ax2.legend()
     ax2.grid(True, alpha=0.3)
 
     ax3 = axes[2]
-    ax3.hist(all_A_valve, bins=[-0.5, 0.5, 1.5], color='tab:red', alpha=0.7, edgecolor='black', rwidth=0.6)
+    # Use explicit bar() so both OFF and ON counts always render correctly
+    n_off = sum(1 for v in all_A_valve if v < 0.5)
+    n_on = sum(1 for v in all_A_valve if v >= 0.5)
+    ax3.bar([0, 1], [n_off, n_on], color=['tab:blue', 'tab:red'], alpha=0.7, edgecolor='black', width=0.5)
     ax3.set_xlabel('A_valve')
     ax3.set_ylabel('Count')
     ax3.set_title('Bottom Valve Actuation Distribution')
     ax3.set_xticks([0, 1])
     ax3.set_xticklabels(['OFF (0)', 'ON (1)'])
-    ax3.grid(True, alpha=0.3)
+    # Add 30% headroom above the tallest bar so annotations never get clipped
+    y_max = max(n_off, n_on)
+    ax3.set_ylim(0, y_max * 1.30)
+    ax3.set_xlim(-0.6, 1.6)
+    total_valve = len(all_A_valve)
+    for xpos, count in [(0, n_off), (1, n_on)]:
+        pct = count / total_valve * 100 if total_valve > 0 else 0.0
+        # Place annotation inside the bar (near the top) so it stays within the axes
+        ax3.text(xpos, count - y_max * 0.03,
+                 f'{count}\n({pct:.1f}%)',
+                 ha='center', va='top', fontsize=9,
+                 color='white', fontweight='bold')
+    ax3.grid(True, alpha=0.3, axis='y')
 
     plt.tight_layout()
     out_path = os.path.join(out_path, 'td3_action_histograms.png')

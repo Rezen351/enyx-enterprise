@@ -40,17 +40,17 @@ export default defineConfig({
           });
         },
       },
-      '^/.*\\.m3u8': {
+      '^/.*\.m3u8': {
         target: KONG_URL,
         changeOrigin: true,
         rewrite: (path) => path.startsWith('/hls') ? path : '/hls' + path,
       },
-      '^/.*\\.ts': {
+      '^/.*\.ts': {
         target: KONG_URL,
         changeOrigin: true,
         rewrite: (path) => path.startsWith('/hls') ? path : '/hls' + path,
       },
-      '^/.*\\.mp4': {
+      '^/.*\.mp4': {
         target: KONG_URL,
         changeOrigin: true,
         rewrite: (path) => path.startsWith('/hls') ? path : '/hls' + path,

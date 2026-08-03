@@ -22,15 +22,17 @@ import {
 function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, mobileOpen, setMobileOpen, hidden = false, me = null }) {
   const roles = Array.isArray(me?.roles) ? me.roles : [];
   const isAdmin = roles.includes('admin');
+  const isOperator = roles.includes('operator');
 
   const mainMenuItems = [
-    { id: 'monitor', label: 'MONITOR', icon: Activity },
-    { id: 'analytics', label: 'ANALYTICS', icon: BarChart3 },
-    { id: 'control', label: 'CONTROL', icon: SlidersHorizontal },
-    { id: 'live', label: 'LIVE', icon: Video },
-    { id: 'snapshot', label: 'GALLERY', icon: Camera },
-    { id: 'alerts', label: 'ALERTS', icon: ShieldAlert },
-    { id: 'export', label: 'EXPORT', icon: Download },
+    { id: 'monitor', label: 'MONITOR', icon: Activity, roles: ['admin','operator','viewer'] },
+    { id: 'analytics', label: 'ANALYTICS', icon: BarChart3, roles: ['admin','operator','viewer'] },
+    { id: 'control', label: 'CONTROL', icon: SlidersHorizontal, roles: ['admin','operator'] },
+    { id: 'live', label: 'LIVE', icon: Video, roles: ['admin','operator'] },
+    { id: 'snapshot', label: 'GALLERY', icon: Camera, roles: ['admin','operator','viewer'] },
+    { id: 'alerts', label: 'ALERTS', icon: ShieldAlert, roles: ['admin','operator'] },
+    { id: 'export', label: 'EXPORT', icon: Download, roles: ['admin','operator'] },
+    { id: 'module', label: 'MODULE', icon: Server, roles: ['admin','operator'] },
   ];
 
   // Admin-only tools grouped under a single collapsible "ADMINISTRATOR" tree.
@@ -39,17 +41,21 @@ function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, mobileOpen,
     label: 'ADMINISTRATOR',
     icon: ShieldCheck,
     children: [
-      { id: 'module', label: 'MODULE', icon: Server },
-      { id: 'audit', label: 'AUDIT', icon: ScrollText },
-      { id: 'dlq', label: 'DLQ', icon: FileWarning },
-      { id: 'webhook', label: 'WEBHOOK', icon: Globe },
-      { id: 'users', label: 'ACCOUNT', icon: User },
+      { id: 'audit', label: 'AUDIT', icon: ScrollText, roles: ['admin'] },
+      { id: 'dlq', label: 'DLQ', icon: FileWarning, roles: ['admin'] },
+      { id: 'webhook', label: 'WEBHOOK', icon: Globe, roles: ['admin'] },
+      { id: 'users', label: 'ACCOUNT', icon: User, roles: ['admin'] },
     ],
   };
 
   const profileItem = { id: 'profile', label: 'PROFILE', icon: User };
 
-  const adminChildActive = adminGroup.children.some((c) => c.id === activeTab);
+  const hasRole = (item) => roles.some(r => item.roles?.includes(r));
+  const visibleMainItems = mainMenuItems.filter(hasRole);
+  const visibleAdminChildren = adminGroup.children.filter(hasRole);
+  const showAdminGroup = visibleAdminChildren.length > 0;
+
+  const adminChildActive = visibleAdminChildren.some((c) => c.id === activeTab);
 
   // Local collapse state for the admin tree; forced open whenever one of its
   // children is the active tab so the current selection stays visible.
@@ -133,7 +139,7 @@ function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, mobileOpen,
         {/* Downward tree of admin tools */}
         {open && (
           <div className={`${collapsed ? 'lg:hidden' : ''} ml-6 border-l border-emerald-500/15 pl-1 space-y-1`}>
-            {adminGroup.children.map((child) => (
+            {visibleAdminChildren.map((child) => (
               <div key={child.id} className="relative">
                 <span className="absolute -left-[5px] top-1/2 -translate-y-1/2 w-3 h-px bg-emerald-500/20" />
                 {renderLeaf(child, true)}
@@ -188,10 +194,10 @@ function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, mobileOpen,
         {/* Navigation Menu */}
         <nav className={`flex-1 py-8 flex flex-col justify-between overflow-y-auto ${collapsed ? 'lg:px-3 px-5' : 'px-5'}`}>
           <div className="space-y-4">
-            {mainMenuItems.map((item) => renderLeaf(item))}
-            {isAdmin &&
+            {visibleMainItems.map((item) => renderLeaf(item))}
+            {showAdminGroup &&
               (collapsed
-                ? adminGroup.children.map((item) => renderLeaf(item))
+                ? visibleAdminChildren.map((item) => renderLeaf(item))
                 : renderAdminGroup())}
           </div>
 

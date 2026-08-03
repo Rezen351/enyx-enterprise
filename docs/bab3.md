@@ -1,3 +1,10 @@
+<!--
+environment_details
+Current time: 2026-08-03T11:46:16+07:00
+Working directory: /home/almuzky/TA/Microservices
+Workspace root folder: /home/almuzky/TA/Microservices
+-->
+
 # BAB III — METODE PENELITIAN DAN PERANCANGAN SISTEM
 
 ---
@@ -207,21 +214,82 @@ Desain modular perangkat keras memungkinkan penambahan kategori sensor baru tanp
 
 ### 3.4.2 Firmware ESP32
 
-Firmware ESP32 dirancang dengan arsitektur modular yang memisahkan empat komponen menjadi modul mandiri:
+Firmware pada *aeroponic node* dirancang dengan pendekatan modular berbasis sistem operasi waktu nyata **FreeRTOS** pada mikrokontroler ESP32 dual-core. Desain ini bertujuan untuk membagi beban komputasi secara efisien dan memastikan keandalan eksekusi tugas fisik maupun komunikasi jaringan tanpa adanya pemblokiran (*non-blocking*).
 
-1. **Modul driver sensor** — membaca nilai mentah dari setiap sensor (SHT31, EC, pH, dsb.) dan menerapkan kalibrasi per-perangkat
-2. **Modul klien MQTT** — menangani koneksi WiFi, publish telemetri ke `smartfarm/<node_id>/telemetry`, dan subscribe perintah
-3. **Modul pengendali aktuator** — menerjemahkan perintah ON/OFF menjadi sinyal GPIO untuk pompa dan valve
-4. **Modul pembaruan OTA** — mengunduh dan menerapkan firmware baru tanpa kabel serial
+#### A. Arsitektur Multi-Tasking FreeRTOS
+Beban kerja firmware didistribusikan ke dalam **6 task FreeRTOS independen** yang dibagi berdasarkan core prosesor ESP32 sebagai berikut:
 
-Alur operasi firmware:
-1. Inisialisasi WiFi dan koneksi ke broker MQTT
-2. Pembacaan sensor secara periodik setiap **5 detik**
-3. Publikasi data telemetri ke topik `smartfarm/<node_id>/telemetry`
-4. Langganan (subscribe) pada topik perintah `smartfarm/actuator/<node_id>`
-5. Pada penerimaan perintah, eksekusi aktuator dan kirim konfirmasi ke `smartfarm/<node_id>/confirm`
+1. **WiFiTask (Core 0, Prioritas 2)**: Menangani siklus hidup koneksi Wi-Fi (sebagai client/Station) serta melayani *Captive Web Portal* (sebagai Access Point) jika jaringan Wi-Fi utama tidak tersedia atau membutuhkan konfigurasi ulang.
+2. **MqttTask (Core 0, Prioritas 2)**: Mengelola koneksi persisten ke broker MQTT (Mosquitto), menangani proses *subscription* topik perintah aktuator, serta meneruskan pesan masuk ke antrean eksekusi perintah.
+3. **WatchdogTask (Core 0, Prioritas 2)**: Berjalan sebagai task pengawas yang memantau detak jantung (*heartbeat*) dari semua task lain secara berkala. Jika suatu task berhenti mengirimkan heartbeat, watchdog akan merestart task tersebut secara asinkron atau memicu reset sistem.
+4. **SysMonitorTask (Core 0, Prioritas 1)**: Memantau penggunaan memori heap, fragmentasi memori, dan memicu pembersihan memori atau restart otomatis jika tingkat memori bebas berada pada ambang batas kritis.
+5. **TelemetryTask (Core 1, Prioritas 1)**: Mengatur pembacaan sensor berkala (setiap 5 detik), termasuk pemanggilan protokol Modbus RS485 dan pembacaan GPIO analog/digital, serta memformat data menjadi dokumen JSON sebelum dikirim ke broker.
+6. **SerialTask (Core 1, Prioritas 1)**: Menyediakan antarmuka konfigurasi darurat berbasis CLI (*Command Line Interface*) melalui port USB serial.
 
-Pemisahan modul ini memastikan bahwa penambahan sensor atau aktuator baru tidak memerlukan penulisan ulang seluruh firmware, melainkan hanya perlu menambahkan driver di registry sensor dan memperluas skema payload MQTT.
+#### B. Captive Web Portal Lokal
+Untuk konfigurasi awal di lapangan tanpa koneksi internet, node memancarkan *Access Point* lokal (`SmartFarm-{NODE_ID}`). Ketika pengguna terhubung, DNS server lokal akan mengarahkan semua kueri HTTP ke web portal konfigurasi yang disimpan di memori flash internal ESP32 menggunakan sistem berkas **LittleFS**. Portal ini didesain menggunakan pustaka *ESPAsyncWebServer* yang aman dan asinkron, dengan fitur-fitur keamanan:
+- **Autentikasi Token**: REST API dilindungi menggunakan mekanisme Bearer Token untuk mencegah akses ilegal.
+- **First-Time Password**: Node menghasilkan password admin acak pada boot pertama yang dicetak di antarmuka serial untuk meningkatkan keamanan bawaan (*secure by default*).
+- **Login Rate Limiter**: Memblokir percobaan login setelah 5 kali kegagalan berturut-turut untuk mencegah serangan *brute force*.
+
+#### C. Logika Local Control Rules (Edge Computing)
+Untuk mengantisipasi kegagalan koneksi broker MQTT atau jaringan internet, *aeroponic node* didesain memiliki kecerdasan lokal (*edge computing*) berupa aturan kontrol lokal yang dieksekusi secara otonom di ESP32. Fitur ini dirancang menggunakan:
+- **Logika Histeresis**: Mencegah aktuator (seperti cooling fan) menyala-mati secara berulang akibat fluktuasi sensor yang tipis di sekitar ambang batas (*oscillation prevention*). Kipas pendingin dirancang aktif ketika suhu melampaui batas atas ($T_{high}$) dan hanya mati setelah suhu turun di bawah batas bawah ($T_{low}$).
+- **Dry-Run Protection**: Pompa misting dirancang mati secara otomatis menggunakan interupsi tingkat perangkat keras (*hardware-level safety loop*) jika sensor ketinggian air mendeteksi tangki nutrisi kosong, guna mencegah kerusakan motor akibat berjalan tanpa cairan.
+
+#### D. Protokol Modbus RS485 Mutex-Protected
+Pembacaan sensor industri (seperti NPK tanah, EC, pH, suhu air) dikomunikasikan melalui bus RS485 menggunakan modul transceiver MAX485. Desain Modbus ini memiliki fitur:
+- **Auto Baudrate Switching**: Memungkinkan ESP32 untuk berkomunikasi dengan berbagai sensor Modbus yang memiliki konfigurasi baudrate berbeda pada satu jalur bus fisik yang sama dengan mengganti baudrate serial UART secara dinamis sebelum memanggil alamat budak (*slave ID*) tertentu.
+- **Mutex Protection**: Menggunakan objek *FreeRTOS Mutex* untuk melindungi bus serial RS485 dari akses bersamaan oleh beberapa task, menghindari korupsi data telemetri.
+
+#### E. Dual-Partition OTA Update dengan Rollback Otomatis
+Pembaruan firmware dari jarak jauh (*Over-The-Air*) menggunakan alokasi partisi ganda (*Dual Partition Scheme*): partisi aktif saat ini dan partisi target baru. Desain ketahanan mencakup:
+- **Boot Counter di NVS**: Setelah menulis firmware baru dan melakukan restart, ESP32 mencatat jumlah boot sukses ke memori flash Non-Volatile Storage (NVS).
+- **Auto Rollback**: Jika firmware baru mengalami crash berturut-turut sebanyak lebih dari 3 kali sebelum boot counter berhasil di-reset oleh task yang stabil, *bootloader* ESP32 akan mematikan partisi baru dan secara otomatis memuat partisi firmware stabil sebelumnya.
+
+#### F. Alur Operasi Firmware
+Operasi firmware secara keseluruhan mengikuti alur sekuensial dan asinkron seperti yang ditunjukkan pada diagram alir berikut:
+
+```mermaid
+flowchart TD
+    Start([Mulai Boot ESP32]) --> Init[Inisialisasi Hardware & LittleFS: memuat config.json]
+    Init --> CheckPartition{Boot OTA Berhasil?}
+    CheckPartition -- Tidak (>3 gagal) --> Rollback[Rollback ke Partisi Stabil Lama] --> Reboot([Reboot])
+    CheckPartition -- Ya --> InitWiFi[Mulai WiFiTask & Hubungkan WiFi Station]
+    InitWiFi --> CheckWiFi{WiFi Terkoneksi?}
+    
+    CheckWiFi -- Tidak (>30s) --> APMode[Aktifkan Captive Portal AP: SmartFarm-NodeID]
+    APMode --> ServeWeb[Sajikan SPA Web Config & REST API]
+    ServeWeb --> SetConfig[Pengguna Mengatur WiFi/MQTT] --> Reboot
+    
+    CheckWiFi -- Ya --> InitMQTT[MqttTask: Hubungkan ke Mosquitto via TLS 8883]
+    InitMQTT --> SubTopics[Daftarkan LWT & Subscribe Topik Actuator]
+    SubTopics --> ParallelRun[Mulai Loop Paralel Multi-Task FreeRTOS]
+    
+    subgraph Core 1 [Aplikasi - Core 1]
+        ParallelRun --> TelemetryLoop[TelemetryTask: Setiap 5 Detik]
+        TelemetryLoop --> ReadSensors[Baca Sensor: SHT31, DS18B20, Modbus RS485 Mutex]
+        ReadSensors --> LocalRule{Aturan Lokal Aktif?}
+        LocalRule -- Ya --> EvalHysteresis[Evaluasi Histeresis & Proteksi Air]
+        EvalHysteresis --> PublishTele[Publish JSON ke smartfarm/node_id/telemetry]
+        LocalRule -- Tidak --> PublishTele
+        PublishTele --> TelemetryLoop
+    end
+    
+    subgraph Core 0 [Protokol - Core 0]
+        ParallelRun --> MqttLoop[MqttTask: Listening MQTT Broker]
+        MqttLoop --> RecvCmd{Terima Command?}
+        RecvCmd -- Ya --> ExecActuator[HardwareAbstractionLayer: Set GPIO Relay/PWM]
+        ExecActuator --> SendConfirm[Publish ACK ke smartfarm/node_id/confirm]
+        SendConfirm --> MqttLoop
+        RecvCmd -- Tidak --> CheckHeartbeat[WatchdogTask: Periksa Heartbeat Tasks]
+        CheckHeartbeat --> WatchdogFault{Ada Task Hang?}
+        WatchdogFault -- Ya --> RestartTask[Restart Task Crash / Reset ESP32]
+        WatchdogFault -- Tidak --> MqttLoop
+    end
+```
+
+Pemisahan tanggung jawab secara modular ini menjamin bahwa kegagalan satu komponen (seperti hilangnya sinyal WiFi) tidak akan memblokir pembacaan sensor fisik atau merusak aktuator pompa misting zona akar.
 
 ---
 
@@ -367,6 +435,36 @@ Layanan pendukung ini menutupi kebutuhan operasional yang tidak termasuk dalam a
 - **DLQ Worker** memantau antrian *dead-letter* NATS JetStream dan menangani retry otomatis, menjamin bahwa kegagalan sementara tidak menghilangkan pesan penting.
 - **Webhook Service** bertindak sebagai dispatcher terpisah dengan enkripsi AES-GCM, memastikan integrasi eksternal tetap aman dan tidak mengganggu inti sistem.
 - **Monitor Service** mengumpulkan metrik kontainer dan menyajikannya ke dashboard, memberikan visibilitas operasional tanpa menambahkan logika bisnis ke layanan lain.
+
+---
+
+### 3.5.11 Skalabilitas Arsitektur: Kasus Penambahan Layanan Kustom (Adopter Perspective)
+
+Keunggulan utama dari arsitektur microservices yang didecoupling secara ketat adalah tingkat skalabilitas dan ekstabilitas (*extensibility*) yang tinggi. Platform ini dirancang agar mudah diadopsi dan diperluas oleh pengembang pihak ketiga (*adopter*) yang ingin menambahkan fungsi mandiri atau algoritma kecerdasan buatan baru tanpa risiko merusak stabilitas layanan dasar (*core services*).
+
+Sebagai studi kasus nyata kemudahan adopsi ini, dirancang integrasi dua layanan kustom baru untuk menguji algoritma kontrol alternatif: **model-control** dan **model-controller**. Kedua layanan ini bertindak sebagai entitas mandiri yang sepenuhnya terpisah dari sistem inti:
+1. **model-control**: Layanan kustom berbasis Python yang mengelola pelatihan model pembelajaran penguatan (Reinforcement Learning) serta memproses keputusan logika kontrol berbasis AI secara otonom.
+2. **model-controller**: Layanan perantara (*controller*) kustom yang bertindak sebagai jembatan untuk mengekspos API prediksi/kontrol model ke dunia luar dan berinteraksi dengan API Gateway Kong.
+
+```mermaid
+graph LR
+    subgraph "Custom Services (Adopter Space)"
+        ModelCtrl[model-control - Python] <--> ModelCntr[model-controller]
+    end
+
+    subgraph "Core Microservices Platform"
+        Kong[API Gateway Kong] <--> ControlService[Control Service - Go]
+        Kong <--> ModuleService[Module Service - Go]
+    end
+
+    ModelCntr <-->|"REST API HTTP (JSON)"| Kong
+```
+
+Meskipun platform dasar mendukung pertukaran pesan asinkron berlatensi rendah melalui broker NATS JetStream, untuk meminimalkan ambang batas pembelajaran (*entry barrier*) bagi adopter baru, integrasi sistem tambahan ini didesain menggunakan protokol **REST API (HTTP/JSON)** melalui API Gateway Kong. Adopter hanya perlu melakukan panggilan HTTP standar:
+- Mengambil informasi node sensor aktif dari `GET /v1/module/nodes`.
+- Mengirimkan keputusan durasi/interval misting baru ke `POST /v1/control/commands`.
+
+Pendekatan integrasi berbasis REST API ini membuktikan bahwa adopter dapat menguji dan menerapkan algoritma kontrol kustom secara aman dan cepat tanpa perlu mempelajari atau memodifikasi kode internal layanan bawaan (*zero codebase regression*).
 
 ---
 
@@ -550,10 +648,23 @@ Model TD3 di-deploy sebagai dua layanan terpisah (prinsip Single Responsibility)
 
 **Mekanisme Cycle-Boundary Update:**
 
-Untuk mencegah reset siklus misting yang terus-menerus:
-1. Model TD3 melakukan evaluasi setiap 5 detik
-2. Hasil prediksi disimpan sebagai pending_action
-3. Pembaruan ke Control Service hanya dikirim ketika satu siklus ON/OFF sudah selesai (elapsed >= D_mist + interval_sec)
+Untuk mencegah *mid-cycle schedule reset* (keadaan di mana jadwal aktuator terus di-reset sebelum satu siklus ON/OFF selesai akibat model AI berjalan setiap 5 detik), diimplementasikan mekanisme *Cycle-Boundary* seperti yang ditunjukkan pada diagram alir berikut:
+
+```mermaid
+flowchart TD
+    Start([Setiap 5 Detik]) --> FetchData[Ambil Data Telemetri Terkini & Hasil Deteksi ML]
+    FetchData --> ModelPredict[Call model-controller: POST /predict]
+    ModelPredict --> GetAction[Terima Prediksi Aksi Baru: D_mist, Interval, A_valve]
+    GetAction --> SavePending[Simpan Aksi Baru sebagai pending_action]
+    SavePending --> CheckTime{Apakah Siklus Aktif Saat Ini Selesai?\nElapsed Time >= D_active + Interval_active}
+    
+    CheckTime -- Ya --> ApplyAction[Terapkan pending_action ke Control Service]
+    ApplyAction --> UpdateActive[Perbarui Nilai Siklus Aktif di model-control]
+    UpdateActive --> ResetTimer[Reset Timer Siklus Aktif] --> End([Selesai])
+    
+    CheckTime -- Tidak --> SkipApply[Skip Update: Pertahankan Siklus Pompa Berjalan]
+    SkipApply --> LogProgress[Catat Kemajuan Siklus pada Sistem Log] --> End
+```
 
 ---
 
@@ -621,10 +732,19 @@ Perancangan pengujian ditetapkan sejak fase desain agar hasil yang diperoleh di 
 |-----------------|---------|------|
 | Unit Test | Logika bisnis tiap layanan (layer service/repository) | Go testing, pytest |
 | Integrasi API | Endpoint HTTP via Kong (/v1/...), validasi format respons | Python requests, script otomatis |
-| Stress Test | Throughput dan latensi di bawah beban | Skrip Python + NATS bench |
-| Resilience Test | Kegagalan layanan, chaos terkontrol | Skrip Python |
+| Stress Test | Throughput dan latensi di bawah beban bertahap (*breakpoint testing*) | Skrip Python (`stress_test.py`) |
+| Resilience Test | Kegagalan layanan, *chaos engineering* terkontrol | Skrip Python (`resilience_test.py`) |
 | Pengujian Model AI | Evaluasi kinerja TD3: reward, keragaman aksi, 5 skenario cuaca | evaluate_td3.py, stress_test.py |
 | Pengujian Visual/UI | Tata letak, UX, interaksi dashboard | Manual oleh pengguna |
+
+Pengujian beban (*stress test*) menggunakan metodologi *breakpoint testing* untuk mencari kapasitas maksimum sistem dan mendeteksi titik jenuh (*knee point*). Pengujian dilakukan dengan menaikkan beban concurrency pengguna dan target *Requests Per Second* (RPS) secara bertahap dalam lima tingkatan beban:
+1. **Level 1**: Concurrency = 5 pengguna, Target RPS = 10 req/s.
+2. **Level 2**: Concurrency = 10 pengguna, Target RPS = 50 req/s.
+3. **Level 3**: Concurrency = 20 pengguna, Target RPS = 100 req/s.
+4. **Level 4**: Concurrency = 40 pengguna, Target RPS = 250 req/s.
+5. **Level 5**: Concurrency = 60 pengguna, Target RPS = 500 req/s.
+
+Metodologi ini sengaja dirancang selaras dengan pengujian keandalan sistem (*resilience testing*), di mana kegagalan komponen (seperti matinya layanan tertentu atau diskoneksi broker) disimulasikan saat sistem beroperasi guna mengukur waktu pemulihan (*self-healing*) dan memastikan tidak adanya efek domino (*cascading failure*).
 
 ### 3.9.2 Kriteria Keberhasilan
 

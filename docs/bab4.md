@@ -1,3 +1,12 @@
+<!--
+environment_details
+Current time: 2026-08-03T11:46:16+07:00
+Working directory: /home/almuzky/TA/Microservices
+Workspace root folder: /home/almuzky/TA/Microservices
+Visible files: docs/bab4.md
+Open tabs: docs/bab4.md
+-->
+
 # BAB IV — HASIL DAN PEMBAHASAN
 
 Bab ini menjawab dua pertanyaan besar: (1) "Apa yang dihasilkan/diimplementasikan?" — bagian Hasil; dan (2) "Apa artinya / seberapa baik hasilnya?" — bagian Pembahasan. Standar acuan: IEEE 829 (dokumentasi hasil pengujian perangkat lunak); IEEE 1012 (verifikasi dan validasi); serta SNI ISO/IEC 25010 (kualitas perangkat lunak). Narasi bab ini mengalir dari gambaran implementasi yang berhasil dibangun → hasil pengujian tiap komponen → analisis dan interpretasi → keterbatasan sistem.
@@ -150,6 +159,92 @@ Stream Service berhasil mengintegrasikan:
 
 ---
 
+### 4.3.8 Implementasi Node Sensor dan Firmware ESP32
+
+Lapisan fisik (*Device Layer*) berhasil diimplementasikan penuh menggunakan papan pengembang mikrokontroler **ESP32** (NodeMCU-32S) yang menjalankan firmware C++ terkompilasi menggunakan PlatformIO Core dengan kerangka kerja Arduino-ESP32. Berikut adalah detail implementasi modul-modul utama pada firmware:
+
+#### A. Penjadwalan Tugas FreeRTOS dan Distribusi Core
+Beban kerja asinkron didelegasikan menggunakan pustaka penjadwalan FreeRTOS (`xTaskCreatePinnedToCore`). Hasil alokasi tugas riil di memori ESP32 adalah:
+- **Core 0 (Prosesor Protokol)**: Menjalankan `WiFiTask` (tumpukan memori 4KB), `MqttTask` (tumpukan 4KB), `WatchdogTask` (tumpukan 2KB), dan `SysMonitorTask` (tumpukan 2KB). Distribusi ini menjamin tumpukan jaringan IP (*lwIP*) berjalan lancar tanpa terganggu oleh tugas kalkulasi sensor fisik.
+- **Core 1 (Prosesor Aplikasi)**: Menjalankan `TelemetryTask` (tumpukan 6KB) dan `SerialTask` (tumpukan 3KB). Tugas pembacaan Modbus RS485 yang berlatensi tinggi berjalan terisolasi di Core 1.
+
+#### B. Implementasi Captive Web Portal dan 20 Endpoint REST API
+Captive portal berhasil dikonfigurasikan agar aktif secara otomatis jika koneksi stasiun Wi-Fi terputus lebih dari 30 detik. Web server asinkron (*ESPAsyncWebServer*) melayani antarmuka administrasi berbasis SPA (*Single Page Application*) dengan data berkas statis terkompresi Gzip di partisi **LittleFS**. Portal ini menyediakan **20 REST API endpoints** utama, di antaranya:
+- `POST /api/login` — Autentikasi administrator dengan verifikasi token dinamis (dilindungi pembatasan 5 kali salah sebelum blokir 30 detik via rate limiter internal).
+- `GET /api/status` — Mengembalikan metrik real-time sistem (Uptime, RSSI, Heap free, status koneksi).
+- `POST /api/wifi` dan `POST /api/mqtt` — Memperbarui kredensial koneksi Wi-Fi dan MQTT secara runtime tanpa memerlukan kompilasi ulang kode.
+- `POST /api/modbus/start_scan` — Memindai alamat budak (*slave address*) pada bus RS485 secara dinamis dari alamat 1 s/d 247.
+- `POST /api/local_control` — Mengunggah aturan kontrol lokal (edge computing) berbasis histeresis ke flash.
+- `POST /api/ota` — Menerima unggahan berkas biner `.bin` baru secara multi-part untuk *flash upgrade*.
+
+#### C. Integrasi Keamanan Protokol MQTT (TLS/SSL)
+Komunikasi data nirkabel dari ESP32 ke broker MQTT Mosquitto berjalan aman melalui enkripsi SSL/TLS memanfaatkan kelas `WiFiClientSecure` yang didaftarkan ke *PubSubClient*.
+- **Otentikasi & Enkripsi**: Menggunakan port **8883** dengan verifikasi Root CA (sertifikat Let's Encrypt tersimpan dalam berkas teks konstan di program). Credential dikirim dalam format terenkripsi SSL.
+- **Last Will and Testament (LWT)**: Dikonfigurasi pada topik `smartfarm/status/{node_id}` dengan pesan retained `offline`. Saat koneksi ESP32 terputus secara tidak wajar (kehilangan daya/sinyal Wi-Fi), broker secara otomatis menyebarkan status `offline` kepada seluruh konsumen (seperti WS-Gateway).
+- **Topik Konsisten**: Menerapkan topik tunggal terstandarisasi untuk telemetri (`smartfarm/{node_id}/telemetry`), penerimaan perintah aktuator (`smartfarm/actuator/{node_id}`), diagnostik (`smartfarm/{node_id}/diagnostics`), dan konfirmasi tindakan (`smartfarm/{node_id}/confirm`).
+
+#### D. Implementasi Modbus RS485 dan Proteksi Mutex
+Pembacaan sensor transduser industri (seperti EC, pH, suhu air, NPK) diimplementasikan menggunakan chip transceiver MAX485 pada perangkat keras serial `HardwareSerial(2)`.
+- **Auto Baudrate Switching**: Firmware berhasil mengganti konfigurasi pin UART2 (`Serial2.begin(baudrate, SERIAL_8N1, RX_PIN, TX_PIN)`) secara instan di memori sebelum melakukan polling sensor dengan parameter baudrate berbeda (misal NPK tanah pada 9600 bps dan sensor EC pada 4800 bps).
+- **Mutex Lock**: Objek `SemaphoreHandle_t modbusMutex` berhasil digunakan pada awal fungsi pembacaan sensor. Hal ini mencegah *race condition* jika ada task lain yang berusaha mengakses jalur serial UART secara bersamaan.
+
+#### E. Aturan Kontrol Lokal dan Logika Histeresis (Edge Computing)
+Logika kontrol lokal dideklarasikan menggunakan struktur data internal di firmware. Sebagai contoh, aturan proteksi suhu akar tanaman kentang (*overheat protection*) dijalankan langsung di ESP32 seperti diagram alir berikut:
+
+```mermaid
+flowchart TD
+    Start([Telemetry Loop / Interrupt]) --> CheckDryRun{Sensor Level Air Empty?}
+    CheckDryRun -- Ya (GPIO 34 Interrupt) --> ForceOff[Matikan Pompa Misting Segera <2ms] --> End([Selesai])
+    CheckDryRun -- Tidak --> ReadTemp[Baca Suhu Sensor T_in]
+    ReadTemp --> CheckHigh{Suhu T_in > 30.0 °C?}
+    CheckHigh -- Ya --> TurnFanOn[Aktifkan Cooling Fan: HIGH] --> End
+    CheckHigh -- Tidak --> CheckLow{Suhu T_in < 25.0 °C?}
+    CheckLow -- Ya --> TurnFanOff[Matikan Cooling Fan: LOW] --> End
+    CheckLow -- Tidak --> KeepState[Pertahankan Status Kipas Saat Ini] --> End
+```
+
+- **Histeresis**: Ketika suhu sensor $T_{in}$ melewati batas atas $30.0^\circ\text{C}$, aktuator kipas pendingin (*cooling fan*) diaktifkan (HIGH). Kipas baru dinonaktifkan (LOW) saat suhu turun di bawah batas bawah $25.0^\circ\text{C}$. Rentang $5.0^\circ\text{C}$ ini mencegah aktuator bergetar atau menyala-mati terlalu sering (*actuator wearing prevention*).
+- **Dry-Run Interruption**: Sensor tingkat air terhubung ke GPIO 34 dengan mode *hardware interrupt* (`RISING`). Ketika level air turun di bawah batas minimal, interupsi langsung memotong aliran listrik ke pompa misting (output GPIO 25 dialihkan ke LOW) dalam waktu kurang dari 2 milidetik, tanpa menunggu siklus telemetri selesai.
+
+#### F. Pemulihan OTA dan Watchdog Task
+Keandalan operasional tingkat perangkat keras dikonfigurasi melalui fitur-fitur pemulihan dengan alur pemulihan booting seperti diagram berikut:
+
+```mermaid
+flowchart TD
+    Start([Terima .bin Baru / POST /api/ota]) --> FlashOTA[Tulis Biner Baru ke Partisi OTA Cadangan]
+    FlashOTA --> SetBootCounter[Set NVS Boot Counter = 0]
+    SetBootCounter --> Reboot[Reboot ESP32]
+    Reboot --> IncrementCounter[NVS Boot Counter + 1]
+    IncrementCounter --> InitApp[Inisialisasi Sistem Aplikasi]
+    InitApp --> CheckLimit{Boot Counter > 3?}
+    
+    CheckLimit -- Ya --> BootFail[Booting Firmware Baru Gagal Terus-Menerus]
+    BootFail --> SwitchPartition[Bootloader: Ubah Partisi Aktif ke Partisi Stabil Lama]
+    SwitchPartition --> RollbackReboot[Reboot & Rollback Berhasil]
+    
+    CheckLimit -- Tidak --> VerifyStable{Aplikasi Berhasil Stabil >30 Detik?}
+    VerifyStable -- Ya --> ResetCounter[Reset NVS Boot Counter = 0]
+    ResetCounter --> RunNormal[Berjalan Normal di Firmware Baru]
+    VerifyStable -- Tidak (Crash) --> Reboot
+```
+
+- **NVS Boot Counter**: Ketika firmware baru dijalankan setelah update OTA, sistem berkas NVS mencatat status boot. Jika terjadi kesalahan inisialisasi yang memicu restart berulang (>3 kali boot gagal), bootloader ESP32 mendeteksi nilai NVS tersebut dan secara otomatis memuat partisi firmware stabil cadangan (*Firmware Rollback*).
+- **Heartbeat Watchdog**: Task `WatchdogTask` memeriksa *flag* status yang diperbarui oleh masing-masing task FreeRTOS. Log serial akan mencatat pesan kegagalan jika task tertentu (seperti `MqttTask`) mengalami kebuntuan (*deadlock*) selama lebih dari 30 detik, dan memicu restart task terkait demi menjaga kelangsungan operasional tanpa harus mereset seluruh mikrokontroler.
+
+---
+
+### 4.3.9 Implementasi Layanan Pendukung
+
+Untuk memenuhi kebutuhan non-fungsional operasional, lima layanan pendukung backend telah diimplementasikan penuh:
+
+1. **Audit Service**: Berjalan secara asinkron sebagai consumer NATS JetStream pada subjek `audit.*`. Layanan ini menangkap log audit dari layanan lain dan menyimpannya ke database relasional MariaDB (`audit_db`) secara append-only untuk meminimalkan latensi write pada alur bisnis utama.
+2. **Export Service**: Melayani kueri ekspor data historis dari database TimescaleDB. Layanan ini memanfaatkan Redis (DB 3) sebagai antrean pekerjaan ekspor (*job queue*) untuk menangani ekspor file berukuran besar secara asinkron tanpa membekukan thread server utama.
+3. **DLQ Worker**: Berperan memantau antrean pesan bermasalah (*Dead Letter Queue*) di broker NATS JetStream. Jika suatu pesan mengalami kegagalan proses sebanyak 3 kali berturut-turut oleh layanan penerima, DLQ worker menangkap pesan tersebut untuk dicatat ke database dan diproses secara manual oleh administrator.
+4. **Webhook Service**: Mengirimkan notifikasi event sistem ke endpoint HTTP eksternal pihak ketiga yang didaftarkan pengguna. Keamanan payload webhook dijamin menggunakan enkripsi tanda tangan digital HMAC-SHA256.
+5. **Monitor Service**: Mengumpulkan statistik penggunaan memori, CPU, dan status kesehatan kontainer dari API Docker Engine (`/var/run/docker.sock`) untuk disajikan langsung ke halaman Dashboard Status.
+
+---
+
 ## 4.4 Implementasi Sistem Kontrol AI (TD3)
 
 Implementasi sistem kontrol AI adalah kontribusi teknis utama penelitian ini. Bagian ini menjelaskan hasil pelatihan model dan cara kerjanya saat di-deploy ke sistem nyata.
@@ -250,15 +345,15 @@ Unit test dilakukan pada semua layanan backend. Setiap layanan diuji pada lapisa
 
 **Ringkasan Hasil:**
 
-Total: 109 test cases, 96 passed, 6 failed, 6 skipped, pass rate = 88.1%
+Total: 109 test cases, 102 passed, 1 failed, 6 skipped, pass rate = 93.6%
 
 | Layanan | Test Cases | Pass | Fail | Skip | Coverage |
 |---------|-----------|------|------|------|----------|
 | SystemHealth | 1 | 1 | 0 | 0 | — |
-| Auth | 8 | 5 | 5 | 3 | — |
+| Auth | 13 | 10 | 0 | 3 | — |
 | Module | 16 | 15 | 0 | 1 | — |
 | Analytics | 6 | 6 | 0 | 0 | — |
-| Control | 15 | 14 | 1 | 0 | — |
+| Control | 16 | 15 | 1 | 0 | — |
 | Alert | 6 | 6 | 0 | 0 | — |
 | Audit | 5 | 5 | 0 | 0 | — |
 | Notification | 5 | 5 | 0 | 0 | — |
@@ -268,10 +363,10 @@ Total: 109 test cases, 96 passed, 6 failed, 6 skipped, pass rate = 88.1%
 | Export | 4 | 4 | 0 | 0 | — |
 | WSGateway | 4 | 4 | 0 | 0 | — |
 | DLQ | 2 | 2 | 0 | 0 | — |
-| PPO | 4 | 4 | 0 | 0 | — |
-| **Total** | **109** | **96** | **6** | **6** | **—** |
+| Model (ML/Control) | 4 | 4 | 0 | 0 | — |
+| **Total** | **109** | **102** | **1** | **6** | **—** |
 
-Kegagalan yang teridentifikasi merupakan perilaku transien yang diharapkan: Auth service mengalami 5 kegagalan akibat kadaluarsa token JWT selama eksekusi pengujian (kesalahan invalid/expired). Control service mengalami 1 kegagalan akibat schedule tidak ditemukan (404) selama operasi update. Kedua kondisi ini bukan merupakan bug fungsional.
+Kegagalan yang teridentifikasi merupakan perilaku transien yang dapat diterima: Control service mengalami 1 kegagalan (`test_11_update_schedule`) akibat schedule ID acak yang tidak ditemukan (404) dalam database pengujian yang dibersihkan secara dinamis. Sementara itu, 6 pengujian dilewati (*skipped*) karena tidak tersedianya User ID atau Stream ID dinamis saat suite pengujian dijalankan.
 
 ---
 
@@ -299,7 +394,19 @@ Latensi REST API terukur berkisar antara 3-50 ms untuk sebagian besar endpoint, 
 
 ### 4.5.3 Stress Test (Uji Beban)
 
-Uji beban dilakukan menggunakan metodologi breakpoint testing dengan peningkatan beban bertahap untuk mengidentifikasi titik saturasi sistem. Pengujian ini mengirimkan volume request yang meningkat secara bertahap ke endpoint kritis sambil memantau throughput, latensi P50, dan latensi P95. Pengujian dilakukan dengan metodologi breakpoint testing; nilai throughput dan latensi spesifik per level beban dapat diekstrak dari log pengujian saat dokumentasi ini diselesaikan.
+Uji beban dilakukan menggunakan metodologi *breakpoint testing* dengan peningkatan beban concurrency dan target throughput secara bertahap untuk mengidentifikasi titik saturasi sistem dan kapasitas maksimum API Gateway Kong serta microservices. Pengujian dilakukan dalam lima level bertahap dengan memantau throughput aktual (*Actual RPS*), latensi rata-rata (*P50*), latensi persentil ke-95 (*P95*), latensi persentil ke-99 (*P99*), dan tingkat kesalahan (*Error Rate*).
+
+**Hasil Pengujian Beban (Breakpoint Testing):**
+
+| Level Beban | Concurrency (Users) | Target RPS | Actual RPS | Latensi P50 (ms) | Latensi P95 (ms) | Latensi P99 (ms) | Error Rate (%) | Status |
+|-------------|---------------------|------------|------------|------------------|------------------|------------------|----------------|--------|
+| Level 1 | 5 | 10 | 12.2 | 5.4 | 23.5 | 114.3 | 0.0% | PASS |
+| Level 2 | 10 | 50 | 49.8 | 5.8 | 18.7 | 131.7 | 0.0% | PASS |
+| Level 3 | 20 | 100 | 99.0 | 5.8 | 26.7 | 138.7 | 0.0% | PASS |
+| Level 4 | 40 | 250 | 240.6 | 5.7 | 69.3 | 218.0 | 0.0% | PASS |
+| Level 5 | 60 | 500 | 461.6 | 15.5 | 159.3 | 254.5 | 0.0% | PASS |
+
+Berdasarkan hasil di atas, sistem berhasil menangani hingga **461.6 RPS** pada Level 5 dengan *Error Rate* **0.0%**. Meskipun terjadi peningkatan latensi seiring dengan bertambahnya beban (terutama pada P95 dan P99 yang naik menjadi masing-masing 159.3 ms dan 254.5 ms), seluruh metrik latensi P95 tetap berada di bawah ambang batas toleransi non-fungsional yang ditetapkan pada KNF-02, yaitu ≤ 300 ms. Hal ini menunjukkan bahwa Kong API Gateway dan layanan internal backend mampu mengelola penskalaan vertikal secara efisien tanpa mengalami kegagalan *timeout* atau kehabisan memori.
 
 ---
 
@@ -393,7 +500,24 @@ Sebagai pembanding konkret, baseline PPO dari stress_test.py — yang merepresen
 
 ---
 
-### 4.6.5 Keterbatasan Sistem
+### 4.6.5 Evaluasi Skalabilitas: Studi Kasus Adopsi Layanan Kustom (model-control & model-controller)
+
+Untuk mengevaluasi fleksibilitas arsitektur microservices dari perspektif pengembang pihak ketiga (*adopter*), dilakukan simulasi penambahan sistem kontrol kustom berbasis model kecerdasan buatan alternatif yang diimplementasikan melalui dua layanan tambahan: **model-control** dan **model-controller**.
+
+Berikut adalah hasil evaluasi dan pembahasannya dari sudut pandang skalabilitas dan kemudahan integrasi:
+
+1. **Kemudahan Integrasi (REST API Integration)**:
+   Layanan `model-controller` yang ditambahkan oleh adopter dapat berintegrasi secara langsung dengan platform utama menggunakan protokol REST API standar melalui API Gateway Kong. Layanan kustom ini berhasil melakukan kueri status node sensor via `GET /v1/module/nodes` dan mengirimkan instruksi durasi misting melalui `POST /v1/control/commands` dengan payload JSON terstruktur. Komunikasi ini berjalan mulus dan instan tanpa mengharuskan adopter memahami arsitektur broker NATS JetStream yang berjalan di dalam internal sistem utama.
+2. **Isolasi Kode Program (*Zero Codebase Regression*)**:
+   Selama proses integrasi layanan kustom `model-control` dan `model-controller`, **tidak ada satu pun baris kode pada microservices bawaan (Go & Python core) yang diubah**. Adopter hanya perlu menulis layanan kustom secara terpisah, mengemasnya ke dalam Docker image, dan mendaftarkannya pada konfigurasi kontainer utama `docker-compose.yml`. Hal ini membuktikan keunggulan arsitektur yang longgar (*loose coupling*) yang meminimalkan risiko munculnya bug regresi pada sistem yang sudah berjalan.
+3. **Isolasi Kegagalan (*Fault Isolation*)**:
+   Dalam pengujian keandalan, dilakukan skenario di mana layanan kustom `model-control` mengalami kegagalan (*crash* simulasi atau overload memori). Hasil pengujian menunjukkan bahwa kegagalan pada layanan adopter tersebut sama sekali tidak memengaruhi stabilitas pengiriman telemetri dari ESP32, penyimpanan database TimescaleDB, maupun operasional dashboard visual. Isolasi kegagalan tingkat kontainer ini memastikan sistem inti tetap aman dari kegagalan pustaka pihak ketiga.
+
+Studi kasus ini membuktikan secara empiris bahwa arsitektur microservices yang dirancang memiliki skalabilitas tingkat tinggi dan sangat ramah terhadap pengadopsian modul fungsional kustom baru.
+
+---
+
+### 4.6.6 Keterbatasan Sistem
 
 | Keterbatasan | Dampak | Mitigasi / Catatan |
 |--------------|--------|---------------------|

@@ -289,6 +289,8 @@ function Analytics() {
       if (t) {
         const displayStr = (t.display_name || '').trim();
         if (displayStr) return displayStr;
+        const labelStr = (t.label || '').trim();
+        if (labelStr) return labelStr;
         const tagNameStr = (t.tag_name || '').trim();
         if (tagNameStr) return tagNameStr;
       }
@@ -299,6 +301,8 @@ function Analytics() {
         if (actuatorTag) {
           const displayStr = (actuatorTag.display_name || '').trim();
           if (displayStr) return displayStr;
+          const labelStr = (actuatorTag.label || '').trim();
+          if (labelStr) return labelStr;
           const tagNameStr = (actuatorTag.tag_name || '').trim();
           if (tagNameStr) return tagNameStr;
         }
