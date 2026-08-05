@@ -468,14 +468,12 @@ function ThresholdsPanel() {
   const [busy, setBusy] = useState(false);
   const [nodes, setNodes] = useState([]);
   const [metrics, setMetrics] = useState([]);
-  const [loadingNodes, setLoadingNodes] = useState(false);
   const [loadingMetrics, setLoadingMetrics] = useState(false);
 
   const blankForm = { node_id: '', metric: '', min: '', max: '', enabled: true, severity: 'warning', message: '', duration_sec: '', cooldown_sec: '', hysteresis: '' };
   const [form, setForm] = useState(blankForm);
 
   const loadNodes = useCallback(async () => {
-    setLoadingNodes(true);
     try {
       const [pairedRes, analyticsRes] = await Promise.all([
         moduleApi.listNodes({ paired: true }),
@@ -488,8 +486,6 @@ function ThresholdsPanel() {
     } catch (err) {
       console.error('Failed to load nodes for threshold form', err);
       setNodes([]);
-    } finally {
-      setLoadingNodes(false);
     }
   }, []);
 

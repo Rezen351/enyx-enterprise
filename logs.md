@@ -10,10 +10,13 @@
 | 2 | ✅ | **Pemberantasan Unused Variables di Sidebar.jsx** — Menghapus deklarasi `isAdmin` dan `isOperator` pada [Sidebar.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Sidebar.jsx) yang memicu error ESLint `no-unused-vars`. |
 | 3 | ✅ | **Pemberantasan Useless Escapes di vite.config.js** — Mengganti single escape `\.` menjadi double escape `\\.` pada key regular expression di [vite.config.js](file:///home/almuzky/TA/Microservices/dashboard/vite.config.js) untuk memperbaiki error ESLint `no-useless-escape`. |
 | 4 | ✅ | **Eksekusi Master Test Suite** — Menjalankan `python3 test/run_all_tests.py` untuk memvalidasi bahwa build tetap fungsional dan memperbarui grafik visual di `test/results/`. |
+| 5 | ✅ | **Pemberantasan Unused Variables di Alerts.jsx** — Menghapus state `loadingNodes` dan pemanggilan `setLoadingNodes` pada [Alerts.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Pages/Alerts.jsx) yang memicu error `no-unused-vars`. |
+| 6 | ✅ | **Pemberantasan Empty Block di Alerts.jsx** — Menghapus block `finally {}` kosong pada method `loadNodes` di [Alerts.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Pages/Alerts.jsx) untuk menyelesaikan error `no-empty`. |
 
 **Keputusan Teknis:**
 - Menggunakan double escape `\\.` di konfigurasi Vite Proxy string agar dievaluasi sebagai regex literal `\.` oleh engine pencocok path, sekaligus mematuhi batasan aturan ESLint parser.
 - Menghapus variabel `isAdmin` dan `isOperator` langsung dari `Sidebar.jsx` karena logika filtering item menu sepenuhnya dilakukan secara dinamis menggunakan helper `hasRole(item)`.
+- Menghapus state `loadingNodes` dan block `finally` yang kosong dari [Alerts.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Pages/Alerts.jsx) karena indicator pemuatan tidak digunakan secara fungsional dalam rendering visual ThresholdsPanel.
 
 ---
 
