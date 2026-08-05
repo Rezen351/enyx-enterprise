@@ -2,6 +2,24 @@
 
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 
+### Firmware Aeroponic Node Modularity & Dynamic Sensor Discovery Update (2026-08-05)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Pola Factory & Plugin Registry untuk Protokol Baru** — Menambahkan interface `ProtocolHandler` dan factory `ProtocolRegistry` di `ProtocolHandler.h/cpp` untuk pendaftaran dinamis handler protokol. |
+| 2 | ✅ | **Driver I2C Generic (DHT12 & BME280)** — Menulis driver internal untuk DHT12 dan BME280 menggunakan `Wire.h` (zero-dependency) dan mengintegrasikannya ke `I2CHandler` yang dapat dikonfigurasi via `config.json`. |
+| 3 | ✅ | **Dynamic Sensor Discovery API** — Menambahkan fungsi `discoverSensors()` untuk memindai bus I2C (mendeteksi BME280 di `0x76`/`0x77` dan DHT12 di `0x5C`) serta endpoint REST `/api/hardware/discover`. |
+| 4 | ✅ | **Sensor Hot-Swap (Tanpa Reboot)** — Menambahkan fungsi `reloadConfiguration()` secara thread-safe menggunakan FreeRTOS Mutex untuk memuat ulang handler sensor secara real-time tanpa perlu reboot ESP32. |
+| 5 | ✅ | **Pembaruan Dokumen Bab III** — Memperbarui `docs/bab3.md` (§3.4.2 dan §3.4.2.Keunggulan) untuk merefleksikan seluruh fitur modularitas dan discovery sensor yang telah berhasil diimplementasikan. |
+| 6 | ✅ | **Verifikasi Kompilasi PlatformIO** — Memvalidasi bahwa seluruh modifikasi program firmware berhasil dikompilasi (SUCCESS) dengan size output 1.12MB Flash dan 66KB RAM. |
+
+**Keputusan Teknis:**
+- Memisahkan logic pembacaan sensor menjadi handler-handler individual (`GPIOInputHandler`, `ModbusHandler`, `I2CHandler`, `OneWireHandler`, `SPIHandler`) yang diatur secara sentral oleh registry untuk menghindari logic monolithic branching.
+- Menggunakan database/cache telemetry internal (`latestTelemetryJson` dan `latestSensorValues`) agar local hysteresis control rules dan endpoint REST `/api/telemetry/latest` dapat mengakses pembacaan terbaru tanpa melakukan redundansi pembacaan hardware.
+- Menonaktifkan reboot paksa (`ESP.restart()`) pada update hardware dan import config, digantikan oleh pemanggilan `reloadConfiguration()` yang aman.
+
+---
+
 ### BAB III Backend Service Documentation & MQTT Communication Standards Update (2026-08-04)
 
 | # | Status | Aktivitas |

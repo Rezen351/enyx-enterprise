@@ -25,6 +25,7 @@ private:
     static void handleApiConfigExport();
     static void handleApiConfigImport();
     static void handleApiTelemetryLatest();
+    static void handleApiHardwareDiscover();
     static void handleApiLocalControlGet();
     static void handleApiLocalControlPost();
     static void handleNotFound();

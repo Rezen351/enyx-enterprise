@@ -503,18 +503,13 @@ Sensor industri yang menggunakan protokol Modbus RTU (EC, pH, suhu nutrisi, NPK)
 
 Firmware melakukan **auto-baudrate switching** sebelum membaca setiap slave ID, sehingga beberapa sensor Modbus dengan baud rate berbeda dapat berbagi satu jalur RS485 fisik. Data Modbus muncul di payload telemetry di bawah `telemetry.modbus.{sensor_name}.{register_name}`.
 
-**4. Dukungan Sensor I2C (DHT12, BME280, dll.) — Belum Diimplementasikan:**
+**4. Dukungan Sensor I2C (DHT12, BME280, dll.) — Telah Diimplementasikan secara Modular:**
 
-Saat ini, arsitektur modular **hanya mendukung GPIO dan Modbus**. Sensor I2C seperti **DHT12**, **DHT22**, **BME280**, atau **SHT31** **belum diimplementasikan** secara penuh:
+Arsitektur modular firmware mendukung pembacaan sensor berbasis I2C (seperti DHT12 dan BME280) sepenuhnya melalui konfigurasi dinamis tanpa memerlukan kompilasi ulang kode firmware:
 
-- `Config.h` mendefinisikan `PIN_DHT_SENSOR` (default GPIO 4) tetapi **tidak pernah digunakan** di kode pembacaan sensor.
-- `platformio.ini` menyertakan library DHT (`Adafruit DHT sensor library`) sebagai dependensi, tetapi **tidak ada instansiasi atau pemanggilan** DHT di `HardwareManager.cpp`.
-- `InputPin` struct **tidak memiliki field `type: "I2C"`** — hanya `"DIGITAL"` dan `"ANALOG"`.
-
-Untuk menambahkan dukungan I2C, diperlukan perubahan kode:
-1. Menambah nilai `"I2C"` pada field `type` di `InputPin`.
-2. Menambah logika pembacaan I2C (melalui `Wire.h`) di `HardwareManager::telemetryTask()` dan `getSensorValueByName()`.
-3. Menambah dependensi library sensor I2C spesifik (misal: `Adafruit_BME280`).
+- **Driver I2C Generic**: Implementasi driver internal berbasis `Wire.h` secara zero-dependency untuk sensor DHT12 (komunikasi register 5-byte) dan BME280 (pembacaan data kalibrasi pabrik dan perhitungan kompensasi presisi Bosch).
+- **Pola Factory & Plugin Registry**: Seluruh pembacaan protokol disatukan menggunakan interface `ProtocolHandler` dan factory registry `ProtocolRegistry`. Hal ini memungkinkan penambahan protokol baru (seperti 1-Wire, SPI, dsb.) secara modular dengan mendaftarkannya pada registry.
+- **Konfigurasi Deklaratif**: Sensor I2C baru didaftarkan di dalam file `config.json` pada array `hardware.sensors` dengan parameter dinamis (seperti `protocol`, `address`, `sda_pin`, `scl_pin`).
 
 **5. Output Aktuator — Juga Configuration-Driven:**
 
@@ -562,20 +557,20 @@ Aturan kontrol lokal (edge rules) juga didefinisikan secara deklaratif di `confi
 
 Aturan ini dievaluasi di dalam `telemetryTask()` setelah pembacaan sensor, memungkinkan respons otomatis terhadap kondisi abnormal tanpa bergantung pada koneksi MQTT atau backend.
 
-**7. Keunggulan dan Batasan Arsitektur Modular:**
+**7. Keunggulan dan Fleksibilitas Arsitektur Modular:**
 
 | Aspek | Status | Deskripsi |
 |-------|--------|-----------|
 | Penambahan sensor GPIO | ✅ **Konfigurasi saja** | Digital/analog sensor ditambahkan via `config.json` tanpa upload firmware baru. |
 | Penambahan sensor Modbus | ✅ **Konfigurasi saja** | Slave ID, baudrate, register address, dan multiplier ditambahkan via `config.json`. |
-| Penambahan sensor I2C (DHT12, BME280) | ❌ **Perlu ubah kode** | Belum ada driver I2C generic; memerlukan penambahan library dan if/else branch di `HardwareManager.cpp`. |
-| Penambahan protokol baru (SPI, 1-Wire) | ❌ **Perlu ubah kode** | Tidak ada factory pattern atau plugin registry untuk protocol handler baru. |
-| Dynamic sensor discovery | ❌ **Tidak ada** | Sensor harus didaftarkan eksplisit di `config.json`; tidak ada auto-detection. |
-| Sensor hot-swap | ❌ **Tidak ada** | Perubahan `config.json` memerlukan reboot ESP32 untuk diterapkan. |
+| Penambahan sensor I2C (DHT12, BME280) | ✅ **Konfigurasi saja** | Driver I2C generic terintegrasi langsung; penambahan sensor baru cukup dikonfigurasi via `config.json`. |
+| Penambahan protokol baru (SPI, 1-Wire) | ✅ **Konfigurasi saja** | Menggunakan Factory Pattern dan Plugin Registry (`ProtocolRegistry`) sehingga handler baru terdaftar dinamis tanpa modifikasi monolithic. |
+| Dynamic sensor discovery | ✅ **Ada** | Auto-detection sensor I2C (mencari DHT12 di `0x5C` dan BME280 di `0x76`/`0x77`) via REST API `/api/hardware/discover`. |
+| Sensor hot-swap | ✅ **Ada** | Pembaruan konfigurasi hardware dimuat ulang secara dinamis (`reloadConfiguration()`) secara *thread-safe* tanpa reboot ESP32. |
 
 **Kesimpulan:**
 
-Arsitektur firmware ini mencapai modularitas pada lapisan **konfigurasi data** (pin assignment, sensor name, Modbus address) tetapi masih **monolithic pada lapisan protokol** (GPIO-only vs Modbus vs I2C). Penambahan sensor GPIO dan Modbus dapat dilakukan sepenuhnya via captive portal tanpa flashing ulang. Namun, untuk sensor berbasis protokol baru seperti DHT12/I2C, diperlukan perubahan kompilasi firmware. Ini adalah kompromi yang disengaja antara fleksibilitas konfigurasi dan kompleksitas implementasi pada constrained device seperti ESP32.
+Arsitektur firmware ini mencapai modularitas penuh baik pada lapisan **konfigurasi data** (pin assignment, sensor name, Modbus address) maupun pada lapisan **protokol dan driver** (GPIO, Modbus, I2C, OneWire, SPI). Penambahan sensor baru, perubahan pin, maupun penggantian tipe protokol dapat dilakukan sepenuhnya via captive portal dan langsung diterapkan secara *real-time* tanpa memerlukan proses flashing ulang maupun rebooting ESP32. Ini memberikan fleksibilitas operasional yang sangat tinggi dengan overhead memori minimal pada constrained device.
 
 #### E. Logika Local Control Rules (Edge Computing)
 - **Logika Histeresis**: Mencegah aktuator (seperti cooling fan) menyala-mati secara berulang akibat fluktuasi sensor yang tipis di sekitar ambang batas (*oscillation prevention*). Kipas pendingin dirancang aktif ketika suhu melampaui batas atas ($T_{high}$) dan hanya mati setelah suhu turun di bawah batas bawah ($T_{low}$).

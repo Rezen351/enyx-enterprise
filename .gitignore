@@ -10,6 +10,8 @@ node_modules/
 dashboard/dist/
 firmware/aeroponic-node/.pio/
 .pio/
+.pio_env/
+firmware/aeroponic-node/.pio_env/
 
 # OS / editor
 .DS_Store

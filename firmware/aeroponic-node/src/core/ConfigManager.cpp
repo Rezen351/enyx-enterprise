@@ -213,6 +213,24 @@ bool ConfigManager::loadConfig() {
         }
     }
 
+    Config::HardwareSensors.clear();
+    if (doc["hardware"]["sensors"].is<JsonArray>()) {
+        JsonArray sensors = doc["hardware"]["sensors"].as<JsonArray>();
+        for (JsonObject s : sensors) {
+            Config::GenericSensor sensor;
+            sensor.name = s["name"].as<String>(); sensor.name.trim();
+            sensor.protocol = s["protocol"].as<String>(); sensor.protocol.trim();
+            
+            for (JsonPair pair : s) {
+                String key = pair.key().c_str();
+                if (key != "name" && key != "protocol") {
+                    sensor.params[key] = pair.value().as<String>();
+                }
+            }
+            Config::HardwareSensors.push_back(sensor);
+        }
+    }
+
     // Local Control Rules
     Config::LocalControlRules.clear();
     if (doc["local_control"].is<JsonArray>()) {

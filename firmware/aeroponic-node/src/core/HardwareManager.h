@@ -2,8 +2,16 @@
 #define HARDWARE_MANAGER_H
 
 #include <Arduino.h>
+#include <map>
+#include <ModbusMaster.h>
 
 namespace HardwareManager {
+    // Shared Modbus variables
+    extern ModbusMaster node;
+    extern uint32_t currentBaud;
+    extern SemaphoreHandle_t modbusMutex;
+    extern std::map<String, float> latestSensorValues;
+
     void init();
     void telemetryTask(void* parameter);
     bool setOutput(String targetName, int value);
@@ -11,6 +19,11 @@ namespace HardwareManager {
     
     // Synchronous Scan ID
     String runFullScanSync(uint32_t baud);
+
+    // Dynamic configuration and discovery
+    void reloadConfiguration();
+    String discoverSensors();
+    String getLatestTelemetryJson();
 }
 
 #endif // HARDWARE_MANAGER_H

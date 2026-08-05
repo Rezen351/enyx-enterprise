@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <vector>
+#include <map>
 
 namespace Config {
     // ==================== INPUT / OUTPUT PIN STRUCTURES ====================
@@ -37,6 +38,12 @@ namespace Config {
         uint8_t slave_id;
         uint32_t baudrate;
         std::vector<ModbusRegister> registers;
+    };
+
+    struct GenericSensor {
+        String name;
+        String protocol;
+        std::map<String, String> params;
     };
 
     // ==================== LOCAL CONTROL RULE ====================
@@ -100,6 +107,7 @@ namespace Config {
     extern std::vector<InputPin> HardwareInputs;
     extern std::vector<OutputPin> HardwareOutputs;
     extern std::vector<ModbusSensor> HardwareModbus;
+    extern std::vector<GenericSensor> HardwareSensors;
     extern std::vector<LocalControlRule> LocalControlRules;
 
     // ==================== INTERVAL WAKTU (ms) ====================

@@ -92,6 +92,16 @@ static bool saveFullConfig() {
             reg["type"]       = r.type;
         }
     }
+
+    JsonArray sensors = hardware.createNestedArray("sensors");
+    for (const auto& s : Config::HardwareSensors) {
+        JsonObject sensorObj = sensors.createNestedObject();
+        sensorObj["name"] = s.name;
+        sensorObj["protocol"] = s.protocol;
+        for (const auto& pair : s.params) {
+            sensorObj[pair.first] = pair.second;
+        }
+    }
     
     JsonArray localControl = doc.createNestedArray("local_control");
     for (const auto& rule : Config::LocalControlRules) {
@@ -151,6 +161,7 @@ void WebConfigPortal::startAP() {
     server.on("/api/mqtt", HTTP_POST, handleApiMqttPost);
     server.on("/api/device", HTTP_POST, handleApiDevicePost);
     server.on("/api/hardware", HTTP_POST, handleApiHardwarePost);
+    server.on("/api/hardware/discover", HTTP_GET, handleApiHardwareDiscover);
     server.on("/api/modbus/start_scan", HTTP_POST, handleApiModbusStartScan);
     server.on("/api/modbus/scan_reg", HTTP_GET, handleApiModbusScanReg);
     server.on("/api/account", HTTP_POST, handleApiAccountPost);
@@ -527,9 +538,8 @@ void WebConfigPortal::handleApiHardwarePost() {
             }
             
             if (saveFullConfig()) {
-                server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true,\"message\":\"Hardware config updated. Rebooting...\"}");
-                delay(1000);
-                ESP.restart();
+                HardwareManager::reloadConfiguration();
+                server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":false,\"message\":\"Hardware config updated dynamically (Hot-Swapped)!\"}");
             } else {
                 server.send(500, "application/json", "{\"error\":\"Failed to save config\"}");
             }
@@ -673,9 +683,9 @@ void WebConfigPortal::handleApiConfigImport() {
     }
     
     if (ConfigManager::saveConfig(payload)) {
-        server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Configuration imported successfully! Rebooting...\"}");
-        delay(1000);
-        ESP.restart();
+        ConfigManager::loadConfig();
+        HardwareManager::reloadConfiguration();
+        server.send(200, "application/json", "{\"status\":\"success\",\"reboot\":false,\"message\":\"Configuration imported successfully and hot-swapped!\"}");
     } else {
         server.send(500, "application/json", "{\"error\":\"Failed to save configuration\"}");
     }
@@ -684,35 +694,11 @@ void WebConfigPortal::handleApiConfigImport() {
 // GAP #12: REST fallback endpoint untuk telemetry
 void WebConfigPortal::handleApiTelemetryLatest() {
     if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
-    
-    // Return latest telemetry status from system
-    StaticJsonDocument<1536> doc;
-    doc["node_id"] = Config::NODE_ID;
-    doc["fw_version"] = Config::FW_VERSION;
-    doc["uptime_s"] = millis() / 1000;
-    doc["wifi_rssi"] = WiFi.RSSI();
-    doc["free_heap_kb"] = ESP.getFreeHeap() / 1024;
-    doc["mqtt_connected"] = MqttManager::isConnected();
-    
-    JsonObject inputs = doc.createNestedObject("inputs");
-    for (const auto& hw : Config::HardwareInputs) {
-        if (hw.type == "ANALOG") {
-            inputs[hw.name] = analogRead(hw.pin);
-        } else {
-            int val = digitalRead(hw.pin);
-            if (hw.invert) val = !val;
-            inputs[hw.name] = val;
-        }
-    }
-    
-    JsonObject outputs = doc.createNestedObject("outputs");
-    for (const auto& hw : Config::HardwareOutputs) {
-        // outputs[hw.name] hanya bisa diakses via internal state
-        // Kita kirimkan sebagai placeholder
-        doc["output_count"] = Config::HardwareOutputs.size();
-    }
-    
-    String out;
-    serializeJson(doc, out);
-    server.send(200, "application/json", out);
+    server.send(200, "application/json", HardwareManager::getLatestTelemetryJson());
+}
+
+void WebConfigPortal::handleApiHardwareDiscover() {
+    if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+    String results = HardwareManager::discoverSensors();
+    server.send(200, "application/json", "{\"status\":\"ok\",\"discovered\":" + results + "}");
 }

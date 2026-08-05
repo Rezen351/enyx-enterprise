@@ -3,6 +3,8 @@
 #include "../../include/Config.h"
 #include "../protocols/MqttManager.h"
 #include "../protocols/NetworkManager.h"
+#include "ProtocolHandler.h"
+#include "ProtocolHandlers.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <map>
@@ -15,7 +17,12 @@ namespace HardwareManager {
     uint32_t currentBaud = 0;
     
     SemaphoreHandle_t modbusMutex;
+    SemaphoreHandle_t handlersMutex = NULL;
     TaskHandle_t telemetryTaskHandle = NULL;
+    
+    std::map<String, float> latestSensorValues;
+    String latestTelemetryJson = "{}";
+    std::vector<ProtocolHandler*> activeHandlers;
     
     // State terakhir output
     std::map<String, int> outputStates;
@@ -53,15 +60,9 @@ namespace HardwareManager {
     // ==================== LOCAL CONTROL EVALUATION ====================
     // GAP #7: Edge control & histeresis
     float getSensorValueByName(const String& name) {
-        // Cari di input GPIO
-        for (const auto& hw : Config::HardwareInputs) {
-            if (hw.name == name) {
-                if (hw.type == "ANALOG") {
-                    return analogRead(hw.pin);
-                } else {
-                    return digitalRead(hw.pin);
-                }
-            }
+        auto it = latestSensorValues.find(name);
+        if (it != latestSensorValues.end()) {
+            return it->second;
         }
         return NAN;
     }
@@ -90,43 +91,147 @@ namespace HardwareManager {
         }
     }
 
+    // ==================== RELOAD CONFIGURATION ====================
+    void reloadConfiguration() {
+        if (!handlersMutex) return;
+        if (xSemaphoreTake(handlersMutex, portMAX_DELAY) == pdTRUE) {
+            Serial.println("Reloading Hardware Handlers (Hot-Swap)...");
+
+            // Delete old handlers
+            for (auto h : activeHandlers) {
+                delete h;
+            }
+            activeHandlers.clear();
+            
+            // Re-initialize GPIO pin modes for legacy inputs/outputs
+            for (const auto& hw : Config::HardwareInputs) {
+                uint8_t mode = INPUT;
+                if (hw.pull == "UP") mode = INPUT_PULLUP;
+                else if (hw.pull == "DOWN") mode = INPUT_PULLDOWN;
+                pinMode(hw.pin, mode);
+
+                if (hw.interrupt != "NONE" && hw.interrupt.length() > 0) {
+                    detachInterrupt(digitalPinToInterrupt(hw.pin));
+                    int intMode = LOW;
+                    if (hw.interrupt == "RISING") intMode = RISING;
+                    else if (hw.interrupt == "FALLING") intMode = FALLING;
+                    else if (hw.interrupt == "CHANGE") intMode = CHANGE;
+                    attachInterrupt(digitalPinToInterrupt(hw.pin), gpioInterruptHandler, intMode);
+                }
+            }
+
+            for (const auto& hw : Config::HardwareOutputs) {
+                pinMode(hw.pin, OUTPUT);
+                if (hw.type == "PWM") {
+                    int oldVal = outputStates.count(hw.name) ? outputStates[hw.name] : 0;
+                    analogWrite(hw.pin, oldVal);
+                } else {
+                    int oldVal = outputStates.count(hw.name) ? outputStates[hw.name] : 0;
+                    digitalWrite(hw.pin, oldVal ? HIGH : LOW);
+                }
+            }
+
+            // Create handlers for legacy inputs
+            for (const auto& hw : Config::HardwareInputs) {
+                StaticJsonDocument<512> cdoc;
+                JsonObject obj = cdoc.to<JsonObject>();
+                obj["pin"] = hw.pin;
+                obj["type"] = hw.type;
+                obj["pull"] = hw.pull;
+                obj["name"] = hw.name;
+                obj["invert"] = hw.invert;
+                obj["debounce_ms"] = hw.debounce_ms;
+                obj["interrupt"] = hw.interrupt;
+                obj["analog_min"] = hw.analog_min;
+                obj["analog_max"] = hw.analog_max;
+                
+                ProtocolHandler* h = ProtocolRegistry::createHandler("GPIO", obj);
+                if (h) activeHandlers.push_back(h);
+            }
+
+            // Create handlers for legacy modbus
+            for (const auto& ms : Config::HardwareModbus) {
+                StaticJsonDocument<2048> cdoc;
+                JsonObject obj = cdoc.to<JsonObject>();
+                obj["name"] = ms.name;
+                obj["slave_id"] = ms.slave_id;
+                obj["baudrate"] = ms.baudrate;
+                JsonArray regs = obj.createNestedArray("registers");
+                for (const auto& r : ms.registers) {
+                    JsonObject reg = regs.createNestedObject();
+                    reg["address"] = r.address;
+                    reg["name"] = r.name;
+                    reg["multiplier"] = r.multiplier;
+                    reg["type"] = r.type;
+                }
+                
+                ProtocolHandler* h = ProtocolRegistry::createHandler("MODBUS", obj);
+                if (h) activeHandlers.push_back(h);
+            }
+
+            // Create handlers for new generic sensors
+            for (const auto& s : Config::HardwareSensors) {
+                StaticJsonDocument<1024> cdoc;
+                JsonObject obj = cdoc.to<JsonObject>();
+                obj["name"] = s.name;
+                obj["protocol"] = s.protocol;
+                for (const auto& pair : s.params) {
+                    obj[pair.first] = pair.second;
+                }
+                
+                ProtocolHandler* h = ProtocolRegistry::createHandler(s.protocol, obj);
+                if (h) {
+                    activeHandlers.push_back(h);
+                    Serial.printf("Registered Sensor: %s (Protocol: %s)\n", s.name.c_str(), s.protocol.c_str());
+                } else {
+                    Serial.printf("Failed to create handler for Sensor: %s (Protocol: %s)\n", s.name.c_str(), s.protocol.c_str());
+                }
+            }
+
+            xSemaphoreGive(handlersMutex);
+            Serial.println("Hardware Handlers Reloaded Successfully.");
+        }
+    }
+
+    // ==================== DISCOVER SENSORS ====================
+    String discoverSensors() {
+        initI2C(21, 22);
+        StaticJsonDocument<1024> ddoc;
+        JsonArray i2cDevices = ddoc.createNestedArray("i2c");
+        
+        for (uint8_t address = 1; address < 127; address++) {
+            Wire.beginTransmission(address);
+            byte error = Wire.endTransmission();
+            
+            if (error == 0) {
+                JsonObject dev = i2cDevices.createNestedObject();
+                char addrStr[6];
+                sprintf(addrStr, "0x%02X", address);
+                dev["address"] = String(addrStr);
+                if (address == 0x5C) {
+                    dev["detected_type"] = "DHT12";
+                } else if (address == 0x76 || address == 0x77) {
+                    dev["detected_type"] = "BME280";
+                } else {
+                    dev["detected_type"] = "UNKNOWN_I2C";
+                }
+            }
+        }
+        
+        String result;
+        serializeJson(ddoc, result);
+        return result;
+    }
+
+    // ==================== GET LATEST TELEMETRY JSON ====================
+    String getLatestTelemetryJson() {
+        return latestTelemetryJson;
+    }
+
     // ==================== INIT ====================
     void init() {
         Serial.println("Initializing Universal Hardware Pins...");
         
-        // GAP #11: Attach interrupt untuk input dengan interrupt type
-        for (const auto& hw : Config::HardwareInputs) {
-            uint8_t mode = INPUT;
-            if (hw.pull == "UP") mode = INPUT_PULLUP;
-            else if (hw.pull == "DOWN") mode = INPUT_PULLDOWN;
-            
-            pinMode(hw.pin, mode);
-            Serial.printf("Configured Input GPIO %d as %s with PULL_%s (%s)\n", 
-                hw.pin, hw.type.c_str(), hw.pull.c_str(), hw.name.c_str());
-            
-            // Attach interrupt if configured
-            if (hw.interrupt != "NONE" && hw.interrupt.length() > 0) {
-                int intMode = LOW;
-                if (hw.interrupt == "RISING") intMode = RISING;
-                else if (hw.interrupt == "FALLING") intMode = FALLING;
-                else if (hw.interrupt == "CHANGE") intMode = CHANGE;
-                
-                attachInterrupt(digitalPinToInterrupt(hw.pin), gpioInterruptHandler, intMode);
-                Serial.printf("  -> Interrupt attached: %s\n", hw.interrupt.c_str());
-            }
-        }
-
-        for (const auto& hw : Config::HardwareOutputs) {
-            pinMode(hw.pin, OUTPUT);
-            if (hw.type == "PWM") {
-                analogWrite(hw.pin, 0);
-            } else {
-                digitalWrite(hw.pin, LOW);
-            }
-            outputStates[hw.name] = 0;
-            Serial.printf("Configured Output GPIO %d as %s (%s)\n", hw.pin, hw.type.c_str(), hw.name.c_str());
-        }
-
         // Modbus Setup
         modbusMutex = xSemaphoreCreateMutex();
         currentBaud = 0;
@@ -151,6 +256,19 @@ namespace HardwareManager {
                             emergencyInterruptHandler, FALLING);
             Serial.println("Emergency stop interrupt attached");
         }
+
+        // Create Handlers Mutex
+        handlersMutex = xSemaphoreCreateMutex();
+
+        // Register protocol creators in ProtocolRegistry
+        ProtocolRegistry::registerProtocol("GPIO", []() -> ProtocolHandler* { return new GPIOInputHandler(); });
+        ProtocolRegistry::registerProtocol("MODBUS", []() -> ProtocolHandler* { return new ModbusHandler(); });
+        ProtocolRegistry::registerProtocol("I2C", []() -> ProtocolHandler* { return new I2CHandler(); });
+        ProtocolRegistry::registerProtocol("1-WIRE", []() -> ProtocolHandler* { return new OneWireHandler(); });
+        ProtocolRegistry::registerProtocol("SPI", []() -> ProtocolHandler* { return new SPIHandler(); });
+
+        // Load handlers initially
+        reloadConfiguration();
 
         xTaskCreatePinnedToCore(
             telemetryTask, 
@@ -219,53 +337,18 @@ namespace HardwareManager {
             // Sensor Telemetry
             JsonObject telemetry = doc.createNestedObject("telemetry");
             
-            JsonObject inputsObj = telemetry.createNestedObject("inputs");
-            for (const auto& hw : Config::HardwareInputs) {
-                if (hw.type == "ANALOG") {
-                    inputsObj[hw.name] = analogRead(hw.pin);
-                } else {
-                    int val = digitalRead(hw.pin);
-                    if (hw.invert) val = !val;
-                    inputsObj[hw.name] = val;
-                }
-            }
-    
+            // Outputs telemetry
             JsonObject outputsObj = telemetry.createNestedObject("outputs");
             for (const auto& hw : Config::HardwareOutputs) {
                 outputsObj[hw.name] = outputStates[hw.name];
             }
-    
-            // --- Modbus Polling ---
-            JsonObject modbusObj = telemetry.createNestedObject("modbus");
-            if (xSemaphoreTake(modbusMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
-                for (const auto& ms : Config::HardwareModbus) {
-                    if (currentBaud != ms.baudrate) {
-                        Serial2.end();
-                        vTaskDelay(100 / portTICK_PERIOD_MS);
-                        Serial2.begin(ms.baudrate, SERIAL_8N1, Config::PIN_RS485_RX, Config::PIN_RS485_TX);
-                        vTaskDelay(300 / portTICK_PERIOD_MS);
-                        currentBaud = ms.baudrate;
-                    }
-                    node.begin(ms.slave_id, Serial2);
-                    
-                    JsonObject modbusDev = modbusObj.createNestedObject(ms.name);
-                    
-                    for (const auto& reg : ms.registers) {
-                        uint8_t result;
-                        if (reg.type == "INPUT") {
-                            result = node.readInputRegisters(reg.address, 1);
-                        } else {
-                            result = node.readHoldingRegisters(reg.address, 1);
-                        }
-                        
-                        if (result == node.ku8MBSuccess) {
-                            float val = node.getResponseBuffer(0) * reg.multiplier;
-                            modbusDev[reg.name] = val;
-                        }
-                        vTaskDelay(10 / portTICK_PERIOD_MS);
-                    }
+            
+            // Run all dynamic protocol handlers
+            if (handlersMutex && xSemaphoreTake(handlersMutex, pdMS_TO_TICKS(4000)) == pdTRUE) {
+                for (auto handler : activeHandlers) {
+                    handler->read(telemetry);
                 }
-                xSemaphoreGive(modbusMutex);
+                xSemaphoreGive(handlersMutex);
             }
             
             // GAP #7: Evaluate local control rules
@@ -274,8 +357,10 @@ namespace HardwareManager {
             // Publish via MQTT
             memset(jsonBuffer, 0, sizeof(jsonBuffer));
             serializeJson(doc, jsonBuffer, sizeof(jsonBuffer) - 1);
+            latestTelemetryJson = String(jsonBuffer); // Save copy for local API / REST fallback
+            
             if (MqttManager::isConnected()) {
-                MqttManager::publish(Config::TOPIC_TELEMETRY, String(jsonBuffer));
+                MqttManager::publish(Config::TOPIC_TELEMETRY, latestTelemetryJson);
                 stats.lastMqttConnected = millis();
                 stats.publishCount++;
             }

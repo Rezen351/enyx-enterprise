@@ -54,6 +54,7 @@ namespace Config {
     std::vector<InputPin> HardwareInputs;
     std::vector<OutputPin> HardwareOutputs;
     std::vector<ModbusSensor> HardwareModbus;
+    std::vector<GenericSensor> HardwareSensors;
     std::vector<LocalControlRule> LocalControlRules;
 
     // --- Interval Waktu (ms) ---
