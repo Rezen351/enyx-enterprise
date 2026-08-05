@@ -161,6 +161,18 @@ func (f *fakeStore) UpdateThreshold(ctx context.Context, id string, patch map[st
 			if v, ok := patch["enabled"].(bool); ok {
 				f.thresholds[i].Enabled = v
 			}
+			if v, ok := patch["message"].(string); ok {
+				f.thresholds[i].Message = v
+			}
+			if v, ok := patch["duration_sec"].(int); ok {
+				f.thresholds[i].DurationSec = &v
+			}
+			if v, ok := patch["cooldown_sec"].(int); ok {
+				f.thresholds[i].CooldownSec = &v
+			}
+			if v, ok := patch["hysteresis"].(float64); ok {
+				f.thresholds[i].Hysteresis = &v
+			}
 			return &f.thresholds[i], nil
 		}
 	}
@@ -198,15 +210,23 @@ func (f *fakeStore) MarkOutboxSent(ctx context.Context, id string) error {
 }
 
 type fakeCache struct {
-	thresholds map[string]*model.Threshold
-	active     map[string]bool
-	cleared    []string
+	thresholds   map[string]*model.Threshold
+	active       map[string]bool
+	cleared      []string
+	violationStart map[string]time.Time
+	violationSet   map[string]bool
+	lastTriggered  map[string]time.Time
+	triggeredSet   map[string]bool
 }
 
 func newFakeCache() *fakeCache {
 	return &fakeCache{
-		thresholds: map[string]*model.Threshold{},
-		active:     map[string]bool{},
+		thresholds:   map[string]*model.Threshold{},
+		active:       map[string]bool{},
+		violationStart: map[string]time.Time{},
+		violationSet:   map[string]bool{},
+		lastTriggered:  map[string]time.Time{},
+		triggeredSet:   map[string]bool{},
 	}
 }
 
@@ -239,6 +259,38 @@ func (c *fakeCache) SetActive(ctx context.Context, nodeID, metric string) {
 
 func (c *fakeCache) ClearActive(ctx context.Context, nodeID, metric string) {
 	delete(c.active, cacheKey(nodeID, metric))
+}
+
+func (c *fakeCache) GetViolationStart(ctx context.Context, nodeID, metric string) (time.Time, bool) {
+	return c.violationStart[cacheKey(nodeID, metric)], c.violationSet[cacheKey(nodeID, metric)]
+}
+
+func (c *fakeCache) SetViolationStart(ctx context.Context, nodeID, metric string, t time.Time) {
+	if c.violationStart == nil {
+		c.violationStart = map[string]time.Time{}
+		c.violationSet = map[string]bool{}
+	}
+	c.violationStart[cacheKey(nodeID, metric)] = t
+	c.violationSet[cacheKey(nodeID, metric)] = true
+}
+
+func (c *fakeCache) ClearViolationStart(ctx context.Context, nodeID, metric string) {
+	if c.violationSet != nil {
+		delete(c.violationSet, cacheKey(nodeID, metric))
+	}
+}
+
+func (c *fakeCache) GetLastTriggered(ctx context.Context, nodeID, metric string) (time.Time, bool) {
+	return c.lastTriggered[cacheKey(nodeID, metric)], c.triggeredSet[cacheKey(nodeID, metric)]
+}
+
+func (c *fakeCache) SetLastTriggered(ctx context.Context, nodeID, metric string, t time.Time) {
+	if c.lastTriggered == nil {
+		c.lastTriggered = map[string]time.Time{}
+		c.triggeredSet = map[string]bool{}
+	}
+	c.lastTriggered[cacheKey(nodeID, metric)] = t
+	c.triggeredSet[cacheKey(nodeID, metric)] = true
 }
 
 // ─── evaluate / buildMessage ─────────────────────────────────────────────────
@@ -479,5 +531,171 @@ func TestRunSubscriberNilConn(t *testing.T) {
 	// With a nil nats conn, RunSubscriber should error gracefully.
 	if err := svc.RunSubscriber(nil); err == nil {
 		t.Error("expected error with nil conn")
+	}
+}
+
+// ─── New Threshold Fields: DurationSec, CooldownSec, Hysteresis, Message ──────
+
+func TestHandleTelemetryDurationSec(t *testing.T) {
+	min := 10.0
+	max := 50.0
+	durationSec := 2
+	th := &model.Threshold{
+		ID: "t1", NodeID: "n1", Metric: "temp",
+		Min: &min, Max: &max, Enabled: true,
+		Severity: "critical", DurationSec: &durationSec,
+	}
+	st := &fakeStore{thresholds: []model.Threshold{*th}}
+	cc := newFakeCache()
+	svc := New(st, cc, nil)
+
+	// First violation before duration expires -> no alert yet.
+	svc.handleTelemetry([]byte(`{"node_id":"n1","metric":"temp","value":99,"ts":1}`))
+	if len(st.alerts) != 0 {
+		t.Fatal("expected no alert before duration expires")
+	}
+
+	// Second violation still before duration -> still no alert.
+	svc.handleTelemetry([]byte(`{"node_id":"n1","metric":"temp","value":99,"ts":2}`))
+	if len(st.alerts) != 0 {
+		t.Fatal("expected no alert before duration expires")
+	}
+
+	// Simulate time passing by directly setting violation start in the past.
+	if start, exists := cc.GetViolationStart(context.Background(), "n1", "temp"); exists {
+		cc.SetViolationStart(context.Background(), "n1", "temp", start.Add(-3*time.Second))
+	}
+
+	// Now violation has persisted past duration -> alert should fire.
+	svc.handleTelemetry([]byte(`{"node_id":"n1","metric":"temp","value":99,"ts":3}`))
+	if len(st.alerts) != 1 {
+		t.Fatalf("expected alert after duration expires, got %d alerts", len(st.alerts))
+	}
+}
+
+func TestHandleTelemetryCooldownSec(t *testing.T) {
+	min := 10.0
+	max := 50.0
+	cooldownSec := 10
+	th := &model.Threshold{
+		ID: "t1", NodeID: "n1", Metric: "temp",
+		Min: &min, Max: &max, Enabled: true,
+		Severity: "warning", CooldownSec: &cooldownSec,
+	}
+	st := &fakeStore{thresholds: []model.Threshold{*th}}
+	cc := newFakeCache()
+	svc := New(st, cc, nil)
+
+	// First violation -> alert.
+	svc.handleTelemetry([]byte(`{"node_id":"n1","metric":"temp","value":99,"ts":1}`))
+	if len(st.alerts) != 1 {
+		t.Fatal("expected first alert")
+	}
+
+	// Immediate second violation -> suppressed by cooldown.
+	svc.handleTelemetry([]byte(`{"node_id":"n1","metric":"temp","value":99,"ts":2}`))
+	if len(st.alerts) != 1 {
+		t.Fatal("expected cooldown to suppress repeat alert")
+	}
+
+	// Simulate cooldown expired.
+	if last, exists := cc.GetLastTriggered(context.Background(), "n1", "temp"); exists {
+		cc.SetLastTriggered(context.Background(), "n1", "temp", last.Add(-11*time.Second))
+	}
+
+	// Resolve current alert first so a new one can trigger.
+	cc.ClearActive(context.Background(), "n1", "temp")
+
+	// Now after cooldown -> new alert allowed.
+	svc.handleTelemetry([]byte(`{"node_id":"n1","metric":"temp","value":99,"ts":3}`))
+	if len(st.alerts) != 2 {
+		t.Fatalf("expected alert after cooldown, got %d alerts", len(st.alerts))
+	}
+}
+
+func TestHandleTelemetryCustomMessage(t *testing.T) {
+	min := 10.0
+	max := 50.0
+	th := &model.Threshold{
+		ID: "t1", NodeID: "n1", Metric: "ph",
+		Min: &min, Max: &max, Enabled: true,
+		Severity: "critical", Message: "Custom pH alert",
+	}
+	st := &fakeStore{thresholds: []model.Threshold{*th}}
+	cc := newFakeCache()
+	svc := New(st, cc, nil)
+
+	svc.handleTelemetry([]byte(`{"node_id":"n1","metric":"ph","value":99,"ts":1}`))
+	if len(st.alerts) != 1 {
+		t.Fatal("expected alert")
+	}
+	if st.alerts[0].Message != "Custom pH alert" {
+		t.Errorf("expected custom message, got %q", st.alerts[0].Message)
+	}
+}
+
+func TestHandleTelemetryHysteresis(t *testing.T) {
+	min := 10.0
+	max := 50.0
+	hyst := 2.0
+	th := &model.Threshold{
+		ID: "t1", NodeID: "n1", Metric: "temp",
+		Min: &min, Max: &max, Enabled: true,
+		Severity: "warning", Hysteresis: &hyst,
+	}
+	st := &fakeStore{thresholds: []model.Threshold{*th}}
+	cc := newFakeCache()
+	svc := New(st, cc, nil)
+
+	// Trigger alert.
+	svc.handleTelemetry([]byte(`{"node_id":"n1","metric":"temp","value":99,"ts":1}`))
+	if len(st.alerts) != 1 {
+		t.Fatal("expected alert triggered")
+	}
+	if !cc.ActiveExists(context.Background(), "n1", "temp") {
+		t.Fatal("expected active marker set")
+	}
+
+	// Value drops to 49 (above max-hysteresis=48) -> still outside, alert stays active.
+	svc.handleTelemetry([]byte(`{"node_id":"n1","metric":"temp","value":49,"ts":2}`))
+	if !cc.ActiveExists(context.Background(), "n1", "temp") {
+		t.Error("expected alert to stay active above hysteresis boundary")
+	}
+
+	// Value drops to 47 (inside [min+hyst=12, max-hyst=48]) -> resolve.
+	svc.handleTelemetry([]byte(`{"node_id":"n1","metric":"temp","value":47,"ts":3}`))
+	if cc.ActiveExists(context.Background(), "n1", "temp") {
+		t.Error("expected alert resolved inside hysteresis band")
+	}
+}
+
+func TestHandleTelemetryHysteresisOnlyMax(t *testing.T) {
+	max := 50.0
+	hyst := 3.0
+	th := &model.Threshold{
+		ID: "t1", NodeID: "n1", Metric: "temp",
+		Max: &max, Enabled: true,
+		Severity: "warning", Hysteresis: &hyst,
+	}
+	st := &fakeStore{thresholds: []model.Threshold{*th}}
+	cc := newFakeCache()
+	svc := New(st, cc, nil)
+
+	svc.handleTelemetry([]byte(`{"node_id":"n1","metric":"temp","value":99,"ts":1}`))
+	if len(st.alerts) != 1 {
+		t.Fatal("expected alert triggered")
+	}
+
+	// Value 48 is above max-hyst=47 -> still outside, alert stays active.
+	svc.handleTelemetry([]byte(`{"node_id":"n1","metric":"temp","value":48,"ts":2}`))
+	if !cc.ActiveExists(context.Background(), "n1", "temp") {
+		t.Error("expected alert active above hysteresis boundary")
+	}
+
+	// Value 47 is exactly at boundary -> should still be considered outside or boundary case.
+	// Implementation checks `value > *th.Max - *th.Hysteresis`, so 47 > 47 is false -> resolves.
+	svc.handleTelemetry([]byte(`{"node_id":"n1","metric":"temp","value":47,"ts":3}`))
+	if cc.ActiveExists(context.Background(), "n1", "temp") {
+		t.Error("expected alert resolved at hysteresis boundary")
 	}
 }

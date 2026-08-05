@@ -56,6 +56,11 @@ type Cache interface {
 	ActiveExists(ctx context.Context, nodeID, metric string) bool
 	SetActive(ctx context.Context, nodeID, metric string)
 	ClearActive(ctx context.Context, nodeID, metric string)
+	GetViolationStart(ctx context.Context, nodeID, metric string) (time.Time, bool)
+	SetViolationStart(ctx context.Context, nodeID, metric string, t time.Time)
+	ClearViolationStart(ctx context.Context, nodeID, metric string)
+	GetLastTriggered(ctx context.Context, nodeID, metric string) (time.Time, bool)
+	SetLastTriggered(ctx context.Context, nodeID, metric string, t time.Time)
 }
 
 // Service evaluates telemetry against thresholds and persists/relays alerts.
@@ -120,11 +125,33 @@ func (s *Service) handleTelemetry(body []byte) {
 
 	violated, boundary := evaluate(tm.Value, th)
 	ctx := context.Background()
+	now := time.Now().UTC()
 
 	if violated {
-		// Already alerting for this (node, metric)? Dedup until resolved.
 		if s.cache.ActiveExists(ctx, tm.NodeID, tm.Metric) {
 			return
+		}
+		if th.DurationSec != nil && *th.DurationSec > 0 {
+			violationStart, exists := s.cache.GetViolationStart(ctx, tm.NodeID, tm.Metric)
+			if !exists {
+				s.cache.SetViolationStart(ctx, tm.NodeID, tm.Metric, now)
+				return
+			}
+			if now.Sub(violationStart) < time.Duration(*th.DurationSec)*time.Second {
+				return
+			}
+			s.cache.ClearViolationStart(ctx, tm.NodeID, tm.Metric)
+		}
+		if th.CooldownSec != nil && *th.CooldownSec > 0 {
+			if lastTriggered, exists := s.cache.GetLastTriggered(ctx, tm.NodeID, tm.Metric); exists {
+				if now.Sub(lastTriggered) < time.Duration(*th.CooldownSec)*time.Second {
+					return
+				}
+			}
+		}
+		msg := th.Message
+		if msg == "" {
+			msg = buildMessage(th, tm.Value, boundary)
 		}
 		alert := &model.Alert{
 			ID:             uuid.NewString(),
@@ -134,15 +161,18 @@ func (s *Service) handleTelemetry(body []byte) {
 			ThresholdValue: boundary,
 			Severity:       th.Severity,
 			Status:         "active",
-			Message:        buildMessage(th, tm.Value, boundary),
+			Message:        msg,
 			ThresholdID:    strPtr(th.ID),
-			TriggeredAt:    time.Now().UTC(),
+			TriggeredAt:    now,
 		}
 		if err := s.store.CreateAlert(ctx, alert); err != nil {
 			log.Printf("ERROR: alert: persist alert failed node=%s metric=%s: %v", tm.NodeID, tm.Metric, err)
 			return
 		}
 		s.cache.SetActive(ctx, tm.NodeID, tm.Metric)
+		if th.CooldownSec != nil && *th.CooldownSec > 0 {
+			s.cache.SetLastTriggered(ctx, tm.NodeID, tm.Metric, now)
+		}
 		s.publishAlert("alert.triggered", alert)
 		s.publishSystem(alert, "triggered")
 		return
@@ -150,9 +180,15 @@ func (s *Service) handleTelemetry(body []byte) {
 
 	// Within range: if an active alert exists, resolve it.
 	if s.cache.ActiveExists(ctx, tm.NodeID, tm.Metric) {
+		if th.Hysteresis != nil && *th.Hysteresis > 0 {
+			if th.Min != nil && tm.Value < *th.Min+*th.Hysteresis {
+				return
+			}
+			if th.Max != nil && tm.Value > *th.Max-*th.Hysteresis {
+				return
+			}
+		}
 		now := time.Now().UTC()
-		// Fetch the active alert BEFORE flipping its status so we can publish
-		// the resolved event with full context.
 		active, gerr := s.store.GetLatestActive(ctx, tm.NodeID, tm.Metric)
 		if gerr != nil {
 			log.Printf("ERROR: alert: get active failed node=%s metric=%s: %v", tm.NodeID, tm.Metric, gerr)
@@ -163,6 +199,7 @@ func (s *Service) handleTelemetry(body []byte) {
 			return
 		}
 		s.cache.ClearActive(ctx, tm.NodeID, tm.Metric)
+		s.cache.ClearViolationStart(ctx, tm.NodeID, tm.Metric)
 		if active != nil {
 			active.Status = "resolved"
 			active.ResolvedAt = &now

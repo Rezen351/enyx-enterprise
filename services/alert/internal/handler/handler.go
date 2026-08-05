@@ -123,12 +123,16 @@ func (h *Handler) ListThresholds(w http.ResponseWriter, r *http.Request) {
 }
 
 type thresholdRequest struct {
-	NodeID   string   `json:"node_id"`
-	Metric   string   `json:"metric"`
-	Min      *float64 `json:"min"`
-	Max      *float64 `json:"max"`
-	Enabled  *bool    `json:"enabled"`
-	Severity string   `json:"severity"`
+	NodeID       string    `json:"node_id"`
+	Metric       string    `json:"metric"`
+	Min          *float64  `json:"min"`
+	Max          *float64  `json:"max"`
+	Enabled      *bool     `json:"enabled"`
+	Severity     string    `json:"severity"`
+	Message      string    `json:"message"`
+	DurationSec  *int      `json:"duration_sec"`
+	CooldownSec  *int      `json:"cooldown_sec"`
+	Hysteresis   *float64  `json:"hysteresis"`
 }
 
 // CreateThreshold adds a new threshold configuration.
@@ -174,14 +178,42 @@ func (h *Handler) CreateThreshold(w http.ResponseWriter, r *http.Request) {
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
+	var durationSec *int
+	if req.DurationSec != nil && *req.DurationSec >= 0 {
+		durationSec = req.DurationSec
+	}
+	var cooldownSec *int
+	if req.CooldownSec != nil && *req.CooldownSec >= 0 {
+		cooldownSec = req.CooldownSec
+	}
+	var hysteresis *float64
+	if req.Hysteresis != nil && *req.Hysteresis >= 0 {
+		hysteresis = req.Hysteresis
+	}
+	if durationSec != nil && *durationSec > 3600 {
+		respondError(w, http.StatusBadRequest, "duration_sec must be <= 3600")
+		return
+	}
+	if cooldownSec != nil && *cooldownSec > 86400 {
+		respondError(w, http.StatusBadRequest, "cooldown_sec must be <= 86400")
+		return
+	}
+	if hysteresis != nil && *hysteresis > 100 {
+		respondError(w, http.StatusBadRequest, "hysteresis seems unreasonably large")
+		return
+	}
 	t := &model.Threshold{
-		ID:       uuid.NewString(),
-		NodeID:   req.NodeID,
-		Metric:   req.Metric,
-		Min:      req.Min,
-		Max:      req.Max,
-		Enabled:  enabled,
-		Severity: severity,
+		ID:           uuid.NewString(),
+		NodeID:       req.NodeID,
+		Metric:       req.Metric,
+		Min:          req.Min,
+		Max:          req.Max,
+		Enabled:      enabled,
+		Severity:     severity,
+		Message:      req.Message,
+		DurationSec:  durationSec,
+		CooldownSec:  cooldownSec,
+		Hysteresis:   hysteresis,
 	}
 	created, err := h.svc.CreateThreshold(r.Context(), t, userID)
 	if err != nil {
@@ -237,6 +269,30 @@ func (h *Handler) UpdateThreshold(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		patch["severity"] = req.Severity
+	}
+	if req.Message != "" {
+		patch["message"] = req.Message
+	}
+	if req.DurationSec != nil {
+		if *req.DurationSec < 0 || *req.DurationSec > 3600 {
+			respondError(w, http.StatusBadRequest, "duration_sec must be between 0 and 3600")
+			return
+		}
+		patch["duration_sec"] = *req.DurationSec
+	}
+	if req.CooldownSec != nil {
+		if *req.CooldownSec < 0 || *req.CooldownSec > 86400 {
+			respondError(w, http.StatusBadRequest, "cooldown_sec must be between 0 and 86400")
+			return
+		}
+		patch["cooldown_sec"] = *req.CooldownSec
+	}
+	if req.Hysteresis != nil {
+		if *req.Hysteresis < 0 || *req.Hysteresis > 100 {
+			respondError(w, http.StatusBadRequest, "hysteresis must be between 0 and 100")
+			return
+		}
+		patch["hysteresis"] = *req.Hysteresis
 	}
 	if len(patch) == 0 {
 		respondError(w, http.StatusBadRequest, "no fields to update")

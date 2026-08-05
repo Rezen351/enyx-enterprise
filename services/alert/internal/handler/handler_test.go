@@ -168,6 +168,20 @@ func (c *fakeCache) ClearActive(ctx context.Context, nodeID, metric string) {
 	c.active[nodeID+":"+metric] = false
 }
 
+func (c *fakeCache) GetViolationStart(ctx context.Context, nodeID, metric string) (time.Time, bool) {
+	return time.Time{}, false
+}
+
+func (c *fakeCache) SetViolationStart(ctx context.Context, nodeID, metric string, t time.Time) {}
+
+func (c *fakeCache) ClearViolationStart(ctx context.Context, nodeID, metric string) {}
+
+func (c *fakeCache) GetLastTriggered(ctx context.Context, nodeID, metric string) (time.Time, bool) {
+	return time.Time{}, false
+}
+
+func (c *fakeCache) SetLastTriggered(ctx context.Context, nodeID, metric string, t time.Time) {}
+
 func TestHealth(t *testing.T) {
 	rec := httptest.NewRecorder()
 	Health(rec, httptest.NewRequest(http.MethodGet, "/health", nil))

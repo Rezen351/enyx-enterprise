@@ -48,11 +48,11 @@ export async function listThresholds({ node_id = '', metric = '' } = {}) {
 }
 
 // Create a threshold (node_id `*` applies to every node for that metric).
-export async function createThreshold({ node_id, metric, min, max, enabled, severity }) {
+export async function createThreshold({ node_id, metric, min, max, enabled, severity, message, duration_sec, cooldown_sec, hysteresis }) {
   return unwrap(request('/thresholds', {
     method: 'POST',
     auth: true,
-    body: { node_id, metric, min, max, enabled, severity },
+    body: { node_id, metric, min, max, enabled, severity, message, duration_sec, cooldown_sec, hysteresis },
   }));
 }
 

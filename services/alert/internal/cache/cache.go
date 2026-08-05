@@ -93,3 +93,52 @@ func (c *AlertCache) SetActive(ctx context.Context, nodeID, metric string) {
 func (c *AlertCache) ClearActive(ctx context.Context, nodeID, metric string) {
 	_ = c.rdb.Del(ctx, activeKey(nodeID, metric)).Err()
 }
+
+func violationStartKey(nodeID, metric string) string {
+	return "alert:violation:" + nodeID + ":" + metric
+}
+
+func lastTriggeredKey(nodeID, metric string) string {
+	return "alert:triggered:" + nodeID + ":" + metric
+}
+
+// GetViolationStart returns the time when the current violation started, if any.
+func (c *AlertCache) GetViolationStart(ctx context.Context, nodeID, metric string) (time.Time, bool) {
+	s, err := c.rdb.Get(ctx, violationStartKey(nodeID, metric)).Result()
+	if err != nil || s == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
+// SetViolationStart records the start time of a violation.
+func (c *AlertCache) SetViolationStart(ctx context.Context, nodeID, metric string, t time.Time) {
+	_ = c.rdb.Set(ctx, violationStartKey(nodeID, metric), t.Format(time.RFC3339), 24*time.Hour).Err()
+}
+
+// ClearViolationStart removes the violation start marker.
+func (c *AlertCache) ClearViolationStart(ctx context.Context, nodeID, metric string) {
+	_ = c.rdb.Del(ctx, violationStartKey(nodeID, metric)).Err()
+}
+
+// GetLastTriggered returns the time when the last alert was triggered, if any.
+func (c *AlertCache) GetLastTriggered(ctx context.Context, nodeID, metric string) (time.Time, bool) {
+	s, err := c.rdb.Get(ctx, lastTriggeredKey(nodeID, metric)).Result()
+	if err != nil || s == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
+// SetLastTriggered records the time an alert was last triggered.
+func (c *AlertCache) SetLastTriggered(ctx context.Context, nodeID, metric string, t time.Time) {
+	_ = c.rdb.Set(ctx, lastTriggeredKey(nodeID, metric), t.Format(time.RFC3339), 24*time.Hour).Err()
+}

@@ -27,6 +27,8 @@ import {
   updateThreshold,
   deleteThreshold,
 } from '../../../api/alerts';
+import { moduleApi } from '../../../api/module';
+import analyticsApi from '../../../api/analytics';
 
 const PAGE_SIZES = [25, 50, 100];
 
@@ -464,9 +466,50 @@ function ThresholdsPanel() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [nodes, setNodes] = useState([]);
+  const [metrics, setMetrics] = useState([]);
+  const [loadingNodes, setLoadingNodes] = useState(false);
+  const [loadingMetrics, setLoadingMetrics] = useState(false);
 
-  const blankForm = { node_id: '', metric: '', min: '', max: '', enabled: true, severity: 'warning' };
+  const blankForm = { node_id: '', metric: '', min: '', max: '', enabled: true, severity: 'warning', message: '', duration_sec: '', cooldown_sec: '', hysteresis: '' };
   const [form, setForm] = useState(blankForm);
+
+  const loadNodes = useCallback(async () => {
+    setLoadingNodes(true);
+    try {
+      const [pairedRes, analyticsRes] = await Promise.all([
+        moduleApi.listNodes({ paired: true }),
+        analyticsApi.listNodes(),
+      ]);
+      const pairedNodes = (pairedRes?.nodes || []).map((n) => n.node_id).filter(Boolean);
+      const analyticsNodeIDs = (analyticsRes?.nodes || []).map((n) => n.node_id).filter(Boolean);
+      const unique = Array.from(new Set([...pairedNodes, ...analyticsNodeIDs]));
+      setNodes(unique);
+    } catch (err) {
+      console.error('Failed to load nodes for threshold form', err);
+      setNodes([]);
+    } finally {
+      setLoadingNodes(false);
+    }
+  }, []);
+
+  const loadMetrics = useCallback(async (nodeId) => {
+    if (!nodeId) {
+      setMetrics([]);
+      return;
+    }
+    setLoadingMetrics(true);
+    try {
+      const res = await analyticsApi.getMetrics({ node_id: nodeId, metric: '', interval: '30d' });
+      const list = Array.isArray(res?.metrics) ? res.metrics : [];
+      setMetrics(list);
+    } catch (err) {
+      console.error('Failed to load metrics for threshold form', err);
+      setMetrics([]);
+    } finally {
+      setLoadingMetrics(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -486,6 +529,18 @@ function ThresholdsPanel() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (formOpen) {
+      loadNodes();
+    }
+  }, [formOpen, loadNodes]);
+
+  useEffect(() => {
+    if (formOpen && form.node_id) {
+      loadMetrics(form.node_id);
+    }
+  }, [formOpen, form.node_id, loadMetrics]);
+
   const openCreate = () => {
     setEditing(null);
     setForm(blankForm);
@@ -502,6 +557,10 @@ function ThresholdsPanel() {
       max: t.max ?? '',
       enabled: t.enabled,
       severity: t.severity || 'warning',
+      message: t.message || '',
+      duration_sec: t.duration_sec ?? '',
+      cooldown_sec: t.cooldown_sec ?? '',
+      hysteresis: t.hysteresis ?? '',
     });
     setFormOpen(true);
     setError('');
@@ -510,6 +569,8 @@ function ThresholdsPanel() {
   const closeForm = () => {
     setFormOpen(false);
     setEditing(null);
+    setNodes([]);
+    setMetrics([]);
   };
 
   const submit = async () => {
@@ -528,6 +589,9 @@ function ThresholdsPanel() {
       setError('Min and Max must be numbers.');
       return;
     }
+    const durationSec = form.duration_sec === '' ? null : Number(form.duration_sec);
+    const cooldownSec = form.cooldown_sec === '' ? null : Number(form.cooldown_sec);
+    const hysteresis = form.hysteresis === '' ? null : Number(form.hysteresis);
     setBusy(true);
     try {
       const payload = {
@@ -537,6 +601,10 @@ function ThresholdsPanel() {
         max,
         enabled: form.enabled,
         severity: form.severity,
+        message: form.message.trim(),
+        duration_sec: durationSec,
+        cooldown_sec: cooldownSec,
+        hysteresis,
       };
       if (editing) {
         await updateThreshold(editing.id, payload);
@@ -598,6 +666,10 @@ function ThresholdsPanel() {
                 <th className="text-left px-4 py-3 whitespace-nowrap">Metric</th>
                 <th className="text-left px-4 py-3 whitespace-nowrap">Min</th>
                 <th className="text-left px-4 py-3 whitespace-nowrap">Max</th>
+                <th className="text-left px-4 py-3 whitespace-nowrap">Message</th>
+                <th className="text-left px-4 py-3 whitespace-nowrap">Duration</th>
+                <th className="text-left px-4 py-3 whitespace-nowrap">Cooldown</th>
+                <th className="text-left px-4 py-3 whitespace-nowrap">Hysteresis</th>
                 <th className="text-left px-4 py-3 whitespace-nowrap">Severity</th>
                 <th className="text-left px-4 py-3 whitespace-nowrap">Enabled</th>
                 <th className="text-right px-4 py-3 whitespace-nowrap">Actions</th>
@@ -614,7 +686,7 @@ function ThresholdsPanel() {
               )}
               {!loading && thresholds.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-12 text-center text-slate-500">
                     No thresholds configured. Add one to start generating alerts.
                   </td>
                 </tr>
@@ -625,6 +697,10 @@ function ThresholdsPanel() {
                   <td className="px-4 py-3 whitespace-nowrap text-slate-300">{t.metric}</td>
                   <td className="px-4 py-3 whitespace-nowrap tabular-nums text-slate-200">{t.min ?? '—'}</td>
                   <td className="px-4 py-3 whitespace-nowrap tabular-nums text-slate-200">{t.max ?? '—'}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-slate-300 max-w-[200px] truncate" title={t.message || ''}>{t.message || '—'}</td>
+                  <td className="px-4 py-3 whitespace-nowrap tabular-nums text-slate-200">{t.duration_sec ?? 0}s</td>
+                  <td className="px-4 py-3 whitespace-nowrap tabular-nums text-slate-200">{t.cooldown_sec ?? 0}s</td>
+                  <td className="px-4 py-3 whitespace-nowrap tabular-nums text-slate-200">{t.hysteresis ?? 0}</td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className={`inline-block px-2 py-1 text-[11px] font-black uppercase tracking-wide border ${severityBadgeClass(t.severity)}`}>
                       {t.severity}
@@ -679,20 +755,30 @@ function ThresholdsPanel() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Node ID (use * for all)">
-                <input
+                <select
                   value={form.node_id}
                   onChange={(e) => setForm({ ...form, node_id: e.target.value })}
-                  placeholder="*"
-                  className="w-full h-10 px-3 bg-black/30 border border-emerald-500/20 focus:border-emerald-500/50 outline-none text-sm text-white placeholder:text-slate-600"
-                />
+                  className="w-full h-10 px-3 bg-black/30 border border-emerald-500/20 focus:border-emerald-500/50 outline-none text-sm text-white"
+                >
+                  <option value="">-- select node --</option>
+                  <option value="*">* (all nodes)</option>
+                  {nodes.map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
               </Field>
               <Field label="Metric">
-                <input
+                <select
                   value={form.metric}
                   onChange={(e) => setForm({ ...form, metric: e.target.value })}
-                  placeholder="temp"
-                  className="w-full h-10 px-3 bg-black/30 border border-emerald-500/20 focus:border-emerald-500/50 outline-none text-sm text-white placeholder:text-slate-600"
-                />
+                  disabled={loadingMetrics || !form.node_id}
+                  className="w-full h-10 px-3 bg-black/30 border border-emerald-500/20 focus:border-emerald-500/50 outline-none text-sm text-white disabled:opacity-50"
+                >
+                  <option value="">-- select metric --</option>
+                  {metrics.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
               </Field>
               <Field label="Min (optional)">
                 <input
@@ -714,6 +800,14 @@ function ThresholdsPanel() {
                   className="w-full h-10 px-3 bg-black/30 border border-emerald-500/20 focus:border-emerald-500/50 outline-none text-sm text-white placeholder:text-slate-600"
                 />
               </Field>
+              <Field label="Custom Message (optional)">
+                <input
+                  value={form.message}
+                  onChange={(e) => setForm({ ...form, message: e.target.value })}
+                  placeholder="Auto-generated if empty"
+                  className="w-full h-10 px-3 bg-black/30 border border-emerald-500/20 focus:border-emerald-500/50 outline-none text-sm text-white placeholder:text-slate-600"
+                />
+              </Field>
               <Field label="Severity">
                 <select
                   value={form.severity}
@@ -722,7 +816,40 @@ function ThresholdsPanel() {
                 >
                   <option value="warning">warning</option>
                   <option value="critical">critical</option>
+                  <option value="info">info</option>
                 </select>
+              </Field>
+              <Field label="Duration (seconds, 0 = instant)">
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={form.duration_sec}
+                  onChange={(e) => setForm({ ...form, duration_sec: e.target.value })}
+                  placeholder="0"
+                  className="w-full h-10 px-3 bg-black/30 border border-emerald-500/20 focus:border-emerald-500/50 outline-none text-sm text-white placeholder:text-slate-600"
+                />
+              </Field>
+              <Field label="Cooldown (seconds, 0 = none)">
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={form.cooldown_sec}
+                  onChange={(e) => setForm({ ...form, cooldown_sec: e.target.value })}
+                  placeholder="0"
+                  className="w-full h-10 px-3 bg-black/30 border border-emerald-500/20 focus:border-emerald-500/50 outline-none text-sm text-white placeholder:text-slate-600"
+                />
+              </Field>
+              <Field label="Hysteresis (optional)">
+                <input
+                  type="number"
+                  step="any"
+                  value={form.hysteresis}
+                  onChange={(e) => setForm({ ...form, hysteresis: e.target.value })}
+                  placeholder="0"
+                  className="w-full h-10 px-3 bg-black/30 border border-emerald-500/20 focus:border-emerald-500/50 outline-none text-sm text-white placeholder:text-slate-600"
+                />
               </Field>
               <Field label="Enabled">
                 <label className="flex items-center gap-2 h-10 px-3 bg-black/30 border border-emerald-500/20 cursor-pointer">

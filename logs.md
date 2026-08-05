@@ -2,6 +2,23 @@
 
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 
+### BAB III Backend Service Documentation & MQTT Communication Standards Update (2026-08-04)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **BAB III §3.4.2.B — Captive Web Portal Documentation Complete** — Expanded the Captive Web Portal subsection from 3 bullet points to 4 detailed sections covering: (1) Security features (Bearer Token, First-Time Password, Login Rate Limiter with auto-logout on 401), (2) Status & Monitoring (System Status `/api/status`, MQTT Live Logs, Telemetry Latest `/api/telemetry/latest`, Device Info), (3) Device Configuration (WiFi, MQTT, Device, Hardware, Local Control Rules, Admin Account), (4) Utilities (Modbus Scanner, OTA Firmware Update, Config Backup/Restore, MQTT Discovery, Auto-Reconnect). |
+| 2 | ✅ | **BAB III §3.4.2.C — MQTT Communication Standards Added** — Added new subsection C detailing the complete MQTT communication protocol between ESP32 and backend: 7 MQTT topics (discovery, status, telemetry, actuator, confirm, diagnostics, alert), payload formats for each (telemetry JSON with `network`, `device_info`, `connection_stats`, `telemetry.inputs/outputs/modbus`; actuator command with `action`, `target`, `value`, `req_id`; confirm with `req_id`, `target`, `value`, `status`; discovery, status/LWT, alert), and MQTT security configuration (TLS on 8883, username/password auth, LWT, retained messages). |
+| 3 | ✅ | **BAB III §3.5.2.1 — End-to-End Discovery & Pairing Flow Added** — Added detailed subsection documenting the complete device onboarding flow from ESP32 discovery to data appearing in Analytics and Control: Fase 1 Discovery (ESP32 auto-publishes to `{prefix}/discovery` every 60s, Module Service upserts to `nodes` table with `paired=0`, Redis cache TTL 90s, audit event `node.discovered`), Fase 2 Pairing (Dashboard pairs node to `module_id` via `POST /v1/nodes/{node_id}/pair`, DB update `paired=1`), Fase 3 Tag Mapping (sensor tags `PUT /v1/nodes/{node_id}/tags`, actuator tags `POST /v1/nodes/{node_id}/actuators`), Fase 4 Telemetry Flow to Analytics & Control (telemetry → Module Service tag resolution → TimescaleDB + `telemetry.ingest` (Alert) + `telemetry.batch` JetStream (Analytics); Control Service checks `paired=true` → scheduler engine → `set_output` via MQTT → firmware ACK via `req_id`). |
+| 4 | ✅ | **BAB III §3.5.3–3.5.10 — Backend Services Detailed** — Expanded all backend service sections with detailed input/output contracts, processing logic, and interaction patterns: Analytics Service (JetStream consumer `TELEMETRY_BATCH`, continuous aggregates, REST API for metrics/summary/nodes/export), Alert Service (threshold evaluation queue group, alert lifecycle, `alert.triggered`/`alert.resolved` events), Notification Service (multi-channel delivery, Redis queue, AES-GCM encrypted secrets), WS-Gateway (WebSocket NATS bridge, JWT auth via header/query param, ping/pong keepalive, slow client handling), Stream Service & MediaMTX (RTSP registration, snapshot/recording to MinIO, ML pipeline trigger, self-healing reconciliation), ML Service (YOLOv8 model registry, inference from MinIO, `detection.result` NATS events), Supporting Services (Audit append-only log, Export CSV with cursor pagination, DLQ JetStream worker, Webhook AES-GCM dispatcher, Monitor container metrics). |
+
+**Keputusan Teknis:**
+- Dokumentasi firmware ESP32 di Bab III kini selaras 100% dengan implementasi aktual di `WebConfigPortal.cpp`, `MqttManager.cpp`, `HardwareManager.cpp`, dan `ConfigManager.cpp` — tidak ada lagi deskripsi yang missing atau placeholder.
+- Penambahan subsection MQTT Communication Standards (3.4.2.C) memastikan standar komunikasi antar perangkat dan backend terdokumentasi secara eksplisit dengan format payload yang valid sesuai kode sumber.
+- Alur discovery & pairing (3.5.2.1) dijelaskan secara berurutan dengan reference ke file-path dan nomor baris kode sumber, sehingga memudahkan verifikasi dan troubleshooting di masa depan.
+- Seluruh layanan backend di §3.5 kini memiliki penjelasan input contract, processing logic, dan output contract yang terstruktur — bukan hanya deskripsi singkat — untuk memenuhi standar dokumentasi arsitektur yang komprehensif.
+
+---
+
 ### BAB III & BAB IV Alignment & Firmware Documentation Update (2026-08-03)
 
 | # | Status | Aktivitas |
