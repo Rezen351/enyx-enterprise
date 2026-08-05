@@ -123,16 +123,16 @@ func (h *Handler) ListThresholds(w http.ResponseWriter, r *http.Request) {
 }
 
 type thresholdRequest struct {
-	NodeID       string    `json:"node_id"`
-	Metric       string    `json:"metric"`
-	Min          *float64  `json:"min"`
-	Max          *float64  `json:"max"`
-	Enabled      *bool     `json:"enabled"`
-	Severity     string    `json:"severity"`
-	Message      string    `json:"message"`
-	DurationSec  *int      `json:"duration_sec"`
-	CooldownSec  *int      `json:"cooldown_sec"`
-	Hysteresis   *float64  `json:"hysteresis"`
+	NodeID      string   `json:"node_id"`
+	Metric      string   `json:"metric"`
+	Min         *float64 `json:"min"`
+	Max         *float64 `json:"max"`
+	Enabled     *bool    `json:"enabled"`
+	Severity    string   `json:"severity"`
+	Message     string   `json:"message"`
+	DurationSec *int     `json:"duration_sec"`
+	CooldownSec *int     `json:"cooldown_sec"`
+	Hysteresis  *float64 `json:"hysteresis"`
 }
 
 // CreateThreshold adds a new threshold configuration.
@@ -203,17 +203,17 @@ func (h *Handler) CreateThreshold(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t := &model.Threshold{
-		ID:           uuid.NewString(),
-		NodeID:       req.NodeID,
-		Metric:       req.Metric,
-		Min:          req.Min,
-		Max:          req.Max,
-		Enabled:      enabled,
-		Severity:     severity,
-		Message:      req.Message,
-		DurationSec:  durationSec,
-		CooldownSec:  cooldownSec,
-		Hysteresis:   hysteresis,
+		ID:          uuid.NewString(),
+		NodeID:      req.NodeID,
+		Metric:      req.Metric,
+		Min:         req.Min,
+		Max:         req.Max,
+		Enabled:     enabled,
+		Severity:    severity,
+		Message:     req.Message,
+		DurationSec: durationSec,
+		CooldownSec: cooldownSec,
+		Hysteresis:  hysteresis,
 	}
 	created, err := h.svc.CreateThreshold(r.Context(), t, userID)
 	if err != nil {

@@ -5,19 +5,19 @@ import "time"
 // Threshold defines the acceptable min/max range for a (node, metric) pair.
 // A wildcard node_id ("*") applies the threshold to every node for that metric.
 type Threshold struct {
-	ID        string    `gorm:"column:id;type:char(36);primaryKey"`
-	NodeID    string    `gorm:"column:node_id;type:varchar(64);not null;index:idx_node_metric"`
-	Metric    string    `gorm:"column:metric;type:varchar(128);not null;index:idx_node_metric"`
-	Min       *float64  `gorm:"column:min"`
-	Max       *float64  `gorm:"column:max"`
-	Enabled   bool      `gorm:"column:enabled;not null;default:true"`
-	Severity  string    `gorm:"column:severity;type:varchar(16);not null;default:'warning'"`
-	Message   string    `gorm:"column:message;type:varchar(512)"`
-	DurationSec *int    `gorm:"column:duration_sec;default:0"`
-	CooldownSec  *int   `gorm:"column:cooldown_sec;default:0"`
-	Hysteresis   *float64 `gorm:"column:hysteresis;default:0"`
-	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime"`
+	ID          string    `gorm:"column:id;type:char(36);primaryKey"`
+	NodeID      string    `gorm:"column:node_id;type:varchar(64);not null;index:idx_node_metric"`
+	Metric      string    `gorm:"column:metric;type:varchar(128);not null;index:idx_node_metric"`
+	Min         *float64  `gorm:"column:min"`
+	Max         *float64  `gorm:"column:max"`
+	Enabled     bool      `gorm:"column:enabled;not null;default:true"`
+	Severity    string    `gorm:"column:severity;type:varchar(16);not null;default:'warning'"`
+	Message     string    `gorm:"column:message;type:varchar(512)"`
+	DurationSec *int      `gorm:"column:duration_sec;default:0"`
+	CooldownSec *int      `gorm:"column:cooldown_sec;default:0"`
+	Hysteresis  *float64  `gorm:"column:hysteresis;default:0"`
+	CreatedAt   time.Time `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt   time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (Threshold) TableName() string { return "thresholds" }
@@ -62,33 +62,33 @@ func (Outbox) TableName() string { return "outbox" }
 
 // ThresholdDTO is the API representation of a threshold configuration.
 type ThresholdDTO struct {
-	ID           string    `json:"id"`
-	NodeID       string    `json:"node_id"`
-	Metric       string    `json:"metric"`
-	Min          *float64  `json:"min"`
-	Max          *float64  `json:"max"`
-	Enabled      bool      `json:"enabled"`
-	Severity     string    `json:"severity"`
-	Message      string    `json:"message"`
-	DurationSec  *int      `json:"duration_sec"`
-	CooldownSec  *int      `json:"cooldown_sec"`
-	Hysteresis   *float64  `json:"hysteresis"`
+	ID          string   `json:"id"`
+	NodeID      string   `json:"node_id"`
+	Metric      string   `json:"metric"`
+	Min         *float64 `json:"min"`
+	Max         *float64 `json:"max"`
+	Enabled     bool     `json:"enabled"`
+	Severity    string   `json:"severity"`
+	Message     string   `json:"message"`
+	DurationSec *int     `json:"duration_sec"`
+	CooldownSec *int     `json:"cooldown_sec"`
+	Hysteresis  *float64 `json:"hysteresis"`
 }
 
 // ToThresholdDTO converts a Threshold to its DTO.
 func ToThresholdDTO(t Threshold) ThresholdDTO {
 	return ThresholdDTO{
-		ID:           t.ID,
-		NodeID:       t.NodeID,
-		Metric:       t.Metric,
-		Min:          t.Min,
-		Max:          t.Max,
-		Enabled:      t.Enabled,
-		Severity:     t.Severity,
-		Message:      t.Message,
-		DurationSec:  t.DurationSec,
-		CooldownSec:  t.CooldownSec,
-		Hysteresis:   t.Hysteresis,
+		ID:          t.ID,
+		NodeID:      t.NodeID,
+		Metric:      t.Metric,
+		Min:         t.Min,
+		Max:         t.Max,
+		Enabled:     t.Enabled,
+		Severity:    t.Severity,
+		Message:     t.Message,
+		DurationSec: t.DurationSec,
+		CooldownSec: t.CooldownSec,
+		Hysteresis:  t.Hysteresis,
 	}
 }
 

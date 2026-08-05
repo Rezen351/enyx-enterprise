@@ -210,9 +210,9 @@ func (f *fakeStore) MarkOutboxSent(ctx context.Context, id string) error {
 }
 
 type fakeCache struct {
-	thresholds   map[string]*model.Threshold
-	active       map[string]bool
-	cleared      []string
+	thresholds     map[string]*model.Threshold
+	active         map[string]bool
+	cleared        []string
 	violationStart map[string]time.Time
 	violationSet   map[string]bool
 	lastTriggered  map[string]time.Time
@@ -221,8 +221,8 @@ type fakeCache struct {
 
 func newFakeCache() *fakeCache {
 	return &fakeCache{
-		thresholds:   map[string]*model.Threshold{},
-		active:       map[string]bool{},
+		thresholds:     map[string]*model.Threshold{},
+		active:         map[string]bool{},
 		violationStart: map[string]time.Time{},
 		violationSet:   map[string]bool{},
 		lastTriggered:  map[string]time.Time{},

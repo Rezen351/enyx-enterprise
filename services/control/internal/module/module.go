@@ -191,4 +191,3 @@ func (c *Client) IsNodePaired(ctx context.Context, nodeID string) (bool, error) 
 func (c *Client) IsNodeRegistered(ctx context.Context, nodeID string) (bool, error) {
 	return c.IsNodePaired(ctx, nodeID)
 }
-

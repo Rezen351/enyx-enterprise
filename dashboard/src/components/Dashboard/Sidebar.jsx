@@ -21,8 +21,6 @@ import {
 
 function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, mobileOpen, setMobileOpen, hidden = false, me = null }) {
   const roles = Array.isArray(me?.roles) ? me.roles : [];
-  const isAdmin = roles.includes('admin');
-  const isOperator = roles.includes('operator');
 
   const mainMenuItems = [
     { id: 'monitor', label: 'MONITOR', icon: Activity, roles: ['admin','operator','viewer'] },

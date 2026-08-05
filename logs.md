@@ -2,6 +2,21 @@
 
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 
+### CI/CD Build Validation & Code Hardening (2026-08-05)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Auto-Formatting Go Source Files** — Menjalankan `/usr/local/go/bin/gofmt` pada `services/alert` (`handler.go`, `model.go`, `service_test.go`) dan `services/control` (`module.go`) untuk menyelesaikan error formatting pada repositori. |
+| 2 | ✅ | **Pemberantasan Unused Variables di Sidebar.jsx** — Menghapus deklarasi `isAdmin` dan `isOperator` pada [Sidebar.jsx](file:///home/almuzky/TA/Microservices/dashboard/src/components/Dashboard/Sidebar.jsx) yang memicu error ESLint `no-unused-vars`. |
+| 3 | ✅ | **Pemberantasan Useless Escapes di vite.config.js** — Mengganti single escape `\.` menjadi double escape `\\.` pada key regular expression di [vite.config.js](file:///home/almuzky/TA/Microservices/dashboard/vite.config.js) untuk memperbaiki error ESLint `no-useless-escape`. |
+| 4 | ✅ | **Eksekusi Master Test Suite** — Menjalankan `python3 test/run_all_tests.py` untuk memvalidasi bahwa build tetap fungsional dan memperbarui grafik visual di `test/results/`. |
+
+**Keputusan Teknis:**
+- Menggunakan double escape `\\.` di konfigurasi Vite Proxy string agar dievaluasi sebagai regex literal `\.` oleh engine pencocok path, sekaligus mematuhi batasan aturan ESLint parser.
+- Menghapus variabel `isAdmin` dan `isOperator` langsung dari `Sidebar.jsx` karena logika filtering item menu sepenuhnya dilakukan secara dinamis menggunakan helper `hasRole(item)`.
+
+---
+
 ### Firmware Aeroponic Node Modularity & Dynamic Sensor Discovery Update (2026-08-05)
 
 | # | Status | Aktivitas |
