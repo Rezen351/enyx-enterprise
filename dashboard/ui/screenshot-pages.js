@@ -1,29 +1,30 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DASHBOARD_URL = process.env.DASHBOARD_URL || 'http://localhost:5173';
-const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './ui');
+const OUTPUT_DIR = path.resolve(__dirname, process.env.OUTPUT_DIR || '.');
 const AUTH_EMAIL = process.env.AUTH_EMAIL || 'admin@smartfarm.local';
 const AUTH_PASSWORD = process.env.AUTH_PASSWORD || 'admin1234';
 
 const PAGES = [
   { name: '01-login', path: '/', auth: false, action: 'open-login' },
   { name: '02-register', path: '/', auth: false, action: 'open-register' },
-  { name: '03-dashboard-monitor', path: '/dashboard', auth: true, tab: 'monitor' },
-  { name: '04-module-management', path: '/dashboard', auth: true, tab: 'module' },
-  { name: '05-control-panel', path: '/dashboard', auth: true, tab: 'control' },
-  { name: '06-analytics', path: '/dashboard', auth: true, tab: 'analytics' },
-  { name: '07-live-view', path: '/dashboard', auth: true, tab: 'live' },
-  { name: '08-gallery', path: '/dashboard', auth: true, tab: 'snapshot' },
-  { name: '09-monitor', path: '/dashboard', auth: true, tab: 'monitor' },
-  { name: '10-audit', path: '/dashboard', auth: true, tab: 'audit' },
-  { name: '11-alerts', path: '/dashboard', auth: true, tab: 'alerts' },
-  { name: '12-export', path: '/dashboard', auth: true, tab: 'export' },
-  { name: '13-webhook', path: '/dashboard', auth: true, tab: 'webhook' },
-  { name: '14-dlq', path: '/dashboard', auth: true, tab: 'dlq' },
-  { name: '15-users', path: '/dashboard', auth: true, tab: 'users' },
-  { name: '16-profile', path: '/dashboard', auth: true, tab: 'profile' },
+  { name: '03-monitor', path: '/dashboard', auth: true, tab: 'monitor' },
+  { name: '04-analytics', path: '/dashboard', auth: true, tab: 'analytics' },
+  { name: '05-control', path: '/dashboard', auth: true, tab: 'control' },
+  { name: '06-live', path: '/dashboard', auth: true, tab: 'live' },
+  { name: '07-gallery', path: '/dashboard', auth: true, tab: 'snapshot' },
+  { name: '08-alerts', path: '/dashboard', auth: true, tab: 'alerts' },
+  { name: '09-export', path: '/dashboard', auth: true, tab: 'export' },
+  { name: '10-module', path: '/dashboard', auth: true, tab: 'module' },
+  { name: '11-audit', path: '/dashboard', auth: true, tab: 'audit' },
+  { name: '12-webhook', path: '/dashboard', auth: true, tab: 'webhook' },
+  { name: '13-dlq', path: '/dashboard', auth: true, tab: 'dlq' },
+  { name: '14-users', path: '/dashboard', auth: true, tab: 'users' },
+  { name: '15-profile', path: '/dashboard', auth: true, tab: 'profile' },
 ];
 
 const TAB_LABELS = {
@@ -41,6 +42,8 @@ const TAB_LABELS = {
   users: 'ACCOUNT',
   profile: 'PROFILE',
 };
+
+const ADMIN_TABS = new Set(['audit', 'dlq', 'webhook', 'users']);
 
 async function ensureLoginModal(page) {
   const modal = page.locator('input[placeholder="Enter your email or username"]').first();
@@ -71,9 +74,30 @@ async function login(page) {
   await page.waitForTimeout(3000);
 }
 
+async function expandAdminGroup(page) {
+  const adminLabel = 'ADMINISTRATOR';
+  const adminBtn = page.locator(`button:has-text("${adminLabel}")`).first();
+  if (await adminBtn.count() === 0) return false;
+
+  const isExpanded = await adminBtn.evaluate(el => {
+    const svg = el.querySelector('svg[class*="rotate-180"], svg[style*="rotate"]');
+    return svg !== null;
+  }).catch(() => false);
+
+  if (!isExpanded) {
+    await adminBtn.click();
+    await page.waitForTimeout(1000);
+  }
+  return true;
+}
+
 async function navigateToTab(page, tab) {
   const label = TAB_LABELS[tab];
   if (!label) return;
+
+  if (ADMIN_TABS.has(tab)) {
+    await expandAdminGroup(page);
+  }
 
   const sidebarBtn = page.locator(`button:has-text("${label}")`).first();
   if (await sidebarBtn.count() > 0) {
@@ -125,6 +149,9 @@ async function captureScreenshots() {
           }
         }
       }
+
+      const currentUrl = page.url();
+      console.log(`  URL: ${currentUrl}`);
 
       const filePath = path.join(OUTPUT_DIR, `${p.name}.png`);
       await page.screenshot({ path: filePath, fullPage: false });
