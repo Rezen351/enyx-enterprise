@@ -2,6 +2,17 @@
 
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 
+### Deployment Pipeline Fix (2026-08-06)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Pemberantasan Deploy Build Error di ci-cd.yml** — Menambahkan folder `dashboard` ke parameter `sparse-checkout` pada job `cd-deploy` di [.github/workflows/ci-cd.yml](file:///home/almuzky/TA/Microservices/.github/workflows/ci-cd.yml) agar fallback build lokal untuk service dashboard tidak gagal karena ketiadaan berkas `Dockerfile`. |
+
+**Keputusan Teknis:**
+- Menambahkan direktori `dashboard` ke dalam `sparse-checkout` pada runner deployment, karena jika terjadi kegagalan saat menarik image dari GHCR (`docker compose pull`), Docker Compose akan melakukan *fallback build* lokal yang membutuhkan akses ke file `dashboard/Dockerfile` dan kode sumber statis frontend.
+
+---
+
 ### CI/CD Build Validation & Code Hardening (2026-08-05)
 
 | # | Status | Aktivitas |

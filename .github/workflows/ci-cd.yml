@@ -217,6 +217,7 @@ jobs:
             .env.example
             infra
             services
+            dashboard
 
       - name: Configure Runner Network Retries
         run: |
