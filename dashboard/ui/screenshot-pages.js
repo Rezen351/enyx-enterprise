@@ -4,12 +4,12 @@ import path from 'path';
 
 const DASHBOARD_URL = process.env.DASHBOARD_URL || 'http://localhost:5173';
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './ui');
-const AUTH_EMAIL = process.env.AUTH_EMAIL || 'admin@example.com';
-const AUTH_PASSWORD = process.env.AUTH_PASSWORD || 'admin123';
+const AUTH_EMAIL = process.env.AUTH_EMAIL || 'admin@smartfarm.local';
+const AUTH_PASSWORD = process.env.AUTH_PASSWORD || 'admin1234';
 
 const PAGES = [
-  { name: '01-login', path: '/', auth: false },
-  { name: '02-register', path: '/?mode=register', auth: false },
+  { name: '01-login', path: '/', auth: false, action: 'open-login' },
+  { name: '02-register', path: '/', auth: false, action: 'open-register' },
   { name: '03-dashboard-monitor', path: '/dashboard', auth: true, tab: 'monitor' },
   { name: '04-module-management', path: '/dashboard', auth: true, tab: 'module' },
   { name: '05-control-panel', path: '/dashboard', auth: true, tab: 'control' },
@@ -42,19 +42,33 @@ const TAB_LABELS = {
   profile: 'PROFILE',
 };
 
+async function ensureLoginModal(page) {
+  const modal = page.locator('input[placeholder="Enter your email or username"]').first();
+  if (await modal.count() === 0) {
+    const loginBtn = page.locator('button:has-text("Login"), button:has-text("Get Started")').first();
+    if (await loginBtn.count() > 0) {
+      await loginBtn.click();
+      await page.waitForTimeout(2000);
+    }
+  }
+}
+
 async function login(page) {
   await page.goto(`${DASHBOARD_URL}/`);
-  await page.waitForSelector('input[placeholder="Enter your email or username"]', { timeout: 10000 });
+  await page.waitForTimeout(4000);
+  
+  await ensureLoginModal(page);
+  
   const emailInput = page.locator('input[placeholder="Enter your email or username"]').first();
   const passwordInput = page.locator('input[placeholder="••••••••"]').first();
-  const submitBtn = page.locator('button[type="submit"], button:has-text("Sign In")').first();
+  const submitBtn = page.locator('button[type="submit"]').first();
 
   await emailInput.fill(AUTH_EMAIL);
   await passwordInput.fill(AUTH_PASSWORD);
   await submitBtn.click();
 
-  await page.waitForURL('**/dashboard', { timeout: 10000 });
-  await page.waitForTimeout(2000);
+  await page.waitForURL('**/dashboard', { timeout: 20000 });
+  await page.waitForTimeout(3000);
 }
 
 async function navigateToTab(page, tab) {
@@ -67,7 +81,7 @@ async function navigateToTab(page, tab) {
   } else {
     await page.goto(`${DASHBOARD_URL}/dashboard?tab=${tab}`);
   }
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(2500);
 }
 
 async function captureScreenshots() {
@@ -85,20 +99,44 @@ async function captureScreenshots() {
     const url = `${DASHBOARD_URL}${p.path}`;
     console.log(`Capturing: ${p.name} → ${url}`);
 
-    if (p.auth) {
-      if (!isAuthed) {
-        await login(page);
-        isAuthed = true;
+    try {
+      if (p.auth) {
+        if (!isAuthed) {
+          await login(page);
+          isAuthed = true;
+        }
+        await navigateToTab(page, p.tab);
+      } else {
+        await page.goto(url);
+        await page.waitForTimeout(4000);
+        
+        if (p.action === 'open-login') {
+          await ensureLoginModal(page);
+        } else if (p.action === 'open-register') {
+          const loginBtn = page.locator('button:has-text("Login"), button:has-text("Get Started")').first();
+          if (await loginBtn.count() > 0) {
+            await loginBtn.click();
+            await page.waitForTimeout(1000);
+          }
+          const createAccountBtn = page.locator('button:has-text("Create account")').first();
+          if (await createAccountBtn.count() > 0) {
+            await createAccountBtn.click();
+            await page.waitForTimeout(2000);
+          }
+        }
       }
-      await navigateToTab(page, p.tab);
-    } else {
-      await page.goto(url);
-      await page.waitForTimeout(1500);
-    }
 
-    const filePath = path.join(OUTPUT_DIR, `${p.name}.png`);
-    await page.screenshot({ path: filePath, fullPage: false });
-    console.log(`  Saved: ${filePath}`);
+      const filePath = path.join(OUTPUT_DIR, `${p.name}.png`);
+      await page.screenshot({ path: filePath, fullPage: false });
+      console.log(`  Saved: ${filePath}`);
+    } catch (err) {
+      console.error(`  Failed: ${p.name} — ${err.message}`);
+      try {
+        const failPath = path.join(OUTPUT_DIR, `${p.name}-error.png`);
+        await page.screenshot({ path: failPath, fullPage: false });
+        console.log(`  Error screenshot: ${failPath}`);
+      } catch {}
+    }
   }
 
   await browser.close();
