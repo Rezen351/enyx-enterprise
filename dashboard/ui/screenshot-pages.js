@@ -10,21 +10,45 @@ const AUTH_EMAIL = process.env.AUTH_EMAIL || 'admin@smartfarm.local';
 const AUTH_PASSWORD = process.env.AUTH_PASSWORD || 'admin1234';
 
 const PAGES = [
+  // Public / auth
   { name: '01-login', path: '/', auth: false, action: 'open-login' },
   { name: '02-register', path: '/', auth: false, action: 'open-register' },
-  { name: '03-monitor', path: '/dashboard', auth: true, tab: 'monitor' },
-  { name: '04-analytics', path: '/dashboard', auth: true, tab: 'analytics' },
-  { name: '05-control', path: '/dashboard', auth: true, tab: 'control' },
-  { name: '06-live', path: '/dashboard', auth: true, tab: 'live' },
-  { name: '07-gallery', path: '/dashboard', auth: true, tab: 'snapshot' },
-  { name: '08-alerts', path: '/dashboard', auth: true, tab: 'alerts' },
-  { name: '09-export', path: '/dashboard', auth: true, tab: 'export' },
-  { name: '10-module', path: '/dashboard', auth: true, tab: 'module' },
-  { name: '11-audit', path: '/dashboard', auth: true, tab: 'audit' },
-  { name: '12-dlq', path: '/dashboard', auth: true, tab: 'dlq' },
-  { name: '13-webhook', path: '/dashboard', auth: true, tab: 'webhook' },
-  { name: '14-users', path: '/dashboard', auth: true, tab: 'users' },
-  { name: '15-profile', path: '/dashboard', auth: true, tab: 'profile' },
+
+  // Dashboard main tabs
+  { name: '03-monitor', path: '/dashboard', auth: true, tab: 'monitor', sub: 'illustration' },
+  { name: '04-monitor-graph', path: '/dashboard', auth: true, tab: 'monitor', sub: 'graph' },
+  { name: '05-analytics', path: '/dashboard', auth: true, tab: 'analytics' },
+  { name: '06-control', path: '/dashboard', auth: true, tab: 'control' },
+  { name: '07-live', path: '/dashboard', auth: true, tab: 'live' },
+
+  // Gallery sub-filters
+  { name: '08-gallery-snapshot', path: '/dashboard', auth: true, tab: 'snapshot', filter: 'snapshot' },
+  { name: '09-gallery-recording', path: '/dashboard', auth: true, tab: 'snapshot', filter: 'recording' },
+  { name: '10-gallery-ai', path: '/dashboard', auth: true, tab: 'snapshot', filter: 'ai' },
+
+  // Alerts sub-tabs
+  { name: '11-alerts-history', path: '/dashboard', auth: true, tab: 'alerts', sub: 'alerts' },
+  { name: '12-alerts-thresholds', path: '/dashboard', auth: true, tab: 'alerts', sub: 'thresholds' },
+
+  // Export sub-tabs
+  { name: '13-export-telemetry', path: '/dashboard', auth: true, tab: 'export', sub: 'telemetry' },
+  { name: '14-export-nodes', path: '/dashboard', auth: true, tab: 'export', sub: 'nodes' },
+
+  // Module management
+  { name: '15-module-list', path: '/dashboard', auth: true, tab: 'module' },
+  { name: '16-module-nodes', path: '/dashboard', auth: true, tab: 'module', sub: 'node-management' },
+  { name: '17-node-config', path: '/dashboard', auth: true, tab: 'module', sub: 'node-config' },
+
+  // Admin group
+  { name: '18-audit', path: '/dashboard', auth: true, tab: 'audit' },
+  { name: '19-dlq', path: '/dashboard', auth: true, tab: 'dlq' },
+  { name: '20-webhook-settings', path: '/dashboard', auth: true, tab: 'webhook', sub: 'settings' },
+  { name: '21-webhook-logs', path: '/dashboard', auth: true, tab: 'webhook', sub: 'logs' },
+  { name: '22-webhook-test', path: '/dashboard', auth: true, tab: 'webhook', sub: 'test' },
+  { name: '23-users', path: '/dashboard', auth: true, tab: 'users' },
+
+  // Profile
+  { name: '24-profile', path: '/dashboard', auth: true, tab: 'profile' },
 ];
 
 const TAB_LABELS = {
@@ -59,9 +83,9 @@ async function ensureLoginModal(page) {
 async function login(page) {
   await page.goto(`${DASHBOARD_URL}/`);
   await page.waitForTimeout(4000);
-  
+
   await ensureLoginModal(page);
-  
+
   const emailInput = page.locator('input[placeholder="Enter your email or username"]').first();
   const passwordInput = page.locator('input[placeholder="••••••••"]').first();
   const submitBtn = page.locator('button[type="submit"]').first();
@@ -118,6 +142,7 @@ async function captureScreenshots() {
   const page = await context.newPage();
 
   let isAuthed = false;
+  let currentTab = null;
 
   for (const p of PAGES) {
     const url = `${DASHBOARD_URL}${p.path}`;
@@ -129,11 +154,76 @@ async function captureScreenshots() {
           await login(page);
           isAuthed = true;
         }
-        await navigateToTab(page, p.tab);
+
+        // Navigate to the base tab if different from current
+        if (currentTab !== p.tab) {
+          await navigateToTab(page, p.tab);
+          currentTab = p.tab;
+        }
+
+        // Handle sub-views within a tab
+        if (p.sub === 'graph') {
+          // Monitor page: switch to graph view
+          const graphBtn = page.locator('button:has-text("Graph Trends")').first();
+          if (await graphBtn.count() > 0) {
+            await graphBtn.click();
+            await page.waitForTimeout(2000);
+          }
+        } else if (p.sub === 'illustration') {
+          // Monitor page: ensure illustration view
+          const illustBtn = page.locator('button:has-text("Illustration")').first();
+          if (await illustBtn.count() > 0) {
+            await illustBtn.click();
+            await page.waitForTimeout(2000);
+          }
+        } else if (p.filter) {
+          // Gallery filters
+          const filterBtn = page.locator(`button:has-text("${p.filter.toUpperCase()}")`).first();
+          if (await filterBtn.count() > 0) {
+            await filterBtn.click();
+            await page.waitForTimeout(1500);
+          }
+        } else if (p.sub === 'alerts' || p.sub === 'thresholds') {
+          // Alerts sub-tabs
+          const subTabBtn = page.locator(`button:has-text("${p.sub === 'alerts' ? 'Alerts' : 'Thresholds'}")`).first();
+          if (await subTabBtn.count() > 0) {
+            await subTabBtn.click();
+            await page.waitForTimeout(1500);
+          }
+        } else if (p.sub === 'telemetry' || p.sub === 'nodes') {
+          // Export sub-tabs
+          const subTabBtn = page.locator(`button:has-text("${p.sub === 'telemetry' ? 'Telemetry' : 'Nodes'}")`).first();
+          if (await subTabBtn.count() > 0) {
+            await subTabBtn.click();
+            await page.waitForTimeout(1500);
+          }
+        } else if (p.sub === 'settings' || p.sub === 'logs' || p.sub === 'test') {
+          // Webhook sub-tabs
+          const labels = { settings: 'Settings', logs: 'Delivery Logs', test: 'Test' };
+          const subTabBtn = page.locator(`button:has-text("${labels[p.sub]}")`).first();
+          if (await subTabBtn.count() > 0) {
+            await subTabBtn.click();
+            await page.waitForTimeout(1500);
+          }
+        } else if (p.sub === 'node-management') {
+          // Module -> Node Management: click "Manage / Pair Nodes" on first module
+          const manageBtn = page.locator('button[title="Manage / Pair Nodes"]').first();
+          if (await manageBtn.count() > 0) {
+            await manageBtn.click();
+            await page.waitForTimeout(3000);
+          }
+        } else if (p.sub === 'node-config') {
+          // Module -> Node Management -> Configure on first paired node
+          const configureBtn = page.locator('button:has-text("Configure")').first();
+          if (await configureBtn.count() > 0) {
+            await configureBtn.click();
+            await page.waitForTimeout(3000);
+          }
+        }
       } else {
         await page.goto(url);
         await page.waitForTimeout(4000);
-        
+
         if (p.action === 'open-login') {
           await ensureLoginModal(page);
         } else if (p.action === 'open-register') {
