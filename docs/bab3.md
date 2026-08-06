@@ -214,20 +214,161 @@ Desain modular perangkat keras memungkinkan penambahan kategori sensor baru tanp
 
 ### 3.4.2 Firmware ESP32
 
-Firmware pada *aeroponic node* dirancang dengan pendekatan modular berbasis sistem operasi waktu nyata **FreeRTOS** pada mikrokontroler ESP32 dual-core. Desain ini bertujuan untuk membagi beban komputasi secara efisien dan memastikan keandalan eksekusi tugas fisik maupun komunikasi jaringan tanpa adanya pemblokiran (*non-blocking*).
+**Deskripsi Umum**
+
+Firmware pada *aeroponic node* adalah program yang dijalankan pada mikrokontroler ESP32 untuk mengumpulkan data sensor, mengeksekusi perintah aktuator, dan berkomunikasi dengan backend sistem. Firmware ini berbasis sistem operasi waktu nyata **FreeRTOS** pada ESP32 dual-core, dirancang untuk membagi beban komputasi secara efisien dan memastikan keandalan eksekusi tugas fisik maupun komunikasi jaringan tanpa pemblokiran (*non-blocking*).
+
+**Fungsi Utama**
+
+- Menjaga koneksi WiFi dan melayani Captive Web Portal untuk konfigurasi awal di lapangan
+- Mengelola koneksi MQTT ke broker Mosquitto, termasuk subscription topik perintah aktuator dan publikasi telemetri
+- Membaca sensor secara periodik (GPIO analog/digital, Modbus RS485, I2C) dan memformat data menjadi JSON
+- Mengeksekusi perintah aktuator (pompa, valve) berdasarkan perintah dari backend atau aturan edge-control lokal
+- Memantau kesehatan sistem melalui WatchdogTask dan SysMonitorTask
+- Mendukung pembaruan firmware OTA dengan rollback otomatis
+
+**Alur Data dan Integrasi**
+
+- **Masuk**: Menerima perintah aktuator dari backend melalui MQTT topic `{prefix}/actuator/{node_id}`
+- **Keluar**: Mempublikasikan telemetri sensor ke `{prefix}/{node_id}/telemetry`, konfirmasi eksekusi ke `{prefix}/{node_id}/confirm`, status online/offline ke `{prefix}/status/{node_id}`, dan alert ke `{prefix}/{node_id}/alert`
+- **Konfigurasi**: Menerima konfigurasi dari pengguna melalui REST API di Captive Web Portal
+- **Integrasi**: Berkomunikasi dengan Module Service, Control Service, dan backend lainnya melalui broker MQTT Eclipse Mosquitto
+
+**Justifikasi Arsitektur**
+
+Pemilihan FreeRTOS pada ESP32 dual-core memungkinkan pemisahan beban komputasi antara tugas jaringan (Core 0) dan tugas fisik/sensor (Core 1), sehingga kegagalan satu komponen tidak memblokir yang lain. Pendekatan configuration-driven dengan vector-based registry memungkinkan penambahan sensor/aktuator tanpa flashing ulang firmware, sementara factory pattern untuk protokol memastikan ekstensibilitas tanpa mengubah loop utama. Watchdog dan mutex protection ditambahkan untuk menjamin keandalan sistem pada constrained device.
 
 #### A. Arsitektur Multi-Tasking FreeRTOS
-Beban kerja firmware didistribusikan ke dalam **6 task FreeRTOS independen** yang dibagi berdasarkan core prosesor ESP32 sebagai berikut:
 
-1. **WiFiTask (Core 0, Prioritas 2)**: Menangani siklus hidup koneksi Wi-Fi (sebagai client/Station) serta melayani *Captive Web Portal* (sebagai Access Point) jika jaringan Wi-Fi utama tidak tersedia atau membutuhkan konfigurasi ulang.
-2. **MqttTask (Core 0, Prioritas 2)**: Mengelola koneksi persisten ke broker MQTT (Mosquitto), menangani proses *subscription* topik perintah aktuator, serta meneruskan pesan masuk ke antrean eksekusi perintah.
-3. **WatchdogTask (Core 0, Prioritas 2)**: Berjalan sebagai task pengawas yang memantau detak jantung (*heartbeat*) dari semua task lain secara berkala. Jika suatu task berhenti mengirimkan heartbeat, watchdog akan merestart task tersebut secara asinkron atau memicu reset sistem.
-4. **SysMonitorTask (Core 0, Prioritas 1)**: Memantau penggunaan memori heap, fragmentasi memori, dan memicu pembersihan memori atau restart otomatis jika tingkat memori bebas berada pada ambang batas kritis.
-5. **TelemetryTask (Core 1, Prioritas 1)**: Mengatur pembacaan sensor berkala (setiap 5 detik), termasuk pemanggilan protokol Modbus RS485 dan pembacaan GPIO analog/digital, serta memformat data menjadi dokumen JSON sebelum dikirim ke broker.
-6. **SerialTask (Core 1, Prioritas 1)**: Menyediakan antarmuka konfigurasi darurat berbasis CLI (*Command Line Interface*) melalui port USB serial.
+**Deskripsi Umum**
+
+Firmware membagi beban kerja menjadi beberapa task FreeRTOS independen yang berjalan paralel pada dua core ESP32. Setiap task memiliki prioritas dan tanggung jawab spesifik, sehingga sistem dapat menangani komunikasi jaringan, pembacaan sensor, dan pengawasan kesehatan secara bersamaan tanpa pemblokiran.
+
+**Fungsi Utama**
+
+- **WiFiTask (Core 0, Prioritas 2)**: Menjaga koneksi WiFi dan melayani Captive Web Portal untuk konfigurasi awal
+- **MqttTask (Core 0, Prioritas 2)**: Mengelola koneksi MQTT ke broker Mosquitto, menerima perintah aktuator, dan mempublikasikan telemetri
+- **WatchdogTask (Core 0, Prioritas 2)**: Memantau heartbeat dari semua task dan melakukan restart jika ada task yang macet
+- **SysMonitorTask (Core 0, Prioritas 1)**: Memantau penggunaan memori heap dan memicu restart otomatis jika memori mencapai ambang kritis
+- **TelemetryTask (Core 1, Prioritas 1)**: Membaca sensor secara periodik (setiap 5 detik) dan memformat data menjadi JSON
+- **DiscoveryPeriodic (Core 0, Prioritas 1)**: Mempublikasikan pesan discovery setiap 60 detik untuk registrasi otomatis node
+
+**Alur Data dan Integrasi**
+
+- Setiap task mengirim heartbeat ke WatchdogTask untuk monitoring kesehatan sistem
+- MqttTask menerima perintah aktuator dari backend dan meneruskan ke antrean eksekusi
+- TelemetryTask menghasilkan JSON telemetri yang diteruskan ke MqttTask untuk publikasi ke broker
+- SysMonitorTask melaporkan status memori ke WatchdogTask untuk deteksi masalah sistem
+
+**Justifikasi Arsitektur**
+
+Pembagian ke dua core memungkinkan tugas jaringan (WiFi, MQTT, Watchdog) dan tugas fisik (pembacaan sensor, aktuator) berjalan paralel tanpa saling menunggu. Prioritas angka lebih tinggi diberikan pada task kritis (WiFi, MQTT, Watchdog) agar dijalankan lebih dulu oleh scheduler FreeRTOS, sementara task dengan prioritas lebih rendah dapat ditunda tanpa membahayakan operasi. Pendekatan ini menghindari pemblokiran (*non-blocking*) dan meningkatkan keandalan sistem pada constrained device.
+
+**Diagram Arsitektur FreeRTOS (Multi-Tasking ESP32)**
+
+Untuk memudahkan pemahaman, berikut adalah dua diagram yang menggambarkan arsitektur FreeRTOS pada firmware aeroponik:
+
+**Diagram 1 — Distribusi Task ke Dua Core ESP32**
+
+```mermaid
+flowchart TD
+    subgraph ESP32 [ESP32 Dual-Core]
+        direction TB
+        subgraph Core0 [Core 0: Protokol & Jaringan]
+            W[WiFiTask<br/>Prioritas 2]
+            M[MqttTask<br/>Prioritas 2]
+            WD[WatchdogTask<br/>Prioritas 2]
+            S[SysMonitorTask<br/>Prioritas 1]
+            D[DiscoveryPeriodic<br/>Prioritas 1]
+        end
+        subgraph Core1 [Core 1: Aplikasi & Sensor]
+            T[TelemetryTask<br/>Prioritas 1]
+        end
+    end
+    
+    style Core0 fill:#e1f5fe
+    style Core1 fill:#fff3e0
+    style W fill:#bbdefb
+    style M fill:#bbdefb
+    style WD fill:#bbdefb
+    style S fill:#c5cae9
+    style D fill:#c5cae9
+    style T fill:#ffe0b2
+```
+
+**Diagram 2 — Alur Interaksi Task FreeRTOS (Sederhana untuk Pemula)**
+
+```mermaid
+flowchart LR
+    subgraph Core0 [Core 0]
+        W[WiFiTask<br/>Jaga koneksi internet]
+        M[MqttTask<br/>Terima perintah dari server]
+        WD[WatchdogTask<br/>Pengawas semua task]
+        S[SysMonitorTask<br/>Cek memori]
+        D[DiscoveryPeriodic<br/>Kirim discovery tiap 60 detik]
+    end
+    
+    subgraph Core1 [Core 1]
+        T[TelemetryTask<br/>Baca sensor tiap 5 detik]
+    end
+    
+    WiFi((WiFi)) --> W
+    MQTT((MQTT Broker)) <--> M
+    Sensor[Sensor & Aktuator] <--> T
+    
+    W -.->|status koneksi| M
+    T -.->|heartbeat| WD
+    M -.->|heartbeat| WD
+    W -.->|heartbeat| WD
+    S -.->|cek memori| WD
+    
+    WD -.->|jika ada yang macet| Restart[Restart Task/ESP32]
+    
+    M -->|buat| D
+    D -.->|heartbeat| WD
+```
+
+**Cara Membaca Diagram (Untuk Pemula):**
+
+1. **ESP32 punya 2 otak (Core 0 dan Core 1)** — seperti komputer yang punya 2 processor, keduanya bisa bekerja bersama-sama.
+2. **Setiap task adalah "pekerja" yang tugasnya khusus** — tidak ada pekerja yang mengerjakan dua tugas berbeda sekaligus.
+3. **Core 0 menangani "jaringan"**: WiFi, MQTT (pesan ke server), Watchdog, monitoring sistem, dan pengiriman discovery periodik.
+4. **Core 1 menangani "fisik"**: Membaca sensor dan mengirim data telemetri.
+5. **Prioritas angka lebih tinggi = lebih penting**: Di FreeRTOS, task dengan prioritas lebih tinggi akan dijalankan lebih dulu. Di sini:
+   - **Prioritas 2** (WiFiTask, MqttTask, WatchdogTask): Jika ada masalah jaringan atau watchdog perlu restart, task ini dijalankan lebih dulu.
+   - **Prioritas 1** (SysMonitorTask, TelemetryTask, DiscoveryPeriodic): Task ini dijalankan setelah task prioritas 2 selesai. Karena ada 3 task dengan prioritas 1, mereka saling bergantian menggunakan CPU secara adil.
+6. **Panah titik-titik (-.->) adalah "cek kesehatan"**: Setiap task mengirim "detak jantung" ke WatchdogTask. Jika Watchdog tidak menerima detak jantung dari suatu task, berarti task tersebut macet dan perlu di-restart.
+
+Keunggulan pendekatan ini:
+- **Tidak saling menunggu (non-blocking)**: Jika WiFi putus, pembacaan sensor tetap berjalan.
+- **Aman (watchdog)**: Jika ada task yang crash, sistem bisa menyadari dan memperbaikinya.
+- **Efisien**: Dua core bekerja paralel, beban komputasi terbagi rata.
 
 #### B. Captive Web Portal Lokal
-Untuk konfigurasi awal di lapangan tanpa koneksi internet, node memancarkan *Access Point* lokal (`SmartFarm-{NODE_ID}`). Ketika pengguna terhubung, DNS server lokal akan mengarahkan semua kueri HTTP ke web portal konfigurasi yang disimpan di memori flash internal ESP32 menggunakan sistem berkas **LittleFS**. Portal ini didesain menggunakan pustaka *ESPAsyncWebServer* yang aman dan asinkron sebagai *Single-Page Application* (SPA), dengan fitur-fitur berikut:
+
+**Deskripsi Umum**
+
+Captive Web Portal adalah antarmuka konfigurasi berbasis web yang berjalan di ESP32 untuk mengonfigurasi perangkat di lapangan tanpa koneksi internet. Portal ini berjalan sebagai Access Point lokal (`SmartFarm-{NODE_ID}`) dan disajikan menggunakan pustaka ESPAsyncWebServer yang aman dan asinkron sebagai *Single-Page Application* (SPA), dengan konfigurasi disimpan di memori flash internal menggunakan sistem berkas LittleFS.
+
+**Fungsi Utama**
+
+- **Keamanan**: Autentikasi token Bearer, first-time password acak pada boot pertama, dan login rate limiter untuk mencegah brute force
+- **Status dan Monitoring**: Menampilkan status koneksi WiFi, RSSI, MQTT, firmware version, uptime, CPU frequency, heap memory, log MQTT real-time, dan pembacaan sensor terkini
+- **Konfigurasi Perangkat**: Mengubah SSID/password WiFi, konfigurasi MQTT, Node ID, pin input/output, sensor Modbus, aturan edge-control, dan akun admin
+- **Utilitas**: Alat diagnostik Modbus scanner, OTA firmware update, backup/restore konfigurasi, MQTT discovery, dan auto-reconnect
+
+**Alur Data dan Integrasi**
+
+- **Masuk**: Menerima permintaan HTTP dari browser pengguna yang terhubung ke Access Point lokal
+- **Keluar**: Menyajikan antarmuka SPA dari LittleFS dan merespons REST API konfigurasi
+- **Penyimpanan**: Menulis dan membaca `config.json` di LittleFS untuk semua konfigurasi perangkat
+- **Integrasi**: Berkomunikasi dengan sistem operasi dan driver hardware melalui ConfigManager untuk menerapkan perubahan secara *thread-safe*
+
+**Justifikasi Arsitektur**
+
+Pendekatan captive portal dipilih karena memungkinkan konfigurasi awal perangkat di lapangan tanpa perlu aplikasi desktop atau koneksi internet. Dengan menjalankannya sebagai SPA di memori flash internal, tidak diperlukan server eksternal dan konfigurasi dapat dilakukan langsung melalui browser perangkat mobile. LittleFS dipilih karena mendukung wear leveling dan cocok untuk sistem file di flash memory constrained device. Autentikasi token dan first-time password meningkatkan keamanan bawaan (*secure by default*) untuk mencegah akses ilegal.
+
+**Fitur Detail:**
 
 **1. Fitur Keamanan:**
 - **Autentikasi Token**: REST API dilindungi menggunakan mekanisme Bearer Token untuk mencegah akses ilegal. Token disimpan di `localStorage` browser dan dikirim di setiap permintaan; jika menerima `401`, frontend menghapus token dan kembali ke layar login.
@@ -256,7 +397,32 @@ Untuk konfigurasi awal di lapangan tanpa koneksi internet, node memancarkan *Acc
 - **Auto-Reconnect**: Setelah simpan konfigurasi + reboot, frontend otomatis ping `/api/status` tiap 2 detik dan reload halaman saat device online kembali.
 
 #### C. Standar Komunikasi MQTT (Telemetri, Aktuator, Discovery, Status, Alert, Konfirmasi)
-Seluruh komunikasi antara *aeroponic node* dengan backend sistem menggunakan protokol **MQTT 3.1.1/5.0** melalui broker Eclipse Mosquitto. Topik-topik dibangun dinamis berdasarkan konfigurasi `topic_prefix` (default: `smartfarm`) dan `node_id` unik per perangkat. Berikut standar komunikasi yang diimplementasikan:
+
+**Deskripsi Umum**
+
+Seluruh komunikasi antara aeroponic node dengan backend sistem menggunakan protokol **MQTT 3.1.1/5.0** melalui broker Eclipse Mosquitto. Topik-topik dibangun dinamis berdasarkan konfigurasi `topic_prefix` (default: `smartfarm`) dan `node_id` unik per perangkat.
+
+**Fungsi Utama**
+
+- Mempublikasikan data telemetri sensor secara periodik ke topic `{prefix}/{node_id}/telemetry`
+- Menerima perintah kontrol aktuator dari backend melalui topic `{prefix}/actuator/{node_id}`
+- Mengirim konfirmasi eksekusi perintah melalui topic `{prefix}/{node_id}/confirm`
+- Mempublikasikan status online/offline melalui LWT ke topic `{prefix}/status/{node_id}`
+- Mengirim sinyal discovery untuk registrasi otomatis ke topic `{prefix}/discovery`
+- Mengirim notifikasi alert dari perangkat ke topic `{prefix}/{node_id}/alert`
+- Mengirim data diagnostik sistem ke topic `{prefix}/{node_id}/diagnostics`
+
+**Alur Data dan Integrasi**
+
+- **Masuk**: Menerima perintah aktuator dari Control Service melalui Mosquitto
+- **Keluar**: Mempublikasikan telemetri, konfirmasi, status, discovery, alert, dan diagnostik ke Mosquitto
+- **Integrasi**: Berkomunikasi dengan Module Service (telemetry), Control Service (aktuator), dan Alert Service (alert) melalui topik MQTT yang berbeda
+
+**Justifikasi Arsitektur**
+
+MQTT dipilih karena protokol ringan yang cocok untuk constrained device seperti ESP32, mendukung publish/subscribe pattern yang memungkinkan komunikasi asynchronous tanpa blocking, dan memiliki QoS levels untuk memastikan pesan penting sampai. Penggunaan topik terstruktur dengan prefix dan node_id memungkinkan banyak node berbagi satu broker tanpa konflik, sementara retained messages dan LWT memastikan status node selalu tersedia untuk subscriber baru.
+
+**Standar Format:**
 
 **1. Topik MQTT:**
 
@@ -415,11 +581,35 @@ Alert ini dipicu otomatis oleh firmware saat emergency stop interrupt terdeteksi
 - **LWT (Last Will Testament)**: Membantu deteksi offline node secara otomatis.
 - **Retained Messages**: Discovery dan status dipublikasikan dengan flag retained agar subscriber baru langsung menerima status terkini.
 
-#### D. Arsitektur Modular Pembacaan Sensor (Configuration-Driven Input System)
+#### D. Desain Program Input/Output Modular
 
-Firmware ESP32 dirancang dengan arsitektur **configuration-driven** untuk pembacaan sensor, memungkinkan penambahan jenis sensor baru melalui konfigurasi JSON tanpa perlu mengubah kode sumber. Pendekatan ini memisahkan definisi perangkat keras dari logika pembacaan, sehingga sistem dapat beradaptasi dengan berbagai konfigurasi sensor aeroponik.
+**Deskripsi Umum**
 
-**1. Registry berbasis Vektor (Vector-Based Registry):**
+Program pembacaan input dan aktuasi output dirancang configuration-driven agar mempermudah dan meminimalisir konfigurasi sensor maupun aktuator pada sistem yang berbeda dan berulang. Dengan memisahkan definisi perangkat keras dari logika pembacaan, firmware dapat digunakan kembali pada sistem aeroponik yang berbeda tanpa harus membuat ulang program dari awal.
+
+**Fungsi Utama**
+
+- Membaca sensor GPIO digital/analog berdasarkan definisi di `config.json`
+- Membaca sensor Modbus RS485 dengan auto-baudrate switching
+- Membaca sensor I2C (DHT12, BME280) melalui protocol handler modular
+- Mengeksekusi perintah aktuator (DIGITAL/PWM) berdasarkan nama output
+- Mengevaluasi aturan edge-control lokal (histeresis, dry-run protection)
+- Mendukung hot-reload konfigurasi hardware tanpa reboot
+
+**Alur Data dan Integrasi**
+
+- **Masuk**: Menerima definisi hardware dari `config.json` di LittleFS melalui ConfigManager
+- **Proses**: TelemetryTask mengiterasi `HardwareInputs`, `HardwareModbus`, dan `HardwareSensors` untuk membaca setiap sensor
+- **Keluar**: Memetakan hasil pembacaan ke payload JSON telemetri dengan struktur `telemetry.inputs`, `telemetry.modbus`, dan `telemetry.outputs`
+- **Integrasi**: Menerima perintah aktuator dari MqttTask dan menerapkannya ke `HardwareOutputs` melalui Hardware Abstraction Layer
+
+**Justifikasi Arsitektur**
+
+Tanpa pendekatan configuration-driven, setiap perubahan sensor, aktuator, atau protokol memerlukan modifikasi kode sumber dan proses flashing ulang firmware. Dengan arsitektur modular berbasis vector registry dan factory pattern, penambahan sensor atau protokol baru hanya memerlukan entri di `config.json` atau registrasi handler baru tanpa mengubah loop utama. Pendekatan ini memberikan fleksibilitas operasional tinggi dengan overhead memori minimal pada constrained device.
+
+**Mekanisme Implementasi:**
+
+**a. Registry berbasis Vektor**
 
 Semua definisi input, output, dan sensor disimpan dalam `std::vector` global yang di-populate saat boot dari `config.json` di LittleFS:
 
@@ -428,14 +618,17 @@ Semua definisi input, output, dan sensor disimpan dalam `std::vector` global yan
 extern std::vector<InputPin> HardwareInputs;    // GPIO digital/analog
 extern std::vector<OutputPin> HardwareOutputs;  // GPIO output (DIGITAL/PWM)
 extern std::vector<ModbusSensor> HardwareModbus; // Sensor RS485 Modbus
+extern std::vector<GenericSensor> HardwareSensors; // Sensor I2C, SPI, dsb.
 extern std::vector<LocalControlRule> LocalControlRules; // Aturan edge control
 ```
 
 Pada runtime, `HardwareManager::telemetryTask()` mengiterasi vektor-vektor ini untuk membaca setiap sensor dan menghasilkan payload JSON telemetri. Pendekatan ini menghilangkan kebutuhan *hardcoded* pin atau sensor-specific code di dalam loop utama.
 
-**2. Penambahan Sensor GPIO (Digital/Analog) — Tanpa Perubahan Kode:**
+Pembaruan konfigurasi hardware dimuat ulang secara dinamis (`reloadConfiguration()`) secara *thread-safe* tanpa reboot ESP32.
 
-Sensor berbasis GPIO (digital/analog) dapat ditambahkan sepenuhnya melalui `config.json`:
+**b. Penambahan Sensor GPIO (Digital/Analog)**
+
+Sensor berbasis GPIO dapat ditambahkan sepenuhnya melalui `config.json`:
 
 ```json
 {
@@ -451,33 +644,17 @@ Sensor berbasis GPIO (digital/analog) dapat ditambahkan sepenuhnya melalui `conf
         "interrupt": "NONE",
         "analog_min": 0,
         "analog_max": 4095
-      },
-      {
-        "pin": 15,
-        "type": "DIGITAL",
-        "pull": "UP",
-        "name": "water_level",
-        "invert": true,
-        "interrupt": "FALLING"
       }
     ]
   }
 }
 ```
 
-Field yang tersedia:
-- `pin`: Nomor GPIO ESP32.
-- `type`: `"DIGITAL"` atau `"ANALOG"`.
-- `pull`: `"UP"`, `"DOWN"`, atau `"NONE"` untuk internal pull resistor.
-- `name`: Identifier unik yang digunakan di telemetry JSON dan MQTT topics.
-- `invert`: Jika `true`, nilai LOW dibalik menjadi HIGH (berguna untuk sensor aktif-LOW).
-- `debounce_ms`: Debounce time untuk input digital (0 = disabled).
-- `interrupt`: `"RISING"`, `"FALLING"`, `"CHANGE"`, atau `"NONE"` untuk trigger interrupt.
-- `analog_min` / `analog_max`: Rentang ADC untuk scaling (default 0–4095 untuk ESP32 12-bit ADC).
+Field yang tersedia: `pin`, `type` (`"DIGITAL"`/`"ANALOG"`), `pull` (`"UP"`/`"DOWN"`/`"NONE"`), `name`, `invert`, `debounce_ms`, `interrupt` (`"RISING"`/`"FALLING"`/`"CHANGE"`/`"NONE"`), `analog_min`/`analog_max`.
 
-**3. Penambahan Sensor Modbus (RS485) — Tanpa Perubahan Kode:**
+**c. Penambahan Sensor Modbus (RS485)**
 
-Sensor industri yang menggunakan protokol Modbus RTU (EC, pH, suhu nutrisi, NPK) dapat ditambahkan via konfigurasi:
+Sensor industri menggunakan protokol Modbus RTU dapat ditambahkan via konfigurasi:
 
 ```json
 {
@@ -503,17 +680,9 @@ Sensor industri yang menggunakan protokol Modbus RTU (EC, pH, suhu nutrisi, NPK)
 
 Firmware melakukan **auto-baudrate switching** sebelum membaca setiap slave ID, sehingga beberapa sensor Modbus dengan baud rate berbeda dapat berbagi satu jalur RS485 fisik. Data Modbus muncul di payload telemetry di bawah `telemetry.modbus.{sensor_name}.{register_name}`.
 
-**4. Dukungan Sensor I2C (DHT12, BME280, dll.) — Telah Diimplementasikan secara Modular:**
+**d. Output Aktuator**
 
-Arsitektur modular firmware mendukung pembacaan sensor berbasis I2C (seperti DHT12 dan BME280) sepenuhnya melalui konfigurasi dinamis tanpa memerlukan kompilasi ulang kode firmware:
-
-- **Driver I2C Generic**: Implementasi driver internal berbasis `Wire.h` secara zero-dependency untuk sensor DHT12 (komunikasi register 5-byte) dan BME280 (pembacaan data kalibrasi pabrik dan perhitungan kompensasi presisi Bosch).
-- **Pola Factory & Plugin Registry**: Seluruh pembacaan protokol disatukan menggunakan interface `ProtocolHandler` dan factory registry `ProtocolRegistry`. Hal ini memungkinkan penambahan protokol baru (seperti 1-Wire, SPI, dsb.) secara modular dengan mendaftarkannya pada registry.
-- **Konfigurasi Deklaratif**: Sensor I2C baru didaftarkan di dalam file `config.json` pada array `hardware.sensors` dengan parameter dinamis (seperti `protocol`, `address`, `sda_pin`, `scl_pin`).
-
-**5. Output Aktuator — Juga Configuration-Driven:**
-
-Sama seperti input, aktuator (pompa, valve, fan) didefinisikan di `config.json`:
+Aktuator (pompa, valve, fan) didefinisikan di `config.json`:
 
 ```json
 {
@@ -523,11 +692,6 @@ Sama seperti input, aktuator (pompa, valve, fan) didefinisikan di `config.json`:
         "pin": 12,
         "type": "DIGITAL",
         "name": "pump"
-      },
-      {
-        "pin": 13,
-        "type": "DIGITAL",
-        "name": "valve"
       }
     ]
   }
@@ -536,9 +700,24 @@ Sama seperti input, aktuator (pompa, valve, fan) didefinisikan di `config.json`:
 
 Control Service mengirim perintah `{"action":"set_output","target":"pump","value":1}` dan firmware mencari output dengan `target` sesuai `name` di `HardwareOutputs`. Ini memungkinkan nama output yang fleksibel tanpa hardcode pin di backend.
 
-**6. Local Control Rules — Edge Computing Modular:**
+**e. Protokol dan Driver Modular (Factory Pattern)**
 
-Aturan kontrol lokal (edge rules) juga didefinisikan secara deklaratif di `config.json`:
+Seluruh pembacaan protokol disatukan menggunakan interface `ProtocolHandler` dan factory registry `ProtocolRegistry`:
+
+```cpp
+// HardwareManager.cpp
+ProtocolRegistry::registerProtocol("GPIO", []() -> ProtocolHandler* { return new GPIOInputHandler(); });
+ProtocolRegistry::registerProtocol("MODBUS", []() -> ProtocolHandler* { return new ModbusHandler(); });
+ProtocolRegistry::registerProtocol("I2C", []() -> ProtocolHandler* { return new I2CHandler(); });
+ProtocolRegistry::registerProtocol("1-WIRE", []() -> ProtocolHandler* { return new OneWireHandler(); });
+ProtocolRegistry::registerProtocol("SPI", []() -> ProtocolHandler* { return new SPIHandler(); });
+```
+
+Hal ini memungkinkan penambahan protokol baru secara modular dengan mendaftarkannya pada registry, tanpa modifikasi loop utama. Driver I2C generic terintegrasi langsung untuk sensor DHT12 dan BME280.
+
+**f. Local Control Rules — Edge Computing Modular**
+
+Aturan kontrol lokal didefinisikan secara deklaratif di `config.json`:
 
 ```json
 {
@@ -555,39 +734,69 @@ Aturan kontrol lokal (edge rules) juga didefinisikan secara deklaratif di `confi
 }
 ```
 
-Aturan ini dievaluasi di dalam `telemetryTask()` setelah pembacaan sensor, memungkinkan respons otomatis terhadap kondisi abnormal tanpa bergantung pada koneksi MQTT atau backend.
+Aturan ini dievaluasi di dalam `telemetryTask()` setelah pembacaan sensor. Mekanisme ini mencakup dua logika keamanan:
 
-**7. Keunggulan dan Fleksibilitas Arsitektur Modular:**
-
-| Aspek | Status | Deskripsi |
-|-------|--------|-----------|
-| Penambahan sensor GPIO | ✅ **Konfigurasi saja** | Digital/analog sensor ditambahkan via `config.json` tanpa upload firmware baru. |
-| Penambahan sensor Modbus | ✅ **Konfigurasi saja** | Slave ID, baudrate, register address, dan multiplier ditambahkan via `config.json`. |
-| Penambahan sensor I2C (DHT12, BME280) | ✅ **Konfigurasi saja** | Driver I2C generic terintegrasi langsung; penambahan sensor baru cukup dikonfigurasi via `config.json`. |
-| Penambahan protokol baru (SPI, 1-Wire) | ✅ **Konfigurasi saja** | Menggunakan Factory Pattern dan Plugin Registry (`ProtocolRegistry`) sehingga handler baru terdaftar dinamis tanpa modifikasi monolithic. |
-| Dynamic sensor discovery | ✅ **Ada** | Auto-detection sensor I2C (mencari DHT12 di `0x5C` dan BME280 di `0x76`/`0x77`) via REST API `/api/hardware/discover`. |
-| Sensor hot-swap | ✅ **Ada** | Pembaruan konfigurasi hardware dimuat ulang secara dinamis (`reloadConfiguration()`) secara *thread-safe* tanpa reboot ESP32. |
-
-**Kesimpulan:**
-
-Arsitektur firmware ini mencapai modularitas penuh baik pada lapisan **konfigurasi data** (pin assignment, sensor name, Modbus address) maupun pada lapisan **protokol dan driver** (GPIO, Modbus, I2C, OneWire, SPI). Penambahan sensor baru, perubahan pin, maupun penggantian tipe protokol dapat dilakukan sepenuhnya via captive portal dan langsung diterapkan secara *real-time* tanpa memerlukan proses flashing ulang maupun rebooting ESP32. Ini memberikan fleksibilitas operasional yang sangat tinggi dengan overhead memori minimal pada constrained device.
-
-#### E. Logika Local Control Rules (Edge Computing)
 - **Logika Histeresis**: Mencegah aktuator (seperti cooling fan) menyala-mati secara berulang akibat fluktuasi sensor yang tipis di sekitar ambang batas (*oscillation prevention*). Kipas pendingin dirancang aktif ketika suhu melampaui batas atas ($T_{high}$) dan hanya mati setelah suhu turun di bawah batas bawah ($T_{low}$).
 - **Dry-Run Protection**: Pompa misting dirancang mati secara otomatis menggunakan interupsi tingkat perangkat keras (*hardware-level safety loop*) jika sensor ketinggian air mendeteksi tangki nutrisi kosong, guna mencegah kerusakan motor akibat berjalan tanpa cairan.
 
-#### F. Protokol Modbus RS485 Mutex-Protected
-Pembacaan sensor industri (seperti NPK tanah, EC, pH, suhu air) dikomunikasikan melalui bus RS485 menggunakan modul transceiver MAX485. Desain Modbus ini memiliki fitur:
-- **Auto Baudrate Switching**: Memungkinkan ESP32 untuk berkomunikasi dengan berbagai sensor Modbus yang memiliki konfigurasi baudrate berbeda pada satu jalur bus fisik yang sama dengan mengganti baudrate serial UART secara dinamis sebelum memanggil alamat budak (*slave ID*) tertentu.
+Dengan cara ini, respons otomatis terhadap kondisi abnormal dapat terjadi tanpa bergantung pada koneksi MQTT atau backend.
+
+**g. Proteksi dan Keandalan Bus**
+
 - **Mutex Protection**: Menggunakan objek *FreeRTOS Mutex* untuk melindungi bus serial RS485 dari akses bersamaan oleh beberapa task, menghindari korupsi data telemetri.
+- **Auto Baudrate Switching**: Memungkinkan ESP32 berkomunikasi dengan berbagai sensor Modbus yang memiliki baud rate berbeda pada satu jalur RS485 fisik.
 
-#### G. Dual-Partition OTA Update dengan Rollback Otomatis
-Pembaruan firmware dari jarak jauh (*Over-The-Air*) menggunakan alokasi partisi ganda (*Dual Partition Scheme*): partisi aktif saat ini dan partisi target baru. Desain ketahanan mencakup:
-- **Boot Counter di NVS**: Setelah menulis firmware baru dan melakukan restart, ESP32 mencatat jumlah boot sukses ke memori flash Non-Volatile Storage (NVS).
-- **Auto Rollback**: Jika firmware baru mengalami crash berturut-turut sebanyak lebih dari 3 kali sebelum boot counter berhasil di-reset oleh task yang stabil, *bootloader* ESP32 akan mematikan partisi baru dan secara otomatis memuat partisi firmware stabil sebelumnya.
+#### E. Dual-Partition OTA Update dengan Rollback Otomatis
 
-#### H. Alur Operasi Firmware
-Operasi firmware secara keseluruhan mengikuti alur sekuensial dan asinkron seperti yang ditunjukkan pada diagram alir berikut:
+**Deskripsi Umum**
+
+Firmware mendukung pembaruan dari jarak jauh (*Over-The-Air*) menggunakan alokasi partisi ganda (*Dual Partition Scheme*). Desain ketahanan ini memungkinkan firmware baru ditulis ke partisi target sementara partisi aktif tetap berjalan, dengan mekanisme rollback otomatis jika firmware baru mengalami crash.
+
+**Fungsi Utama**
+
+- Menerima upload file firmware baru melalui REST API di Captive Web Portal
+- Menulis firmware ke partisi target sementara partisi aktif tetap berjalan
+- Mencatat jumlah boot sukses ke NVS (Non-Volatile Storage)
+- Melakukan rollback otomatis ke partisi stabil jika firmware baru crash lebih dari 3 kali berturut-turut
+- Memuat partisi firmware stabil melalui bootloader ESP32
+
+**Alur Data dan Integrasi**
+
+- **Masuk**: Menerima file `.bin` firmware melalui HTTP POST ke endpoint `/api/ota` di Captive Web Portal
+- **Penyimpanan**: Menulis firmware ke partisi OTA target di flash memory ESP32
+- **Pemantauan**: Mencatat boot counter ke NVS untuk melacak keberhasilan boot
+- **Integrasi**: Berkomunikasi dengan bootloader ESP32 untuk memilih partisi yang akan dijalankan
+
+**Justifikasi Arsitektur**
+
+Dual-partition scheme dipilih karena memungkinkan pembaruan firmware tanpa menghentikan operasi perangkat. Jika firmware baru gagal, perangkat tetap dapat berjalan menggunakan partisi stabil sebelumnya. Boot counter di NVS memungkinkan bootloader mendeteksi firmware yang tidak stabil secara otomatis, sehingga rollback dapat terjadi tanpa intervensi manual. Mekanisme ini sangat penting untuk perangkat di lapangan yang sulit diakses secara fisik.
+
+#### F. Alur Operasi Firmware
+
+**Deskripsi Umum**
+
+Operasi firmware secara keseluruhan mengikuti alur sekuensial dan asinkron yang dimulai dari boot ESP32, melalui inisialisasi hardware dan koneksi, hingga masuk ke loop paralel multi-task FreeRTOS untuk operasi normal.
+
+**Fungsi Utama**
+
+- Menginisialisasi hardware dan memuat `config.json` dari LittleFS
+- Memeriksa status boot OTA dan melakukan rollback jika diperlukan
+- Menghubungkan WiFi dan MQTT broker
+- Memulai loop paralel multi-task untuk operasi normal
+- Mengelola transisi antara mode AP (Captive Portal) dan mode Station
+
+**Alur Data dan Integrasi**
+
+- **Masuk**: Menerima konfigurasi dari LittleFS, status WiFi dari NetworkManager, dan status MQTT dari MqttTask
+- **Proses**: Mengelola state machine boot yang mengkoordinasikan inisialisasi semua komponen
+- **Keluar**: Memindai task FreeRTOS untuk operasi berkelanjutan
+- **Integrasi**: Menghubungkan seluruh subsystem (WiFi, MQTT, Watchdog, Telemetry) ke dalam loop paralel
+
+**Justifikasi Arsitektur**
+
+Alur operasi dirancang sebagai state machine yang memisahkan fase boot dari fase operasi normal. Pendekatan ini memastikan bahwa setiap komponen diinisialisasi secara berurutan dan bergantung pada keberhasilan komponen sebelumnya. Jika WiFi tidak terhubung dalam waktu 30 detik, sistem fallback ke mode AP untuk konfigurasi manual. Transisi yang jelas antara fase boot dan operasi normal memudahkan debugging dan meningkatkan keandalan sistem.
+
+**Diagram Alur Operasi:**
 
 ```mermaid
 flowchart TD
