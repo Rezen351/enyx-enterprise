@@ -21,8 +21,8 @@ const PAGES = [
   { name: '09-export', path: '/dashboard', auth: true, tab: 'export' },
   { name: '10-module', path: '/dashboard', auth: true, tab: 'module' },
   { name: '11-audit', path: '/dashboard', auth: true, tab: 'audit' },
-  { name: '12-webhook', path: '/dashboard', auth: true, tab: 'webhook' },
-  { name: '13-dlq', path: '/dashboard', auth: true, tab: 'dlq' },
+  { name: '12-dlq', path: '/dashboard', auth: true, tab: 'dlq' },
+  { name: '13-webhook', path: '/dashboard', auth: true, tab: 'webhook' },
   { name: '14-users', path: '/dashboard', auth: true, tab: 'users' },
   { name: '15-profile', path: '/dashboard', auth: true, tab: 'profile' },
 ];
