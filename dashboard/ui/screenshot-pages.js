@@ -69,6 +69,12 @@ const TAB_LABELS = {
 
 const ADMIN_TABS = new Set(['audit', 'dlq', 'webhook', 'users']);
 
+async function ensureDarkMode(page) {
+  await page.addInitScript(() => {
+    try { localStorage.setItem('theme', 'dark'); } catch {}
+  });
+}
+
 async function ensureLoginModal(page) {
   const modal = page.locator('input[placeholder="Enter your email or username"]').first();
   if (await modal.count() === 0) {
@@ -81,6 +87,7 @@ async function ensureLoginModal(page) {
 }
 
 async function login(page) {
+  await ensureDarkMode(page);
   await page.goto(`${DASHBOARD_URL}/`);
   await page.waitForTimeout(4000);
 
@@ -221,6 +228,7 @@ async function captureScreenshots() {
           }
         }
       } else {
+        await ensureDarkMode(page);
         await page.goto(url);
         await page.waitForTimeout(4000);
 
