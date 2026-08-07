@@ -1497,7 +1497,7 @@ Berikut adalah diagram yang menggambarkan proses evaluasi threshold alert:
 
 ```mermaid
 flowchart TD
-    START([Telemetry Ingest<br/>dari NATS]) --> LOOKUP[Cari threshold untuk<br/>(node_id, metric)]
+    START([Telemetry Ingest<br/>dari NATS]) --> LOOKUP["Cari threshold untuk<br/>node_id dan metric"]
     
     LOOKUP --> FOUND{Threshold<br/>ditemukan?}
     FOUND -- Tidak --> IGNORE([Abaikan pesan])
@@ -1600,6 +1600,53 @@ Notification Service berlangganan dua subject NATS:
 
 Pesan alert yang diterima berisi `severity`, `message`, `node_id`, `metric`, dan `value`. Service memetakan severity ke prioritas pengiriman dan memilih saluran yang aktif.
 
+Berikut adalah diagram yang menggambarkan aliran notifikasi multi-saluran:
+
+```mermaid
+graph LR
+    subgraph "Trigger"
+        ALERT["alert.triggered<br/>dari NATS"]
+    end
+    
+    subgraph "Notification Service"
+        RECV[Menerima event alert]
+        JOB[Buat job pengiriman]
+        QUEUE[Push ke Redis Queue]
+        WORKER[Worker Goroutine]
+    end
+    
+    subgraph "Channels"
+        TG[Telegram<br/>Bot API]
+        EMAIL[Email<br/>SMTP]
+        PUSH[Push Notification<br/>HTTP Gateway]
+    end
+    
+    subgraph "Storage"
+        DB[(notification_db<br/>Logs)]
+    end
+    
+    ALERT --> RECV
+    RECV --> JOB
+    JOB --> QUEUE
+    QUEUE --> WORKER
+    
+    WORKER -->|"Kirim"| TG
+    WORKER -->|"Kirim"| EMAIL
+    WORKER -->|"Kirim"| PUSH
+    
+    WORKER -->|"Catat"| DB
+    
+    style ALERT fill:#ef9a9a
+    style RECV fill:#ce93d8
+    style JOB fill:#ce93d8
+    style QUEUE fill:#ffe0b2
+    style WORKER fill:#c5e1a5
+    style TG fill:#bbdefb
+    style EMAIL fill:#bbdefb
+    style PUSH fill:#bbdefb
+    style DB fill:#f8bbd0
+```
+
 **Proses Pengiriman:**
 
 1. Saat event alert diterima, service membuat *job* pengiriman untuk setiap saluran yang diaktifkan (Telegram, Email, Push).
@@ -1692,6 +1739,35 @@ Selain meneruskan data dari NATS ke Dashboard, WS-Gateway juga menerima pesan da
 
 WS-Gateway menerjemahkan aliran event yang tak terbatas dari NATS menjadi frame WebSocket yang ringan dan terstruktur untuk konsumsi frontend. Dengan pendekatan ini, dashboard mendapatkan data real-time tanpa perlu polling REST API secara periodik.
 
+Berikut adalah diagram yang menggambarkan peran WS-Gateway sebagai jembatan antara NATS dan Dashboard:
+
+```mermaid
+sequenceDiagram
+    participant N as NATS JetStream
+    participant W as WS-Gateway
+    participant K as Kong
+    participant D as Dashboard (Browser)
+    
+    Note over N,D: Upstream: Data Real-Time dari Backend ke Dashboard
+    
+    N->>W: Publish mqtt.>, alert.triggered
+    W->>W: Validasi JWT (Bearer / ?token)
+    W->>W: Frame sebagai WebSocket TextMessage
+    W->>K: Upgrade WS /ws
+    K->>D: WebSocket Frame (JSON mentah)
+    
+    Note over D,N: Downstream: Perintah dari Dashboard ke Backend
+    
+    D->>K: Kirim pesan via WebSocket
+    K->>W: Teruskan ke WS-Gateway
+    W->>N: Publish ke NATS subject
+    N->>N: Deliver ke subscriber backend
+    
+    Note over W,D: Keamanan & Ketahanan
+    W->>W: Ping setiap 25 detik
+    D->>W: Pong (keep-alive)
+```
+
 ### 3.5.8 Stream Service dan MediaMTX
 
 **Domain:** Pengelolaan stream video kamera dan snapshot.
@@ -1704,6 +1780,56 @@ WS-Gateway menerjemahkan aliran event yang tak terbatas dari NATS menjadi frame 
 **Detail Arsitektur dan Alur Data:**
 
 Stream Service menghubungkan sensor visual dengan pipeline AI. Dengan mengelola stream video melalui MediaMTX dan menyimpan snapshot ke MinIO, layanan ini memastikan bahwa setiap momen penting dapat direkam dan dianalisis.
+
+Berikut adalah diagram yang menggambarkan pipeline video dari kamera hingga deteksi AI:
+
+```mermaid
+graph LR
+    subgraph "Input"
+        CAM[Kamera IP / ESP32-CAM<br/>RTSP Stream]
+    end
+    
+    subgraph "Streaming"
+        MMTX[MediaMTX<br/>Video Streaming Server]
+    end
+    
+    subgraph "Processing"
+        STR[Stream Service]
+        SNAP[Ambil Snapshot]
+    end
+    
+    subgraph "Storage"
+        MINIO_S[(MinIO<br/>bucket: stream)]
+        MINIO_ML[(MinIO<br/>bucket: ml)]
+    end
+    
+    subgraph "AI Detection"
+        ML[ML Service<br/>YOLOv8 Inference]
+    end
+    
+    subgraph "Output"
+        DASH[Dashboard<br/>Tampilkan hasil deteksi]
+    end
+    
+    CAM -->|"RTSP"| MMTX
+    MMTX -->|"HLS / WebRTC"| STR
+    STR -->|"Trigger"| SNAP
+    SNAP -->|"Simpan snapshot"| MINIO_S
+    SNAP -->|"POST /ml/detect"| ML
+    ML -->|"Load gambar"| MINIO_S
+    ML -->|"Simpan anotasi"| MINIO_ML
+    ML -->|"Bounding boxes"| DASH
+    MMTX -->|"Streaming langsung"| DASH
+    
+    style CAM fill:#bbdefb
+    style MMTX fill:#fff9c4
+    style STR fill:#ce93d8
+    style SNAP fill:#ce93d8
+    style MINIO_S fill:#f8bbd0
+    style MINIO_ML fill:#f8bbd0
+    style ML fill:#c5e1a5
+    style DASH fill:#a5d6a7
+```
 
 **1. Registrasi dan Manajemen Stream:**
 
@@ -2070,6 +2196,68 @@ Model dilatih menggunakan **Stable-Baselines3** pada environment Gymnasium kusto
 
 Model disimpan dalam format `aeroponic_td3.zip` bersama statistik normalisasi `vec_normalize_td3.pkl`. Curriculum weather scaling diterapkan secara bertahap dari 0.0 hingga 1.0 seiring progresi pelatihan untuk meningkatkan generalisasi terhadap variasi iklim.
 
+Berikut adalah diagram yang menggambarkan loop pelatihan TD3 dengan simulator aeroponik:
+
+```mermaid
+graph LR
+    subgraph "Environment (Gymnasium Simulator)"
+        SIM[AeroponicSimulatorEnv<br/>State 10D, Action 3D]
+        REWARD[Fungsi Reward<br/>R_total]
+        STATE[State Space:<br/>L_root, U_status, T_in,<br/>H_in, T_out, H_out,<br/>EC, pH, T_nut, I_day]
+    end
+    
+    subgraph "TD3 Agent (Stable-Baselines3)"
+        ACTOR[Actor Network<br/>Policy π]
+        CRITIC1[Critic Network 1<br/>Q1]
+        CRITIC2[Critic Network 2<br/>Q2]
+        TARGET1[Target Critic 1]
+        TARGET2[Target Critic 2]
+        BUFFER[Replay Buffer<br/>2M experiences]
+    end
+    
+    subgraph "Training Loop"
+        OBS[Observe State]
+        ACTION[Select Action + Noise]
+        STEP[Step Environment]
+        STORE[Store in Buffer]
+        SAMPLE[Sample Batch]
+        UPDATE[Update Critic & Actor]
+    end
+    
+    SIM --> STATE
+    STATE --> OBS
+    OBS --> ACTION
+    ACTION --> STEP
+    STEP --> REWARD
+    REWARD --> SIM
+    STEP --> STORE
+    STORE --> BUFFER
+    BUFFER --> SAMPLE
+    SAMPLE --> CRITIC1
+    SAMPLE --> CRITIC2
+    CRITIC1 --> UPDATE
+    CRITIC2 --> UPDATE
+    UPDATE --> TARGET1
+    UPDATE --> TARGET2
+    UPDATE --> ACTOR
+    
+    style SIM fill:#bbdefb
+    STATE fill:#bbdefb
+    REWARD fill:#ffcc80
+    ACTOR fill:#c5e1a5
+    CRITIC1 fill:#ce93d8
+    CRITIC2 fill:#ce93d8
+    TARGET1 fill:#ef9a9a
+    TARGET2 fill:#ef9a9a
+    BUFFER fill:#ffe0b2
+    OBS fill:#e3f2fd
+    ACTION fill:#e3f2fd
+    STEP fill:#e3f2fd
+    STORE fill:#e3f2fd
+    SAMPLE fill:#e3f2fd
+    UPDATE fill:#e3f2fd
+```
+
 Hasil pelatihan yang dicapai:
 
 | Metrik | Nilai |
@@ -2097,6 +2285,50 @@ Model TD3 di-deploy sebagai dua layanan terpisah (prinsip Single Responsibility)
 - Memanggil model-controller/predict secara periodik
 - Memperbarui jadwal pompa via Control Service API
 - Mengirim perintah langsung ke valve via Control Service
+
+Berikut adalah diagram yang menggambarkan arsitektur deployment dua layanan TD3:
+
+```mermaid
+graph TB
+    subgraph "Custom Services"
+        MC[model-control<br/>Scheduler/Orchestrator]
+        MCTR[model-controller<br/>Pure Inference Service]
+    end
+    
+    subgraph "Data Sources"
+        NATS_S[NATS<br/>telemetry.ingest]
+        MINIO[(MinIO<br/>bucket: mlbucket)]
+    end
+    
+    subgraph "Backend Core"
+        CTRL[Control Service]
+        KONG[Kong API Gateway]
+    end
+    
+    subgraph "Physical"
+        ESP32[ESP32<br/>Pompa & Valve]
+    end
+    
+    NATS_S -->|"Subscribe telemetry"| MC
+    MINIO -->|"Ambil metadata tanaman"| MC
+    MC -->|"POST /predict (periodik)"| MCTR
+    MCTR -->|"Kembalikan aksi:<br/>D_mist, interval, A_valve"| MC
+    
+    MC -->|"Update jadwal pompa"| CTRL
+    MC -->|"Perintah valve langsung"| CTRL
+    
+    CTRL -->|"MQTT"| ESP32
+    
+    KONG -->|"REST API"| MC
+    
+    style MC fill:#ce93d8
+    style MCTR fill:#c5e1a5
+    style NATS_S fill:#ffe0b2
+    style MINIO fill:#f8bbd0
+    style CTRL fill:#ef9a9a
+    style KONG fill:#bbdefb
+    style ESP32 fill:#80deea
+```
 
 **Mekanisme Cycle-Boundary Update:**
 
@@ -2158,6 +2390,126 @@ Seluruh komponen sistem dikelola melalui satu file `docker-compose.yml` yang men
 - Infrastruktur pendukung (NATS, Mosquitto, MediaMTX, Prometheus, Grafana, Kong, dll.)
 - Jaringan internal private `iot-net` yang mengisolasi seluruh kontainer
 
+Berikut adalah diagram yang menggambarkan topologi jaringan Docker Compose:
+
+```mermaid
+graph TB
+    subgraph "Host (Exposed)"
+        HOST[Host Machine]
+        PORT80[Port 80/443<br/>Kong exposed]
+    end
+    
+    subgraph "Docker Network: iot-net (Private)"
+        subgraph "API Gateway"
+            KONG[Kong<br/>Port 8000, 8443]
+        end
+        
+        subgraph "Application Services"
+            AUTH[Auth Service]
+            MOD[Module Service]
+            CTRL[Control Service]
+            AN[Analytics Service]
+            ALT[Alert Service]
+            NOTIF[Notification Service]
+            ML[ML Service]
+            STR[Stream Service]
+            WS[WS-Gateway]
+        end
+        
+        subgraph "Databases"
+            MDB1[(MariaDB 1<br/>auth_db)]
+            MDB2[(MariaDB 2<br/>module_db)]
+            MDB3[(MariaDB 3<br/>control_db)]
+            MDB4[(MariaDB 4<br/>alert_db)]
+            MDB5[(MariaDB 5<br/>notification_db)]
+            MDB6[(MariaDB 6<br/>audit_db)]
+            MDB7[(MariaDB 7<br/>ml_db)]
+            MDB8[(MariaDB 8<br/>stream_db)]
+            TDB1[(TimescaleDB 1)]
+            TDB2[(TimescaleDB 2)]
+            REDIS[(Redis)]
+            MINIO[(MinIO<br/>2 buckets)]
+        end
+        
+        subgraph "Infrastructure"
+            NATS[NATS JetStream]
+            MQTT[Mosquitto MQTT]
+            MMTX[MediaMTX]
+            PROM[Prometheus]
+            GRAF[Grafana]
+        end
+    end
+    
+    HOST --> PORT80
+    PORT80 --> KONG
+    
+    KONG --> AUTH
+    KONG --> MOD
+    KONG --> CTRL
+    KONG --> AN
+    KONG --> ALT
+    KONG --> NOTIF
+    KONG --> ML
+    KONG --> STR
+    KONG --> WS
+    
+    AUTH --> MDB1
+    MOD --> MDB2
+    MOD --> TDB1
+    CTRL --> MDB3
+    ALT --> MDB4
+    NOTIF --> MDB5
+    ML --> MDB7
+    STR --> MDB8
+    AN --> TDB2
+    
+    AUTH --> REDIS
+    ALT --> REDIS
+    NOTIF --> REDIS
+    
+    STR --> MINIO
+    ML --> MINIO
+    
+    MOD --> NATS
+    CTRL --> NATS
+    ALT --> NATS
+    AN --> NATS
+    ML --> NATS
+    
+    MOD --> MQTT
+    CTRL --> MQTT
+    
+    STR --> MMTX
+    
+    PROM --> KONG
+    PROM --> AUTH
+    PROM --> MOD
+    PROM --> CTRL
+    
+    GRAF --> PROM
+    
+    style KONG fill:#ef9a9a
+    style HOST fill:#e0e0e0
+    style PORT80 fill:#ef9a9a
+    style MDB1 fill:#bbdefb
+    style MDB2 fill:#bbdefb
+    style MDB3 fill:#bbdefb
+    style MDB4 fill:#bbdefb
+    style MDB5 fill:#bbdefb
+    style MDB6 fill:#bbdefb
+    style MDB7 fill:#bbdefb
+    style MDB8 fill:#bbdefb
+    style TDB1 fill:#c5e1a5
+    style TDB2 fill:#c5e1a5
+    style REDIS fill:#ffe0b2
+    style MINIO fill:#f8bbd0
+    style NATS fill:#fff9c4
+    style MQTT fill:#fff9c4
+    style MMTX fill:#fff9c4
+    style PROM fill:#a5d6a7
+    style GRAF fill:#a5d6a7
+```
+
 ### 3.8.2 Strategi Keamanan Berlapis
 
 | Lapisan | Mekanisme | Detail |
@@ -2188,6 +2540,18 @@ Perancangan pengujian ditetapkan sejak fase desain agar hasil yang diperoleh di 
 | Resilience Test | Kegagalan layanan, *chaos engineering* terkontrol | Skrip Python (`resilience_test.py`) |
 | Pengujian Model AI | Evaluasi kinerja TD3: reward, keragaman aksi, 5 skenario cuaca | evaluate_td3.py, stress_test.py |
 | Pengujian Visual/UI | Tata letak, UX, interaksi dashboard | Manual oleh pengguna |
+
+Berikut adalah diagram yang menggambarkan strategi pengujian dan cakupan:
+
+```mermaid
+pie title Cakupan Pengujian per Jenis
+    "Unit Test (Otomatis)" : 25
+    "Integrasi API (Otomatis)" : 20
+    "Stress Test (Otomatis)" : 15
+    "Resilience Test (Otomatis)" : 15
+    "Model AI Test (Otomatis)" : 15
+    "UI/Visual (Manual)" : 10
+```
 
 Pengujian beban (*stress test*) menggunakan metodologi *breakpoint testing* untuk mencari kapasitas maksimum sistem dan mendeteksi titik jenuh (*knee point*). Pengujian dilakukan dengan menaikkan beban concurrency pengguna dan target *Requests Per Second* (RPS) secara bertahap dalam lima tingkatan beban:
 1. **Level 1**: Concurrency = 5 pengguna, Target RPS = 10 req/s.
