@@ -224,20 +224,19 @@ Returns only unpaired nodes (where `paired = 0`). Used by the Dashboard to show 
   "data": {
     "node_id": "node-001",
     "tags": [
-      {
-        "id": "tag-001",
-        "node_id": "node-001",
-        "kind": "sensor",
-        "source_key": "telemetry.temp",
-        "tag_name": "temperature",
-        "display_name": "Air Temperature",
-        "label": "Temperature",
-        "unit": "°C",
-        "data_type": "float",
-        "enabled": true,
-        "created_at": "2026-07-21T12:00:00Z",
-        "updated_at": "2026-07-21T12:00:00Z"
-      }
+       {
+         "id": "tag-001",
+         "node_id": "node-001",
+         "kind": "sensor",
+         "source_key": "telemetry.temp",
+         "tag_name": "temperature",
+         "display_name": "Air Temperature",
+         "unit": "°C",
+         "data_type": "float",
+         "enabled": true,
+         "created_at": "2026-07-21T12:00:00Z",
+         "updated_at": "2026-07-21T12:00:00Z"
+       }
     ]
   }
 }
@@ -257,7 +256,6 @@ Replaces the complete set of sensor-kind tag mappings. Actuator tags are **not**
     "source_key": "telemetry.temp",
     "tag_name": "temperature",
     "display_name": "Air Temperature",
-    "label": "Temperature",
     "unit": "°C",
     "data_type": "float",
     "enabled": true
@@ -266,7 +264,6 @@ Replaces the complete set of sensor-kind tag mappings. Actuator tags are **not**
     "source_key": "telemetry.humidity",
     "tag_name": "humidity",
     "display_name": "Humidity",
-    "label": "Humidity",
     "unit": "%",
     "data_type": "float",
     "enabled": true
@@ -306,7 +303,7 @@ The Dashboard exposes telemetry mapping in **Node Configuration** (`NodeConfigPa
 |-------|-------------|
 | `source_key` | MQTT key path (e.g., `telemetry.temp`) |
 | `tag_name` | Database metric name (defaults to `source_key` if empty) |
-| `label` | Dashboard display label |
+| `display_name` | Dashboard display name |
 | `unit` | Unit string (e.g., `°C`, `%`, `m/s`) |
 | `data_type` | One of: `float`, `int`, `bool` |
 | `enabled` | Toggle to enable/disable ingestion |
@@ -344,7 +341,6 @@ Returns only tags where `kind = 'actuator'`.
   "source_key": "pump",
   "tag_name": "water_pump",
   "display_name": "Water Pump",
-  "label": "Pump",
   "unit": "",
   "data_type": "bool",
   "enabled": true
@@ -649,7 +645,6 @@ Schema is managed via GORM AutoMigrate at startup ([migrate.go](file:///home/alm
 | `kind` | `varchar(16)` | Not null, default `sensor` (`sensor`/`actuator`) |
 | `tag_name` | `varchar(128)` | Not null |
 | `display_name` | `varchar(128)` | Optional |
-| `label` | `varchar(128)` | Clean display label for dashboards |
 | `unit` | `varchar(32)` | Optional |
 | `data_type` | `varchar(16)` | Default `float` (`float`/`int`/`bool`) |
 | `enabled` | `tinyint(1)` | Not null, default 1 |
@@ -751,7 +746,6 @@ curl -s -X PUT http://localhost:8080/v1/nodes/esp32-001/tags \
     {
       "source_key": "telemetry.temp",
       "tag_name": "temperature",
-      "label": "Temperature",
       "unit": "°C",
       "data_type": "float",
       "enabled": true
@@ -759,7 +753,6 @@ curl -s -X PUT http://localhost:8080/v1/nodes/esp32-001/tags \
     {
       "source_key": "telemetry.humidity",
       "tag_name": "humidity",
-      "label": "Humidity",
       "unit": "%",
       "data_type": "float",
       "enabled": true
@@ -776,7 +769,6 @@ curl -s -X POST http://localhost:8080/v1/nodes/esp32-001/actuators \
   -d '{
     "source_key": "pump",
     "tag_name": "water_pump",
-    "label": "Water Pump",
     "data_type": "bool",
     "enabled": true
   }'

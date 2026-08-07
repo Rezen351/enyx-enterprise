@@ -383,7 +383,6 @@ func (s *ModuleService) SaveNodeTags(ctx context.Context, nodeID string, reqs []
 			SourceKey:   r.SourceKey,
 			TagName:     tagName,
 			DisplayName: r.DisplayName,
-			Label:       r.Label,
 			Unit:        r.Unit,
 			DataType:    r.DataType,
 			Enabled:     r.Enabled,
@@ -418,6 +417,26 @@ func (s *ModuleService) SaveNodeTags(ctx context.Context, nodeID string, reqs []
 	}
 	s.invalidateMeta(nodeID)
 	return nil
+}
+
+// SaveNodeTag upserts a single sensor tag for a node.
+func (s *ModuleService) SaveNodeTag(ctx context.Context, nodeID string, req model.NodeTagRequest) error {
+	tagName := req.TagName
+	if tagName == "" {
+		tagName = req.SourceKey
+	}
+	t := &model.NodeTag{
+		ID:          req.ID,
+		NodeID:      nodeID,
+		SourceKey:   req.SourceKey,
+		TagName:     tagName,
+		DisplayName: req.DisplayName,
+		Unit:        req.Unit,
+		DataType:    req.DataType,
+		Enabled:     req.Enabled,
+		Kind:        "sensor",
+	}
+	return s.repo.UpsertNodeTag(ctx, t)
 }
 
 // DeleteNodeTag removes a single tag-mapping row.

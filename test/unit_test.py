@@ -703,9 +703,33 @@ class TestModuleService(ServiceTestCase):
     def test_11_update_node_tags(self):
         if not self.token:
             self.skipTest("No auth token")
-        url = f"{BASE_URL}/v1/nodes/{TEST_NODE_ID}/tags"
+        node_id = TEST_NODE_ID or "node-1"
         headers = {"Authorization": f"Bearer {self.token}"}
-        payload = [{"source_key": "sensor_1", "tag_name": "temperature", "display_name": "Temperature", "label": "C", "unit": "°C", "data_type": "float", "enabled": True}]
+
+        existing_resp = captured_get(f"{BASE_URL}/v1/nodes/{node_id}/tags", headers=headers, timeout=5)
+        existing_tags = existing_resp.json().get("data", {}).get("tags", []) if existing_resp.status_code == 200 else []
+
+        payload = []
+        for t in existing_tags:
+            payload.append({
+                "id": t["id"],
+                "source_key": t["source_key"],
+                "tag_name": t["tag_name"],
+                "display_name": t.get("display_name", ""),
+                "unit": t.get("unit", ""),
+                "data_type": t.get("data_type", "float"),
+                "enabled": t.get("enabled", True),
+            })
+        payload.append({
+            "source_key": "sensor_1",
+            "tag_name": "temperature",
+            "display_name": "Temperature",
+            "unit": "°C",
+            "data_type": "float",
+            "enabled": True,
+        })
+
+        url = f"{BASE_URL}/v1/nodes/{node_id}/tags"
         res = requests.put(url, json=payload, headers=headers, timeout=5)
         self.assertIn(res.status_code, [200, 404], f"Expected 200 or 404 for update tags, got {res.status_code}: {res.text}")
 
@@ -752,7 +776,7 @@ class TestModuleService(ServiceTestCase):
             self.skipTest("No auth token")
         url = f"{BASE_URL}/v1/nodes/{TEST_NODE_ID}/actuators"
         headers = {"Authorization": f"Bearer {self.token}"}
-        payload = {"source_key": "fan", "tag_name": "fan", "display_name": "Fan", "label": "Cooling", "unit": "on/off", "data_type": "boolean", "enabled": True}
+        payload = {"source_key": "fan", "tag_name": "fan", "display_name": "Fan", "unit": "on/off", "data_type": "boolean", "enabled": True}
         res = requests.post(url, json=payload, headers=headers, timeout=5)
         self.assertIn(res.status_code, [200, 201, 404], f"Expected 200/201/404 for create actuator, got {res.status_code}: {res.text}")
         if res.status_code in [200, 201]:

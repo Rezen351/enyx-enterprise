@@ -80,8 +80,8 @@ async function ensureLoginModal(page) {
   if (await modal.count() === 0) {
     const loginBtn = page.locator('button:has-text("Login"), button:has-text("Get Started")').first();
     if (await loginBtn.count() > 0) {
-      await loginBtn.click();
-      await page.waitForTimeout(2000);
+      await loginBtn.click({ force: true });
+      await page.waitForTimeout(3000);
     }
   }
 }
@@ -237,12 +237,12 @@ async function captureScreenshots() {
         } else if (p.action === 'open-register') {
           const loginBtn = page.locator('button:has-text("Login"), button:has-text("Get Started")').first();
           if (await loginBtn.count() > 0) {
-            await loginBtn.click();
+            await loginBtn.click({ force: true });
             await page.waitForTimeout(1000);
           }
           const createAccountBtn = page.locator('button:has-text("Create account")').first();
           if (await createAccountBtn.count() > 0) {
-            await createAccountBtn.click();
+            await createAccountBtn.click({ force: true });
             await page.waitForTimeout(2000);
           }
         }

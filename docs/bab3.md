@@ -22,6 +22,28 @@ Penelitian ini bersifat **terapan dan rekayasa sistem** (*applied engineering re
 5. **Evaluasi** — pengukuran terhadap kriteria performa dan keberhasilan
 6. **Komunikasi** — dokumentasi hasil dalam laporan ini
 
+Siklus DSR bersifat iteratif — output dari setiap fase dapat memicu kembali fase identifikasi masalah jika hasil evaluasi menunjukkan perlunya penyempurnaan. Berikut adalah diagram yang menggambarkan siklus iteratif DSR:
+
+```mermaid
+flowchart LR
+    subgraph "Design Science Research (DSR) Cycle"
+        A["1. Identifikasi Masalah<br/>& Motivasi"] --> B["2. Pendefinisian Tujuan<br/>Solusi"]
+        B --> C["3. Perancangan &<br/>Pengembangan"]
+        C --> D["4. Demonstrasi<br/>(Pengujian Integrasi)"]
+        D --> E["5. Evaluasi<br/>(Kriteria Performa)"]
+        E --> F["6. Komunikasi<br/>(Dokumentasi)"]
+        
+        E -->|"Hasil tidak memuaskan"| A
+    end
+    
+    style A fill:#e3f2fd
+    style B fill:#e8f5e9
+    style C fill:#fff3e0
+    style D fill:#fce4ec
+    style E fill:#f3e5f5
+    style F fill:#e0f7fa
+```
+
 ---
 
 ### 3.1.2 Tahapan Penelitian (Alur Kerja)
@@ -34,6 +56,26 @@ Penelitian ini bersifat **terapan dan rekayasa sistem** (*applied engineering re
 | 4. Implementasi | Pembangunan microservices, firmware, dashboard, model AI | Kode sumber dan layanan berjalan |
 | 5. Pengujian | Unit test, stress test, resilience test, uji integrasi end-to-end | Hasil pengujian (Bab IV) |
 | 6. Evaluasi dan Analisis | Analisis kinerja, akurasi kontrol, reliabilitas | Pembahasan (Bab IV) |
+
+Alur investigasi penelitian ini mengikuti 6 tahap berurutan. Berikut adalah diagram yang menggambarkan alur kerja penelitian dari studi literatur hingga evaluasi akhir:
+
+```mermaid
+flowchart LR
+    subgraph "6 Tahap Alur Penelitian"
+        A["1. Studi Literatur<br/>Kajian teori & teknologi"] --> B["2. Analisis Kebutuhan<br/>Fungsional & Non-fungsional"]
+        B --> C["3. Perancangan Arsitektur<br/>Topologi & protokol"]
+        C --> D["4. Implementasi<br/>Kode & layanan"]
+        D --> E["5. Pengujian<br/>Unit, integrasi, stres"]
+        E --> F["6. Evaluasi & Analisis<br/>Pembahasan hasil"]
+    end
+    
+    style A fill:#e3f2fd
+    style B fill:#e8f5e9
+    style C fill:#fff3e0
+    style D fill:#fce4ec
+    style E fill:#f3e5f5
+    style F fill:#e0f7fa
+```
 
 ---
 
@@ -129,7 +171,53 @@ Secara topologis, sistem terdiri dari tujuh lapisan:
 
 Prinsip **single-responsibility** dan **Database-per-Service** menjamin bahwa setiap layanan dapat diskalakan, diperbarui, atau diganti secara independen tanpa mengganggu layanan lainnya.
 
-Gambar arsitektur sistem dapat direpresentasikan dalam satu diagram berlapis (*layered diagram*) yang menunjukkan tujuh lapisan utama dan tiga jalur komunikasi. Diagram ini sebaiknya dibuat dalam format draw.io atau Word dengan susunan sebagai berikut: **Device Layer** (ESP32) mengirimkan data ke **Edge Layer** (Mosquitto), yang selanjutnya diteruskan ke **Ingestion Layer** (Module Service). Dari Module Service, data memisah menjadi dua aliran: (1) telemetri batch mengalir melalui **Processing Layer** (Analytics/Alert/Control/ML) untuk diproses, dan (2) data real-time diteruskan ke **Presentation Layer** (WS-Gateway + Dashboard). Semua akses REST dari dashboard melewati **Gateway Layer** (Kong). **Observability Layer** (Prometheus + Grafana) menjangkau seluruh lapisan melalui sidecar metrics. Tiga jalur komunikasi yang perlu digambarkan secara eksplisit adalah: *Jalur 1 — REST API* (panah dua arah antara Dashboard dan Kong, serta antara Kong dan setiap service), *Jalur 2 — WebSocket* (panah dari WS-Gateway ke Dashboard), dan *Jalur 3 — Event Bus NATS* (panah publish/subscribe antar service di Processing Layer).
+Berikut adalah diagram berlapis yang menampilkan tujuh lapisan arsitektur sistem:
+
+```mermaid
+graph BT
+    subgraph "7. Observability Layer"
+        OBS[Prometheus + Grafana<br/>Pemantauan kesehatan]
+    end
+    
+    subgraph "6. Presentation Layer"
+        PRES[Dashboard React + WS-Gateway<br/>Antarmuka pengguna real-time]
+    end
+    
+    subgraph "5. Gateway Layer"
+        GW[Kong API Gateway<br/>Satu titik masuk REST & WS]
+    end
+    
+    subgraph "4. Processing Layer"
+        PROC[Analytics, Alert, ML, Control, Stream<br/>Pemrosesan data & AI]
+    end
+    
+    subgraph "3. Ingestion Layer"
+        ING[Module Service<br/>Penerimaan telemetri MQTT]
+    end
+    
+    subgraph "2. Edge Layer"
+        EDGE[Mosquitto MQTT Broker<br/>Penghubung IoT & Backend]
+    end
+    
+    subgraph "1. Device Layer"
+        DEV[ESP32 + Sensor/Aktuator<br/>Pengumpulan data lingkungan]
+    end
+    
+    DEV --> EDGE
+    EDGE --> ING
+    ING --> PROC
+    PROC --> PRES
+    PRES --> GW
+    GW --> OBS
+    
+    style DEV fill:#bbdefb
+    style EDGE fill:#c5e1a5
+    style ING fill:#ffcc80
+    style PROC fill:#ce93d8
+    style GW fill:#ef9a9a
+    style PRES fill:#80deea
+    style OBS fill:#a5d6a7
+```
 
 ### 3.3.2 Pola Komunikasi
 
@@ -143,6 +231,38 @@ Data telemetri real-time mengalir dari NATS → WS-Gateway → Kong (route `/ws`
 
 **Jalur 3 — Inter-Service Event Bus (NATS):**
 Semua komunikasi antar-layanan dilakukan secara asinkron melalui NATS JetStream. Tidak ada panggilan HTTP langsung antar layanan backend (kecuali untuk operasi sinkron tertentu). Pola ini memastikan isolasi temporal antar layanan.
+
+Berikut adalah diagram yang menggambarkan tiga jalur komunikasi utama dalam sistem:
+
+```mermaid
+sequenceDiagram
+    participant C as Dashboard/Client
+    participant K as Kong Gateway
+    participant S as Backend Service
+    participant W as WS-Gateway
+    participant N as NATS JetStream
+    participant M as Mosquitto MQTT
+    participant E as ESP32
+    
+    Note over C,S: Jalur 1 — REST API (Request-Response)
+    C->>K: HTTP Request + JWT
+    K->>K: Validasi JWT
+    K->>S: Teruskan ke Service
+    S-->>K: JSON Response
+    K-->>C: { success, data }
+    
+    Note over C,E: Jalur 2 — WebSocket (Real-Time)
+    E->>M: Telemetri MQTT
+    M->>N: Publish ke NATS
+    N->>W: Subscribe mqtt.>
+    W->>K: WebSocket Frame
+    K->>C: WS /ws route (real-time)
+    
+    Note over N,S: Jalur 3 — Event Bus (NATS)
+    S->>N: Publish telemetry.batch
+    N->>S: Deliver ke subscriber
+    S->>S: Proses async (tidak blocking)
+```
 
 ### 3.3.3 Rancangan Database (Database-per-Service)
 
@@ -164,6 +284,66 @@ Setiap layanan memiliki database terisolasi sesuai kebutuhan datanya. Prinsip in
 | MinIO (shared) | 2 bucket: stream, mlbucket | Snapshot/recording (Stream) + hasil anotasi/model (ML) |
 
 > **Catatan:** Konsolidasi Redis dan MinIO menjadi instance bersama tidak melanggar prinsip Database-per-Service, karena keduanya bersifat cache/ephemeral — bukan sumber kebenaran domain.
+
+Berikut adalah diagram yang menggambarkan isolasi database per layanan:
+
+```mermaid
+graph LR
+    subgraph "Backend Services"
+        AUTH[Auth Service]
+        MOD[Module Service]
+        AN[Analytics Service]
+        CTRL[Control Service]
+        ALT[Alert Service]
+        NOTIF[Notification Service]
+        ML[ML Service]
+        STR[Stream Service]
+    end
+    
+    subgraph "Databases (Isolated per Service)"
+        DB1[(auth_db<br/>MariaDB)]
+        DB2[(module_meta<br/>MariaDB)]
+        DB3[(analytics_ts<br/>TimescaleDB)]
+        DB4[(control_db<br/>MariaDB)]
+        DB5[(alert_db<br/>MariaDB)]
+        DB6[(notification_db<br/>MariaDB)]
+        DB7[(ml_db<br/>MariaDB)]
+        DB8[(stream_db<br/>MariaDB)]
+        TS[(module_ts<br/>TimescaleDB)]
+    end
+    
+    subgraph "Shared Storage"
+        REDIS[(Redis<br/>Cache/Queue)]
+        MINIO[(MinIO<br/>stream + mlbucket)]
+    end
+    
+    AUTH --> DB1
+    MOD --> DB2
+    MOD --> TS
+    AN --> DB3
+    CTRL --> DB4
+    ALT --> DB5
+    NOTIF --> DB6
+    ML --> DB7
+    STR --> DB8
+    
+    MOD --> REDIS
+    ALT --> REDIS
+    STR --> MINIO
+    ML --> MINIO
+    
+    style DB1 fill:#bbdefb
+    style DB2 fill:#bbdefb
+    style DB3 fill:#c5e1a5
+    style DB4 fill:#bbdefb
+    style DB5 fill:#bbdefb
+    style DB6 fill:#bbdefb
+    style DB7 fill:#bbdefb
+    style DB8 fill:#bbdefb
+    style TS fill:#c5e1a5
+    style REDIS fill:#ffe0b2
+    style MINIO fill:#f8bbd0
+```
 
 ### 3.3.4 Rancangan Kontrak API dan Event
 
@@ -211,6 +391,49 @@ Desain modular perangkat keras memungkinkan penambahan kategori sensor baru tanp
 **Aktuator yang dikendalikan:**
 - Pompa misting (load1/pump) — dikontrol via sinyal on/off dengan jadwal interval
 - Valve nutrisi (load2/valve) — dikontrol via perintah langsung on/off dari TD3 controller
+
+Berikut adalah diagram yang menggambarkan topologi jaringan sensor aeroponik:
+
+```mermaid
+graph LR
+    subgraph "Node Sensor Aeroponik"
+        ESP[ESP32]
+        SENSOR[Sensor: SHT31, EC, pH,<br/>Suhu Nutrisi]
+        ACTUATOR[Aktuator: Pompa, Valve]
+    end
+    
+    subgraph "Edge"
+        MQTT[Mosquitto MQTT Broker]
+    end
+    
+    subgraph "Backend"
+        MOD[Module Service]
+        CTRL[Control Service]
+        WS[WS-Gateway]
+        DASH[Dashboard React]
+    end
+    
+    SENSOR -->|"Baca data"| ESP
+    ESP -->|"MQTT Publish<br/>smartfarm/node/telemetry"| MQTT
+    MQTT -->|"Subscribe"| MOD
+    MQTT -->|"Subscribe"| CTRL
+    
+    CTRL -->|"MQTT Publish<br/>smartfarm/actuator/node"| MQTT
+    MQTT -->|"Deliver"| ESP
+    ESP -->|"Kontrol ON/OFF"| ACTUATOR
+    
+    MOD -->|"NATS telemetry.ingest"| WS
+    WS -->|"WebSocket"| DASH
+    
+    style ESP fill:#bbdefb
+    style SENSOR fill:#c5e1a5
+    style ACTUATOR fill:#ffcc80
+    style MQTT fill:#fff9c4
+    style MOD fill:#ce93d8
+    style CTRL fill:#ce93d8
+    style WS fill:#80deea
+    style DASH fill:#a5d6a7
+```
 
 ### 3.4.2 Firmware ESP32
 
@@ -421,6 +644,62 @@ Seluruh komunikasi antara aeroponic node dengan backend sistem menggunakan proto
 **Justifikasi Arsitektur**
 
 MQTT dipilih karena protokol ringan yang cocok untuk constrained device seperti ESP32, mendukung publish/subscribe pattern yang memungkinkan komunikasi asynchronous tanpa blocking, dan memiliki QoS levels untuk memastikan pesan penting sampai. Penggunaan topik terstruktur dengan prefix dan node_id memungkinkan banyak node berbagi satu broker tanpa konflik, sementara retained messages dan LWT memastikan status node selalu tersedia untuk subscriber baru.
+
+Berikut adalah diagram yang menggambarkan struktur topik MQTT dan aliran data antara ESP32, Mosquitto, dan backend:
+
+```mermaid
+graph TB
+    subgraph "ESP32 Node"
+        ESP[ESP32<br/>node-01]
+    end
+    
+    subgraph "MQTT Broker (Eclipse Mosquitto)"
+        DISC["{prefix}/discovery<br/>(Retained)"]
+        STATUS["{prefix}/status/{node_id}<br/>(LWT + Status)"]
+        TELE["{prefix}/{node_id}/telemetry<br/>(Periodik 5 detik)"]
+        CONFIRM["{prefix}/{node_id}/confirm<br/>(Konfirmasi)"]
+        DIAG["{prefix}/{node_id}/diagnostics<br/>(Heartbeat)"]
+        ALERT["{prefix}/{node_id}/alert<br/>(Emergency)"]
+        ACTUATOR["{prefix}/actuator/{node_id}<br/>(Perintah)"]
+    end
+    
+    subgraph "Backend Services"
+        MOD[Module Service]
+        CTRL[Control Service]
+        ALERT_SVC[Alert Service]
+    end
+    
+    %% ESP32 publishes
+    ESP -->|"Publish"| DISC
+    ESP -->|"Publish LWT"| STATUS
+    ESP -->|"Publish (periodik)"| TELE
+    ESP -->|"Publish"| CONFIRM
+    ESP -->|"Publish"| DIAG
+    ESP -->|"Publish"| ALERT
+    
+    %% Backend publishes to ESP32
+    CTRL -->|"Publish perintah"| ACTUATOR
+    ACTUATOR -->|"Deliver"| ESP
+    
+    %% Backend subscribes
+    MOD -->|"Subscribe"| TELE
+    MOD -->|"Subscribe"| DISC
+    MOD -->|"Subscribe"| STATUS
+    CTRL -->|"Subscribe"| CONFIRM
+    ALERT_SVC -->|"Subscribe"| ALERT
+    
+    style ESP fill:#bbdefb
+    style DISC fill:#fff9c4
+    style STATUS fill:#fff9c4
+    style TELE fill:#c5e1a5
+    style CONFIRM fill:#ffe0b2
+    style DIAG fill:#fff9c4
+    style ALERT fill:#ef9a9a
+    style ACTUATOR fill:#ef9a9a
+    style MOD fill:#ce93d8
+    style CTRL fill:#ce93d8
+    style ALERT_SVC fill:#ce93d8
+```
 
 **Standar Format:**
 
@@ -942,6 +1221,21 @@ Setelah pairing dan tag mapping selesai, alur data berjalan secara otomatis:
 
 2. **Control Aktuator → Penjadwalan**: Control Service secara proaktif memeriksa status pairing node dengan memanggil `GET /v1/nodes/{node_id}` ke Module Service. Hanya node dengan `paired=true` dan `module_id` terisi yang diizinkan menerima perintah. Control Service juga mengambil daftar actuator tags dari Module Service untuk mengetahui nama output apa saja yang dapat dikontrol. Setelah itu, *scheduler engine* di Control Service mengevaluasi jadwal yang aktif (interval, durasi, time-of-day, threshold, ramp, window-pulse) dan mempublikasikan perintah `set_output` ke topik `{prefix}/actuator/{node_id}`. ESP32 menerima, menjalankan perintah pada hardware, dan mengirim konfirmasi ke `{prefix}/{node_id}/confirm` yang dikorelasi kembali oleh Control Service menggunakan `req_id`.
 
+Berikut adalah diagram alur yang menggambarkan empat fase onboarding perangkat IoT:
+
+```mermaid
+flowchart LR
+    A["Fase 1 — Discovery<br/>(Otomatis)<br/>ESP32 publish discovery<br/>→ Module Service upsert"] --> B["Fase 2 — Pairing<br/>(Manual via Dashboard)<br/>Admin pasangkan ke module_id"]
+    
+    B --> C["Fase 3 — Konfigurasi Tag Mapping<br/>(Sensor & Aktuator Tags)<br/>PUT /tags + POST /actuators"]
+    
+    C --> D["Fase 4 — Telemetri mengalir<br/>(Otomatis)<br/>→ Analytics & Control"]
+    
+    style A fill:#e3f2fd
+    style B fill:#fff3e0
+    style C fill:#fce4ec
+    style D fill:#e8f5e9
+```
 
 ### 3.5.3 Analytics Service
 
@@ -955,6 +1249,54 @@ Setelah pairing dan tag mapping selesai, alur data berjalan secara otomatis:
 **Detail Arsitektur dan Alur Data:**
 
 Analytics Service berperan sebagai **pusat analitik historis** sistem. Berbeda dengan Module Service yang menangani data mentah secara *real-time*, Analytics Service fokus pada agregasi berinterval yang dioptimalkan untuk query performa tinggi.
+
+Berikut adalah diagram yang menggambarkan alur data dari telemetri hingga agregat analytics:
+
+```mermaid
+graph LR
+    subgraph "Data Source"
+        ESP[ESP32<br/>Telemetri Sensor]
+    end
+    
+    subgraph "Ingestion"
+        MQTT[Mosquitto]
+        MOD[Module Service]
+    end
+    
+    subgraph "Event Bus"
+        NATS[NATS JetStream]
+        BATCH[telemetry.batch<br/>Agregasi 1-menit]
+    end
+    
+    subgraph "Processing"
+        AN[Analytics Service]
+        TSDB[(TimescaleDB<br/>analytics_ts)]
+    end
+    
+    subgraph "Output"
+        API[REST API via Kong]
+        DASH[Dashboard]
+    end
+    
+    ESP -->|"MQTT Publish"| MQTT
+    MQTT -->|"Subscribe"| MOD
+    MOD -->|"Publish batch"| NATS
+    NATS -->|"Deliver"| BATCH
+    BATCH -->|"Consume"| AN
+    AN -->|"Upsert agregat"| TSDB
+    TSDB -->|"Query"| API
+    API -->|"JSON Response"| DASH
+    
+    style ESP fill:#bbdefb
+    style MQTT fill:#fff9c4
+    style MOD fill:#ce93d8
+    style NATS fill:#ffe0b2
+    style BATCH fill:#ffe0b2
+    style AN fill:#c5e1a5
+    style TSDB fill:#c5e1a5
+    style API fill:#ef9a9a
+    style DASH fill:#a5d6a7
+```
 
 **Input Contract — NATS JetStream `telemetry.batch`:**
 
@@ -1041,6 +1383,20 @@ Setiap perintah kontrol memiliki siklus hidup yang dilacak penuh:
 | 3. ACK | `acked` | ESP32 mengeksekusi perintah dan membalas ke `{prefix}/{node_id}/confirm`. Control Service menerima, mencari command berdasarkan `req_id`, dan memperbarui status menjadi `acked`. |
 | 4. Timeout | `timeout` | Jika tidak ada ACK dalam batas waktu, status berubah menjadi `timeout`. |
 | 5. Failed | `failed` | Jika terjadi error saat publish MQTT, status menjadi `failed`. |
+
+Berikut adalah diagram yang menggambarkan siklus hidup lima tahap perintah kontrol:
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending: Create<br/>Simpan record ke MariaDB
+    pending --> sent: Publish<br/>Kirim MQTT ke actuator topic
+    sent --> acked: ACK<br/>ESP32 eksekusi & balas confirm
+    sent --> timeout: Timeout<br/>Tidak ada ACK dalam batas waktu
+    sent --> failed: Failed<br/>Error saat publish MQTT
+    acked --> [*]
+    timeout --> [*]
+    failed --> [*]
+```
 
 **Input Contract — REST API (via Kong):**
 
@@ -1136,6 +1492,30 @@ Format pesan yang dievaluasi:
    - Jika alert sudah aktif, perbarui nilai dan timestamp.
 5. Pada nilai kembali ke rentang normal:
    - Jika ada alert aktif, ubah status menjadi `resolved` dan publish `alert.resolved`.
+
+Berikut adalah diagram yang menggambarkan proses evaluasi threshold alert:
+
+```mermaid
+flowchart TD
+    START([Telemetry Ingest<br/>dari NATS]) --> LOOKUP[Cari threshold untuk<br/>(node_id, metric)]
+    
+    LOOKUP --> FOUND{Threshold<br/>ditemukan?}
+    FOUND -- Tidak --> IGNORE([Abaikan pesan])
+    FOUND -- Ya --> EVAL{Evaluasi:<br/>value < min atau value > max?}
+    
+    EVAL -- Tidak --> NORMAL([Nilai normal — tidak ada aksi])
+    EVAL -- Ya --> VIOLATE([Pelanggaran threshold])
+    
+    VIOLATE --> CHECK_ACTIVE{Alert aktif<br/>sudah ada?}
+    CHECK_ACTIVE -- Tidak --> CREATE[Buah alert baru<br/>status: active]
+    CREATE --> PUB_TRIGGER[Publish alert.triggered]
+    CHECK_ACTIVE -- Ya --> UPDATE[Perbarui nilai & timestamp]
+    
+    UPDATE --> PUB_TRIGGER
+    PUB_TRIGGER --> END1([Selesai])
+    NORMAL --> END2([Selesai])
+    IGNORE --> END3([Selesai])
+```
 
 **Output Contracts — NATS:**
 

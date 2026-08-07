@@ -40,8 +40,12 @@ export const moduleApi = {
   listDiscovered: () => unwrap(request('/nodes/discovered', { auth: true })),
   getNode: (nodeId) => unwrap(request(`/nodes/${nodeId}`, { auth: true })),
   getNodeTags: (nodeId) => unwrap(request(`/nodes/${nodeId}/tags`, { auth: true })),
+  saveNodeTag: (nodeId, tag) =>
+    unwrap(request(`/nodes/${nodeId}/tags`, { method: 'POST', auth: true, body: tag })),
   saveNodeTags: (nodeId, tags) =>
     unwrap(request(`/nodes/${nodeId}/tags`, { method: 'PUT', auth: true, body: tags })),
+  deleteNodeTag: (nodeId, id) =>
+    unwrap(request(`/nodes/${nodeId}/tags/${id}`, { method: 'DELETE', auth: true })),
   // Actuator tags — separate from sensor telemetry tags. The user maps a
   // firmware output (chosen from a node's discovered outputs) to a friendly
   // control tag; these drive the Control page.

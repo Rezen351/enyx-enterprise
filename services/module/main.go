@@ -227,6 +227,8 @@ func main() {
 		r.With(authMw, writeMw).Delete("/{node_id}", h.DeleteNode)
 		r.With(authMw).Get("/{node_id}/tags", h.GetNodeTags)
 		r.With(authMw, writeMw).Put("/{node_id}/tags", h.SaveNodeTags)
+		r.With(authMw, writeMw).Post("/{node_id}/tags", h.SaveNodeTag)
+		r.With(authMw, writeMw).Delete("/{node_id}/tags/{id}", h.DeleteNodeTag)
 		r.With(authMw).Get("/{node_id}/actuators", h.GetActuatorTags)
 		r.With(authMw, writeMw).Post("/{node_id}/actuators", h.CreateActuatorTag)
 		r.With(authMw, writeMw).Delete("/{node_id}/actuators/{id}", h.DeleteActuatorTag)

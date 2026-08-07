@@ -84,7 +84,7 @@ function NodeConfigPage({ node, onBack }) {
   const listRef = useRef([]);
 
   const [tags, setTags] = useState([]);
-  const [draft, setDraft] = useState({ source_key: '', tag_name: '', display_name: '', label: '', unit: '', data_type: 'float' });
+  const [draft, setDraft] = useState({ source_key: '', tag_name: '', display_name: '', unit: '', data_type: 'float' });
   const [isSaving, setIsSaving] = useState(false);
   const [tagError, setTagError] = useState('');
   const [detecting, setDetecting] = useState(false);
@@ -196,7 +196,7 @@ function NodeConfigPage({ node, onBack }) {
       setTags(prev => {
         const existing = new Set(prev.map(t => t.source_key));
         const additions = Object.keys(found).filter(k => !existing.has(k)).map(k => ({
-          source_key: k, tag_name: k, display_name: k, label: '', unit: '', data_type: inferType(found[k]), enabled: true,
+          source_key: k, tag_name: k, display_name: k, unit: '', data_type: inferType(found[k]), enabled: true,
         }));
         return [...prev, ...additions];
       });
@@ -211,37 +211,53 @@ function NodeConfigPage({ node, onBack }) {
     ws.onerror = () => { setTagError('Live stream error during detection.'); setDetecting(false); clearTimeout(timer); };
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!draft.source_key.trim()) { setTagError('Source key (MQTT telemetry key) is required.'); return; }
-    setTags(prev => [...prev, {
-      source_key: draft.source_key.trim(), tag_name: draft.tag_name.trim() || draft.source_key.trim(),
-      display_name: draft.display_name.trim(), label: draft.label.trim(), unit: draft.unit.trim(), data_type: draft.data_type, enabled: true,
-    }]);
-    setDraft({ source_key: '', tag_name: '', display_name: '', label: '', unit: '', data_type: 'float' });
     setTagError('');
+    try {
+      const tag = {
+        source_key: draft.source_key.trim(), tag_name: draft.tag_name.trim() || draft.source_key.trim(),
+        display_name: draft.display_name.trim(), unit: draft.unit.trim(), data_type: draft.data_type, enabled: true,
+      };
+      await moduleApi.saveNodeTag(nodeId, tag);
+      const data = await moduleApi.getNodeTags(nodeId);
+      setTags(Array.isArray(data?.tags) ? data.tags : []);
+    } catch (err) {
+      setTagError(err.message || 'Failed to add tag mapping');
+    } finally {
+      setDraft({ source_key: '', tag_name: '', display_name: '', unit: '', data_type: 'float' });
+    }
   };
 
   const handleUpdate = (idx, field, value) => {
     setTags(prev => prev.map((t, i) => i === idx ? { ...t, [field]: value } : t));
   };
 
-  const handleRemove = (idx) => {
-    setTags(prev => prev.filter((_, i) => i !== idx));
+  const handleRemove = async (idx) => {
+    const t = tags[idx];
+    if (!t || !t.id) {
+      setTags(prev => prev.filter((_, i) => i !== idx));
+      return;
+    }
+    try {
+      await moduleApi.deleteNodeTag(nodeId, t.id);
+      const data = await moduleApi.getNodeTags(nodeId);
+      setTags(Array.isArray(data?.tags) ? data.tags : []);
+    } catch (err) {
+      setTagError(err.message || 'Failed to delete tag mapping');
+    }
   };
 
   const handleSave = async () => {
-    const sensorPayload = tags.map(t => ({
-      id: t.id, source_key: t.source_key, tag_name: t.tag_name, display_name: t.display_name,
-      label: t.label, unit: t.unit, data_type: t.data_type, enabled: t.enabled,
-    }));
-    if (sensorPayload.length === 0) {
-      const confirmed = window.confirm('This will remove ALL sensor tag mappings for this node. This cannot be undone. Continue?');
-      if (!confirmed) return;
-    }
     setIsSaving(true);
     setTagError('');
     try {
-      await moduleApi.saveNodeTags(nodeId, sensorPayload);
+      for (const t of tags) {
+        await moduleApi.saveNodeTag(nodeId, {
+          id: t.id, source_key: t.source_key, tag_name: t.tag_name, display_name: t.display_name,
+          unit: t.unit, data_type: t.data_type, enabled: t.enabled,
+        });
+      }
       const data = await moduleApi.getNodeTags(nodeId);
       setTags(Array.isArray(data?.tags) ? data.tags : []);
     } catch (err) {
@@ -295,7 +311,7 @@ function NodeConfigPage({ node, onBack }) {
   };
 
   // Persist every actuator mapping (upsert by id). Lets the user re-edit the
-  // type / tag / label / unit produced by "Detect Outputs".
+  // type / tag / display_name / unit produced by "Detect Outputs".
   const handleSaveActuators = async () => {
     setActBusy(true);
     setTagError('');
@@ -444,12 +460,11 @@ function NodeConfigPage({ node, onBack }) {
           )}
           <div className="p-2.5 sm:p-3 border border-emerald-500/15 bg-emerald-500/5 space-y-2 sm:space-y-3 mb-2 sm:mb-3">
             <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] font-black text-emerald-400 uppercase tracking-widest">
-              <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Attach new tag
+              <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Attach Telemetry
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
               <input value={draft.source_key} onChange={e => setDraft({ ...draft, source_key: e.target.value })} placeholder="MQTT key" className="bg-slate-900/50 border border-slate-700 px-2 py-1.5 text-[10px] sm:text-xs text-white focus:outline-none focus:border-emerald-500" />
               <input value={draft.tag_name} onChange={e => setDraft({ ...draft, tag_name: e.target.value })} placeholder="DB tag" className="bg-slate-900/50 border border-slate-700 px-2 py-1.5 text-[10px] sm:text-xs text-white focus:outline-none focus:border-emerald-500" />
-              <input value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })} placeholder="Label" className="bg-slate-900/50 border border-slate-700 px-2 py-1.5 text-[10px] sm:text-xs text-white focus:outline-none focus:border-emerald-500" />
               <input value={draft.unit} onChange={e => setDraft({ ...draft, unit: e.target.value })} placeholder="Unit" className="bg-slate-900/50 border border-slate-700 px-2 py-1.5 text-[10px] sm:text-xs text-white focus:outline-none focus:border-emerald-500" />
               <select value={draft.data_type} onChange={e => setDraft({ ...draft, data_type: e.target.value })} className="bg-slate-900/50 border border-slate-700 px-2 py-1.5 text-[10px] sm:text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer">
                 <option value="float">float</option><option value="int">int</option><option value="bool">bool</option>
@@ -472,7 +487,7 @@ function NodeConfigPage({ node, onBack }) {
                   <tr className="border-b border-white/5">
                     <th className="py-2.5 px-1.5 sm:py-3 sm:px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">MQTT Key</th>
                     <th className="py-2.5 px-1.5 sm:py-3 sm:px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">DB Tag</th>
-                    <th className="py-2.5 px-1.5 sm:py-3 sm:px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">Label</th>
+                    <th className="py-2.5 px-1.5 sm:py-3 sm:px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">Display Name</th>
                     <th className="py-2.5 px-1.5 sm:py-3 sm:px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">Unit</th>
                     <th className="py-2.5 px-1.5 sm:py-3 sm:px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">Type</th>
                     <th className="py-2.5 px-1.5 sm:py-3 sm:px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">On</th>
@@ -484,7 +499,7 @@ function NodeConfigPage({ node, onBack }) {
                     <tr key={t.id || idx} className="border-b border-white/5 last:border-0">
                       <td className="py-1.5 px-1.5 sm:py-2 sm:px-2"><input value={t.source_key} onChange={e => handleUpdate(idx, 'source_key', e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 px-1.5 py-1 text-[10px] sm:text-xs text-emerald-400 font-mono focus:outline-none focus:border-emerald-500" /></td>
                       <td className="py-1.5 px-1.5 sm:py-2 sm:px-2"><input value={t.tag_name} onChange={e => handleUpdate(idx, 'tag_name', e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 px-1.5 py-1 text-[10px] sm:text-xs text-white focus:outline-none focus:border-emerald-500" /></td>
-                      <td className="py-1.5 px-1.5 sm:py-2 sm:px-2"><input value={t.label || ''} onChange={e => handleUpdate(idx, 'label', e.target.value)} placeholder={t.tag_name || t.source_key} className="w-28 sm:w-32 bg-slate-900/50 border border-slate-700 px-1.5 py-1 text-[10px] sm:text-xs text-white focus:outline-none focus:border-emerald-500" /></td>
+                      <td className="py-1.5 px-1.5 sm:py-2 sm:px-2"><input value={t.display_name || ''} onChange={e => handleUpdate(idx, 'display_name', e.target.value)} placeholder="(optional)" className="w-full bg-slate-900/50 border border-slate-700 px-1.5 py-1 text-[10px] sm:text-xs text-white focus:outline-none focus:border-emerald-500" /></td>
                       <td className="py-1.5 px-1.5 sm:py-2 sm:px-2"><input value={t.unit} onChange={e => handleUpdate(idx, 'unit', e.target.value)} className="w-16 sm:w-20 bg-slate-900/50 border border-slate-700 px-1.5 py-1 text-[10px] sm:text-xs text-white focus:outline-none focus:border-emerald-500" /></td>
                       <td className="py-1.5 px-1.5 sm:py-2 sm:px-2">
                         <select value={t.data_type} onChange={e => handleUpdate(idx, 'data_type', e.target.value)} className="bg-slate-900/50 border border-slate-700 px-1.5 py-1 text-[10px] sm:text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer">
@@ -539,7 +554,7 @@ function NodeConfigPage({ node, onBack }) {
               <input
                 value={actDraft.display_name}
                 onChange={e => setActDraft({ ...actDraft, display_name: e.target.value })}
-                placeholder="Label"
+                placeholder="Display Name"
                 className="bg-slate-900/50 border border-slate-700 px-2 py-1.5 text-[10px] sm:text-xs text-white focus:outline-none focus:border-emerald-500"
               />
               <input
@@ -580,7 +595,7 @@ function NodeConfigPage({ node, onBack }) {
                   <tr className="border-b border-white/5">
                     <th className="py-2.5 px-1.5 sm:py-3 sm:px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">Output Key</th>
                     <th className="py-2.5 px-1.5 sm:py-3 sm:px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">Tag</th>
-                    <th className="py-2.5 px-1.5 sm:py-3 sm:px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">Label</th>
+                    <th className="py-2.5 px-1.5 sm:py-3 sm:px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">Display Name</th>
                     <th className="py-2.5 px-1.5 sm:py-3 sm:px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">Unit</th>
                     <th className="py-2.5 px-1.5 sm:py-3 sm:px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">Type</th>
                     <th className="py-2.5 px-1.5 sm:py-3 sm:px-2 align-middle leading-normal"></th>

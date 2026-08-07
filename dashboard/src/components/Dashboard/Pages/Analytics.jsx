@@ -289,8 +289,6 @@ function Analytics() {
       if (t) {
         const displayStr = (t.display_name || '').trim();
         if (displayStr) return displayStr;
-        const labelStr = (t.label || '').trim();
-        if (labelStr) return labelStr;
         const tagNameStr = (t.tag_name || '').trim();
         if (tagNameStr) return tagNameStr;
       }
@@ -301,8 +299,6 @@ function Analytics() {
         if (actuatorTag) {
           const displayStr = (actuatorTag.display_name || '').trim();
           if (displayStr) return displayStr;
-          const labelStr = (actuatorTag.label || '').trim();
-          if (labelStr) return labelStr;
           const tagNameStr = (actuatorTag.tag_name || '').trim();
           if (tagNameStr) return tagNameStr;
         }
@@ -490,7 +486,7 @@ function Analytics() {
         callbacks: {
           label: (c) => {
             const m = c.dataset.label;
-            const tag = tags.find((t) => t.source_key === m || t.tag_name === m || t.label === m || t.display_name === m);
+            const tag = tags.find((t) => t.source_key === m || t.tag_name === m || t.display_name === m);
             const unit = tag?.unit ? ` ${tag.unit}` : '';
             return `${displayName(m)}: ${fmt(c.parsed.y)}${unit}`;
           },
@@ -675,7 +671,7 @@ function Analytics() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {analogMetrics.map((m) => {
               const s = statsOf(seriesByMetric[m]);
-              const tag = tags.find((t) => t.source_key === m || t.tag_name === m || t.label === m || t.display_name === m);
+              const tag = tags.find((t) => t.source_key === m || t.tag_name === m || t.display_name === m);
               const unit = tag?.unit ? ` ${tag.unit}` : '';
               return (
                 <Card key={m} title={displayName(m)} icon={Activity}>

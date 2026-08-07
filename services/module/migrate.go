@@ -50,7 +50,6 @@ type gormNodeTag struct {
 	Kind        string    `gorm:"column:kind;type:varchar(16);not null;default:sensor;uniqueIndex:uq_node_source_kind"`
 	TagName     string    `gorm:"column:tag_name;type:varchar(128);not null"`
 	DisplayName string    `gorm:"column:display_name;type:varchar(128)"`
-	Label       string    `gorm:"column:label;type:varchar(128)"`
 	Unit        string    `gorm:"column:unit;type:varchar(32)"`
 	DataType    string    `gorm:"column:data_type;type:varchar(16);default:float"`
 	Enabled     bool      `gorm:"column:enabled;not null;default:true"`

@@ -91,7 +91,6 @@ type NodeTag struct {
 	SourceKey   string    `json:"source_key"` // sensor: telemetry key; actuator: firmware output name
 	TagName     string    `json:"tag_name"`   // friendly DB tag
 	DisplayName string    `json:"display_name"`
-	Label       string    `json:"label"` // clean display label for dashboards (overrides tag_name)
 	Unit        string    `json:"unit"`
 	DataType    string    `json:"data_type"` // float | int | bool
 	Enabled     bool      `json:"enabled"`
@@ -106,7 +105,6 @@ type NodeTagRequest struct {
 	SourceKey   string `json:"source_key"`
 	TagName     string `json:"tag_name"`
 	DisplayName string `json:"display_name"`
-	Label       string `json:"label"`
 	Unit        string `json:"unit"`
 	DataType    string `json:"data_type"`
 	Enabled     bool   `json:"enabled"`

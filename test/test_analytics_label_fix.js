@@ -11,8 +11,6 @@ function simulateDisplayName(metric, tags) {
   if (t) {
     const displayStr = (t.display_name || '').trim();
     if (displayStr) return displayStr;
-    const labelStr = (t.label || '').trim();
-    if (labelStr) return labelStr;
     const tagNameStr = (t.tag_name || '').trim();
     if (tagNameStr) return tagNameStr;
   }
@@ -23,8 +21,6 @@ function simulateDisplayName(metric, tags) {
     if (actuatorTag) {
       const displayStr = (actuatorTag.display_name || '').trim();
       if (displayStr) return displayStr;
-      const labelStr = (actuatorTag.label || '').trim();
-      if (labelStr) return labelStr;
       const tagNameStr = (actuatorTag.tag_name || '').trim();
       if (tagNameStr) return tagNameStr;
     }
@@ -33,17 +29,17 @@ function simulateDisplayName(metric, tags) {
 }
 
 const tags = [
-  { kind: 'sensor', tag_name: 'temp', source_key: 'sensor.temp', display_name: '', label: '' },
-  { kind: 'actuator', tag_name: 'alarm', source_key: 'buzzer', display_name: 'Alarm', label: '' },
-  { kind: 'sensor', tag_name: 'sensor.temp', source_key: 'sensor.temp', display_name: '', label: 'Temperature' },
-  { kind: 'actuator', tag_name: 'pump', source_key: 'pump', display_name: 'Water Pump', label: '' },
+  { kind: 'sensor', tag_name: 'temp', source_key: 'sensor.temp', display_name: '' },
+  { kind: 'actuator', tag_name: 'alarm', source_key: 'buzzer', display_name: 'Alarm' },
+  { kind: 'sensor', tag_name: 'sensor.temp', source_key: 'sensor.temp', display_name: 'Temperature' },
+  { kind: 'actuator', tag_name: 'pump', source_key: 'pump', display_name: 'Water Pump' },
 ];
 
 const cases = [
-  { metric: 'temp', expected: 'temp', desc: 'sensor tag_name exact match without display_name/label -> tag_name' },
+  { metric: 'temp', expected: 'temp', desc: 'sensor tag_name exact match without display_name -> tag_name' },
   { metric: 'telemetry.outputs.buzzer', expected: 'Alarm', desc: 'actuator fallback via prefix with display_name -> display_name' },
   { metric: 'telemetry.outputs.pump', expected: 'Water Pump', desc: 'actuator fallback via prefix with display_name -> display_name' },
-  { metric: 'sensor.temp', expected: 'Temperature', desc: 'sensor tag fallback via tagByKey with label -> label' },
+  { metric: 'sensor.temp', expected: 'Temperature', desc: 'sensor tag fallback via tagByKey with display_name -> display_name' },
   { metric: 'unknown.metric', expected: 'unknown.metric', desc: 'unknown metric -> raw key' },
 ];
 

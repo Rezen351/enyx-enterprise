@@ -217,7 +217,7 @@ Tidak ada fase pengembangan mandiri yang tertunda untuk spraying automation. Sem
 | Status | Item | Deskripsi |
 |---|---|---|
 | `[x]` | MQTT subscriber telemetry | Subscribe `smartfarm/{node}/telemetry` → `IngestTelemetry` |
-| `[x]` | Tag mapping (modular) | Tabel `node_tags` di MariaDB: source_key (dot-path) → tag_name DB (+ `label` untuk nama tampilan bersih di dashboard, `display_name`, `unit`, `data_type`, `enabled`), bisa diubah di UI tanpa kode |
+| `[x]` | Tag mapping (modular) | Tabel `node_tags` di MariaDB: source_key (dot-path) → tag_name DB (+ `display_name`, `unit`, `data_type`, `enabled`), bisa diubah di UI tanpa kode |
 | `[x]` | Simpan ke TimescaleDB | Insert ke hypertable `telemetry` (node_id, module_id, metric, value, raw) |
 | `[x]` | Cache ke Redis | Nilai terbaru per node (`node:latest:{id}`, TTL) di `redis-shared` (DB0) |
 | `[x]` | Publish NATS `telemetry.ingest` | Per reading (ke WS-Gateway/alert/analytics) |

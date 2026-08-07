@@ -52,7 +52,7 @@ function NodeDetailPanel({ node, onClose }) {
   const listRef = useRef([]);
 
   const [tags, setTags] = useState([]);
-  const [draft, setDraft] = useState({ source_key: '', tag_name: '', display_name: '', label: '', unit: '', data_type: 'float' });
+  const [draft, setDraft] = useState({ source_key: '', tag_name: '', display_name: '', unit: '', data_type: 'float' });
   const [isSaving, setIsSaving] = useState(false);
   const [tagError, setTagError] = useState('');
   const [detecting, setDetecting] = useState(false);
@@ -70,27 +70,32 @@ function NodeDetailPanel({ node, onClose }) {
     let cancelled = false;
     const wsUrl = getWsUrl(`/ws/nodes/${encodeURIComponent(nodeId)}/live?token=${encodeURIComponent(getToken() || '')}`);
     let ws;
+    let openFailed = false;
     try { ws = new WebSocket(wsUrl); }
     catch {
+      openFailed = true;
+    }
+
+    if (!openFailed) {
+      wsRef.current = ws;
+
+      ws.onopen = () => { if (!cancelled) setConnState('open'); };
+      ws.onerror = () => { if (!cancelled) { setConnState('error'); setWsError('Connection lost. The device may be offline or the WebSocket may be unavailable.'); } };
+      ws.onclose = () => { if (!cancelled) setConnState('closed'); };
+      ws.onmessage = (event) => {
+        if (cancelled) return;
+        try {
+          const data = JSON.parse(event.data);
+          const payload = typeof data.payload === 'string' ? safeJson(data.payload) : data.payload;
+          const entry = { id: `${data.ts}-${Math.random().toString(36).slice(2, 7)}`, topic: data.topic, payload, ts: data.ts };
+          listRef.current = [...listRef.current, entry].slice(-200);
+          setMessages(listRef.current);
+        } catch (err) { console.warn('monitor: bad frame', err); }
+      };
+    } else {
       setConnState('error');
       setWsError('Failed to open live monitor connection.');
-      return;
     }
-    wsRef.current = ws;
-
-    ws.onopen = () => { if (!cancelled) setConnState('open'); };
-    ws.onerror = () => { if (!cancelled) { setConnState('error'); setWsError('Connection lost. The device may be offline or the WebSocket may be unavailable.'); } };
-    ws.onclose = () => { if (!cancelled) setConnState('closed'); };
-    ws.onmessage = (event) => {
-      if (cancelled) return;
-      try {
-        const data = JSON.parse(event.data);
-        const payload = typeof data.payload === 'string' ? safeJson(data.payload) : data.payload;
-        const entry = { id: `${data.ts}-${Math.random().toString(36).slice(2, 7)}`, topic: data.topic, payload, ts: data.ts };
-        listRef.current = [...listRef.current, entry].slice(-200);
-        setMessages(listRef.current);
-      } catch (err) { console.warn('monitor: bad frame', err); }
-    };
 
     return () => { cancelled = true; closeWs(); };
   }, [nodeId, closeWs]);
@@ -127,7 +132,7 @@ function NodeDetailPanel({ node, onClose }) {
       setTags(prev => {
         const existing = new Set(prev.map(t => t.source_key));
         const additions = Object.keys(found).filter(k => !existing.has(k)).map(k => ({
-          source_key: k, tag_name: k, display_name: k, label: '', unit: '', data_type: inferType(found[k]), enabled: true,
+          source_key: k, tag_name: k, display_name: k, unit: '', data_type: inferType(found[k]), enabled: true,
         }));
         return [...prev, ...additions];
       });
@@ -146,9 +151,9 @@ function NodeDetailPanel({ node, onClose }) {
     if (!draft.source_key.trim()) { setTagError('Source key (MQTT telemetry key) is required.'); return; }
     setTags(prev => [...prev, {
       source_key: draft.source_key.trim(), tag_name: draft.tag_name.trim() || draft.source_key.trim(),
-      display_name: draft.display_name.trim(), label: draft.label.trim(), unit: draft.unit.trim(), data_type: draft.data_type, enabled: true,
+      display_name: draft.display_name.trim(), unit: draft.unit.trim(), data_type: draft.data_type, enabled: true,
     }]);
-    setDraft({ source_key: '', tag_name: '', display_name: '', label: '', unit: '', data_type: 'float' });
+    setDraft({ source_key: '', tag_name: '', display_name: '', unit: '', data_type: 'float' });
     setTagError('');
   };
 
@@ -166,7 +171,7 @@ function NodeDetailPanel({ node, onClose }) {
     try {
       await moduleApi.saveNodeTags(nodeId, tags.map(t => ({
         id: t.id, source_key: t.source_key, tag_name: t.tag_name, display_name: t.display_name,
-        label: t.label, unit: t.unit, data_type: t.data_type, enabled: t.enabled,
+        unit: t.unit, data_type: t.data_type, enabled: t.enabled,
       })));
       const data = await moduleApi.getNodeTags(nodeId);
       setTags(Array.isArray(data?.tags) ? data.tags : []);
@@ -261,10 +266,9 @@ function NodeDetailPanel({ node, onClose }) {
             <div className="flex items-center gap-2 text-[10px] font-black text-emerald-400 uppercase tracking-widest">
               <Plus className="w-3.5 h-3.5" /> Attach new tag
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <input value={draft.source_key} onChange={e => setDraft({ ...draft, source_key: e.target.value })} placeholder="MQTT key (e.g. telemetry.temp)" className="bg-slate-900/50 border border-slate-700 px-2.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
               <input value={draft.tag_name} onChange={e => setDraft({ ...draft, tag_name: e.target.value })} placeholder="DB tag (e.g. temperature)" className="bg-slate-900/50 border border-slate-700 px-2.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
-              <input value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })} placeholder="Label (e.g. Suhu)" className="bg-slate-900/50 border border-slate-700 px-2.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
               <input value={draft.unit} onChange={e => setDraft({ ...draft, unit: e.target.value })} placeholder="Unit (e.g. °C)" className="bg-slate-900/50 border border-slate-700 px-2.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
               <select value={draft.data_type} onChange={e => setDraft({ ...draft, data_type: e.target.value })} className="bg-slate-900/50 border border-slate-700 px-2.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer">
                 <option value="float">float</option><option value="int">int</option><option value="bool">bool</option>
@@ -287,7 +291,6 @@ function NodeDetailPanel({ node, onClose }) {
                   <tr className="border-b border-white/5">
                     <th className="py-3 px-2 text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">MQTT Key</th>
                     <th className="py-3 px-2 text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">DB Tag</th>
-                    <th className="py-3 px-2 text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">Label</th>
                     <th className="py-3 px-2 text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">Unit</th>
                     <th className="py-3 px-2 text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">Type</th>
                     <th className="py-3 px-2 text-[10px] font-black uppercase tracking-widest text-slate-500 align-middle leading-normal">On</th>
@@ -299,7 +302,6 @@ function NodeDetailPanel({ node, onClose }) {
                     <tr key={t.id || idx} className="border-b border-white/5 last:border-0">
                       <td className="py-2 px-2"><input value={t.source_key} onChange={e => handleUpdate(idx, 'source_key', e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 px-2 py-1.5 text-xs text-emerald-400 font-mono focus:outline-none focus:border-emerald-500" /></td>
                       <td className="py-2 px-2"><input value={t.tag_name} onChange={e => handleUpdate(idx, 'tag_name', e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 px-2 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500" /></td>
-                      <td className="py-2 px-2"><input value={t.label || ''} onChange={e => handleUpdate(idx, 'label', e.target.value)} placeholder={t.tag_name || t.source_key} className="w-32 bg-slate-900/50 border border-slate-700 px-2 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500" /></td>
                       <td className="py-2 px-2"><input value={t.unit} onChange={e => handleUpdate(idx, 'unit', e.target.value)} className="w-20 bg-slate-900/50 border border-slate-700 px-2 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500" /></td>
                       <td className="py-2 px-2">
                         <select value={t.data_type} onChange={e => handleUpdate(idx, 'data_type', e.target.value)} className="bg-slate-900/50 border border-slate-700 px-2 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer">

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/almuzky/iot/services/module/internal/model"
+	"github.com/almuzky/iot/services/module/internal/repository"
 	"github.com/almuzky/iot/services/module/internal/service"
 	"github.com/go-chi/chi/v5"
 )
@@ -224,6 +225,37 @@ func (h *Handler) GetNodeTags(w http.ResponseWriter, r *http.Request) {
 		tags = []model.NodeTag{}
 	}
 	respond(w, http.StatusOK, map[string]any{"node_id": nodeID, "tags": tags})
+}
+
+// SaveNodeTag upserts a single sensor tag for a node.
+func (h *Handler) SaveNodeTag(w http.ResponseWriter, r *http.Request) {
+	nodeID := chi.URLParam(r, "node_id")
+	var req model.NodeTagRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := h.svc.SaveNodeTag(r.Context(), nodeID, req); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save tag")
+		return
+	}
+	tags, _ := h.svc.GetNodeTags(r.Context(), nodeID)
+	respond(w, http.StatusOK, map[string]any{"node_id": nodeID, "tags": tags})
+}
+
+// DeleteNodeTag removes a single sensor tag mapping for a node.
+func (h *Handler) DeleteNodeTag(w http.ResponseWriter, r *http.Request) {
+	nodeID := chi.URLParam(r, "node_id")
+	id := chi.URLParam(r, "id")
+	if err := h.svc.DeleteNodeTag(r.Context(), nodeID, id); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			respondError(w, http.StatusNotFound, "tag not found")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "failed to delete tag")
+		return
+	}
+	respond(w, http.StatusOK, map[string]any{"node_id": nodeID, "deleted": id})
 }
 
 // SaveNodeTags replaces the full tag-mapping set for a node (attach/detach).

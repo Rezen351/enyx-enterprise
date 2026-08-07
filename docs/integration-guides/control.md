@@ -211,7 +211,7 @@ All endpoints are mounted under `/control` (Kong strips `/v1`). All responses fo
         "node_id": "node-1",
         "source_key": "outputs.pump",
         "tag_name": "Pump",
-        "label": "Water Pump",
+        "display_name": "Water Pump",
         "output_type": "DIGITAL",
         "last_value": 1,
         "last_seen_at": "2026-07-21T04:00:00Z",
