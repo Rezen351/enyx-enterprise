@@ -1309,20 +1309,24 @@ Pendekatan configuration-driven ini memungkinkan penambahan sensor baru tanpa me
 **Flowchart Configuration-Driven Sensor:**
 
 ```mermaid
-%%{init: {'flowchart': {'nodeSpacing': 18, 'rankSpacing': 18, 'fontSize': 16}}}%%
+%%{init: {'flowchart': {'nodeSpacing': 10, 'rankSpacing': 12, 'fontSize': 15}}}%%
 flowchart TD
     A[Boot ESP32] --> B[Read config.json]
     B --> C[Fill vectors]
+    C --> C1[HardwareInputs]
+    C --> C2[HardwareOutputs]
+    C --> C3[HardwareModbus]
+    C --> C4[HardwareSensors]
+    C --> C5[LocalControlRules]
     C --> D[Create handlers]
-    D --> D1[GPIO to GPIOInputHandler]
-    D --> D2[MODBUS to ModbusHandler]
-    D --> D3[I2C to I2CHandler]
+    D --> D1[GPIO→GPIOInputHandler]
+    D --> D2[MODBUS→ModbusHandler]
+    D --> D3[I2C→I2CHandler]
     D --> E[Store in activeHandlers]
     E --> F[telemetryTask every 5s]
     F --> G[handler read]
     G --> H[Write telemetry JSON]
     H --> I[Publish via MQTT]
-    
     J[Add New I2C Sensor] --> K[Create handler class]
     K --> L[Register in ProtocolRegistry]
     L --> M[Add config.json entry]
