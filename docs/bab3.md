@@ -1309,31 +1309,25 @@ Pendekatan configuration-driven ini memungkinkan penambahan sensor baru tanpa me
 **Flowchart Configuration-Driven Sensor:**
 
 ```mermaid
-sequenceDiagram
-    participant Boot as Boot ESP32
-    participant CFG as ConfigManager
-    participant REL as reloadConfiguration
-    participant REG as ProtocolRegistry
-    participant TASK as telemetryTask
-    participant MQTT as MQTT
+%%{init: {'flowchart': {'nodeSpacing': 18, 'rankSpacing': 18, 'fontSize': 16}}}%%
+flowchart TD
+    A[Boot ESP32] --> B[Read config.json]
+    B --> C[Fill vectors]
+    C --> D[Create handlers]
+    D --> D1[GPIO to GPIOInputHandler]
+    D --> D2[MODBUS to ModbusHandler]
+    D --> D3[I2C to I2CHandler]
+    D --> E[Store in activeHandlers]
+    E --> F[telemetryTask every 5s]
+    F --> G[handler read]
+    G --> H[Write telemetry JSON]
+    H --> I[Publish via MQTT]
     
-    Boot->>CFG: Read config.json
-    CFG->>CFG: Fill 5 vectors
-    CFG->>REL: Load hardware config
-    REL->>REG: createHandler GPIO, MODBUS, I2C
-    REG-->>REL: Return handler instances
-    REL->>REL: Store in activeHandlers
-    
-    loop Every 5 seconds
-        TASK->>TASK: Clear telemetry object
-        loop For each handler
-            TASK->>TASK: handler.read(telemetry)
-            TASK->>TASK: Write to telemetry JSON
-        end
-        TASK->>MQTT: Publish telemetry
-    end
-    
-    Note over REL,MQTT: Add New I2C Sensor: create handler class, register in ProtocolRegistry, add config.json entry, hot-swap via reloadConfiguration
+    J[Add New I2C Sensor] --> K[Create handler class]
+    K --> L[Register in ProtocolRegistry]
+    L --> M[Add config.json entry]
+    M --> N[Hot-swap via reloadConfiguration]
+    N --> E
 ```
 
 #### E. Dual-Partition OTA Update dengan Rollback Otomatis
