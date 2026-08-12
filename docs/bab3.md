@@ -901,7 +901,7 @@ Semua definisi input, output, dan sensor disimpan dalam `std::vector` global yan
 extern std::vector<InputPin> HardwareInputs;    // GPIO digital/analog
 extern std::vector<OutputPin> HardwareOutputs;  // GPIO output (DIGITAL/PWM)
 extern std::vector<ModbusSensor> HardwareModbus; // Sensor RS485 Modbus
-extern std::vector<GenericSensor> HardwareSensors; // Sensor I2C, SPI, dsb.
+extern std::vector<GenericSensor> HardwareSensors; // Sensor I2C, 1-Wire, dsb.
 extern std::vector<LocalControlRule> LocalControlRules; // Aturan edge control
 ```
 
@@ -985,18 +985,291 @@ Control Service mengirim perintah `{"action":"set_output","target":"pump","value
 
 **e. Protokol dan Driver Modular (Factory Pattern)**
 
-Seluruh pembacaan protokol disatukan menggunakan interface `ProtocolHandler` dan factory registry `ProtocolRegistry`:
+Seluruh pembacaan protokol disatukan menggunakan interface `ProtocolHandler` dan factory registry `ProtocolRegistry`. Pendekatan ini memungkinkan setiap sensor atau aktuator diimplementasikan sebagai kelas mandiri yang dapat didaftarkan dan diinstansiasi secara dinamis tanpa mengubah loop utama firmware.
+
+**Konsep Dasar:**
+
+`ProtocolHandler` adalah kelas abstrak yang mendefinisikan kontrak untuk semua driver sensor:
 
 ```cpp
-// HardwareManager.cpp
-ProtocolRegistry::registerProtocol("GPIO", []() -> ProtocolHandler* { return new GPIOInputHandler(); });
-ProtocolRegistry::registerProtocol("MODBUS", []() -> ProtocolHandler* { return new ModbusHandler(); });
-ProtocolRegistry::registerProtocol("I2C", []() -> ProtocolHandler* { return new I2CHandler(); });
-ProtocolRegistry::registerProtocol("1-WIRE", []() -> ProtocolHandler* { return new OneWireHandler(); });
-ProtocolRegistry::registerProtocol("SPI", []() -> ProtocolHandler* { return new SPIHandler(); });
+class ProtocolHandler {
+public:
+    virtual bool init(const JsonObject& config) = 0;
+    virtual bool read(JsonObject& telemetry) = 0;
+    virtual String getProtocolName() = 0;
+    virtual String getSensorName() = 0;
+};
 ```
 
-Hal ini memungkinkan penambahan protokol baru secara modular dengan mendaftarkannya pada registry, tanpa modifikasi loop utama. Driver I2C generic terintegrasi langsung untuk sensor DHT12 dan BME280.
+- `init()`: Dipanggil sekali saat handler dibuat untuk menginisialisasi pin, alamat I2C, atau parameter komunikasi dari `config.json`.
+- `read()`: Dipanggil setiap siklus telemetri untuk membaca data sensor dan menulisnya ke objek JSON telemetri.
+- `getProtocolName()`: Mengembalikan nama protokol (misal: `"GPIO"`, `"MODBUS"`, `"I2C"`).
+- `getSensorName()`: Mengembalikan nama sensor sesuai `config.json` untuk identifikasi di payload.
+
+**Diagram Arsitektur Protocol Handler:**
+
+```mermaid
+classDiagram
+    class ProtocolHandler {
+        <<abstract>>
+        +init(JsonObject config) bool
+        +read(JsonObject telemetry) bool
+        +getProtocolName() String
+        +getSensorName() String
+    }
+    
+    class GPIOInputHandler {
+        -pin: uint8_t
+        -type: InputType
+        -pwm_channel: uint8_t
+        -resolution: uint8_t
+        +init(config) bool
+        +read(telemetry) bool
+        +getProtocolName() String
+        +getSensorName() String
+    }
+    
+    class ModbusHandler {
+        -slave_id: uint8_t
+        -baudrate: uint32_t
+        -registers: Array
+        +init(config) bool
+        +read(telemetry) bool
+        +getProtocolName() String
+        +getSensorName() String
+    }
+    
+    class I2CHandler {
+        -sda_pin: uint8_t
+        -scl_pin: uint8_t
+        -address: uint8_t
+        -sensor_type: String
+        -initialized: bool
+        -bme: LightBME280*
+        +init(config) bool
+        +read(telemetry) bool
+        +getProtocolName() String
+        +getSensorName() String
+    }
+    
+    class ProtocolRegistry {
+        -handlers: Map~String, Factory~
+        +registerProtocol(name, factory)
+        +createHandler(name, config) ProtocolHandler*
+    }
+    
+    class TelemetryTask {
+        -activeHandlers: Array~ProtocolHandler~
+        +run()
+        +reloadConfiguration()
+    }
+    
+    class ConfigJSON {
+        +hardware.inputs[] Array
+        +hardware.outputs[] Array
+        +hardware.modbus[] Array
+        +hardware.sensors[] Array
+    }
+    
+    ProtocolHandler <|-- GPIOInputHandler
+    ProtocolHandler <|-- ModbusHandler
+    ProtocolHandler <|-- I2CHandler
+    
+    ProtocolRegistry ..> ProtocolHandler : creates
+    ConfigJSON ..> ProtocolRegistry : registers
+    TelemetryTask ..> ProtocolHandler : calls read()
+    TelemetryTask --> ConfigJSON : reads
+```
+
+**Alur Data:**
+
+```mermaid
+sequenceDiagram
+    participant CFG as config.json
+    participant REG as ProtocolRegistry
+    participant INIT as reloadConfiguration()
+    participant TASK as telemetryTask()
+    participant HANDLER as ProtocolHandler
+    participant JSON as Telemetry JSON
+    
+    CFG->>REG: Load sensor definitions
+    REG->>REG: Register factories (GPIO, MODBUS, I2C)
+    
+    INIT->>CFG: Read hardware.inputs[]
+    loop For each input config
+        INIT->>REG: createHandler("GPIO", config)
+        REG->>HANDLER: new GPIOInputHandler()
+        HANDLER->>HANDLER: init(config) → setup pin, type
+        INIT->>INIT: activeHandlers.push(handler)
+    end
+    
+    INIT->>CFG: Read hardware.modbus[]
+    loop For each modbus config
+        INIT->>REG: createHandler("MODBUS", config)
+        REG->>HANDLER: new ModbusHandler()
+        HANDLER->>HANDLER: init(config) → setup baudrate, slave_id
+        INIT->>INIT: activeHandlers.push(handler)
+    end
+    
+    INIT->>CFG: Read hardware.sensors[]
+    loop For each sensor config
+        INIT->>REG: createHandler(protocol, config)
+        REG->>HANDLER: new GPIOInputHandler() / new I2CHandler()
+        HANDLER->>HANDLER: init(config) → setup pins/address
+        INIT->>INIT: activeHandlers.push(handler)
+    end
+    
+    loop Every 5 seconds
+        TASK->>TASK: Clear telemetry object
+        loop For each handler in activeHandlers
+            TASK->>HANDLER: read(telemetry)
+            HANDLER->>HANDLER: Read sensor data
+            HANDLER->>JSON: Write to telemetry.inputs/i2c/modbus.{name}
+            JSON-->>TASK: Return updated telemetry
+        end
+        TASK->>TASK: Publish telemetry via MQTT
+    end
+```
+
+**Cara Kerja untuk Input Digital, Analog, dan I2C (Saat Ini):**
+
+Firmware saat ini mendukung tiga protokol yang sudah terimplementasi penuh:
+
+1. **GPIO Digital/Analog** (`GPIOInputHandler`): Menangani sensor ON/OFF dan nilai continuous melalui pin GPIO.
+2. **Modbus RTU** (`ModbusHandler`): Menangani sensor RS485 seperti suhu/EC/PH lewat slave ID dan register polling.
+3. **I2C** (`I2CHandler`): Menangani sensor I2C seperti DHT12 dan BME280 dengan inisialisasi bus, deteksi alamat, dan kompensasi driver.
+
+**1. GPIOInputHandler — Digital dan Analog:**
+
+`GPIOInputHandler` membaca pin GPIO sesuai konfigurasi `type` di `config.json`:
+
+- **Digital (`type: "digital"`)**: `digitalRead(pin)` untuk sensor ON/OFF seperti `level_air` atau `pest_detector`. Nilai 0 atau 1 disimpan di `telemetry.inputs.{name}`.
+- **Analog (`type: "analog"`)**: `analogRead(pin)` untuk sensor nilai continuous seperti soil moisture. Nilai raw ADC (0-4095 pada ESP32 12-bit) disimpan di `telemetry.inputs.{name}`. Konversi ke satuan fisik biasanya dilakukan di backend.
+
+Contoh konfigurasi:
+```json
+{
+  "hardware": {
+    "inputs": [
+      {
+        "name": "level_air",
+        "pin": 34,
+        "type": "digital",
+        "pull": "UP",
+        "invert": true
+      },
+      {
+        "name": "soil_moisture",
+        "pin": 35,
+        "type": "analog",
+        "analog_min": 1200,
+        "analog_max": 2800
+      }
+    ]
+  }
+}
+```
+
+**2. ModbusHandler — Sensor RS485:**
+
+`ModbusHandler` menginisialisasi UART dengan `baudrate` dari config, mengambil `slave_id`, lalu melakukan polling register `INPUT` atau `HOLDING` menggunakan `ModbusMaster`. Setiap register memiliki `multiplier` untuk konversi nilai raw. Seluruh operasi RS485 dilindungi `modbusMutex` dan dilakukan auto-baudrate switching sebelum membaca setiap slave.
+
+Contoh konfigurasi:
+```json
+{
+  "hardware": {
+    "modbus": [
+      {
+        "name": "suhu_udara",
+        "slave_id": 1,
+        "baudrate": 9600,
+        "registers": [
+          { "address": 0, "name": "temperature", "multiplier": 0.1, "type": "HOLDING" },
+          { "address": 1, "name": "humidity", "multiplier": 0.1, "type": "HOLDING" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Hasil pembacaan disimpan di `telemetry.modbus.{sensor_name}.{register_name}`.
+
+**3. I2CHandler — Sensor I2C (DHT12 dan BME280):**
+
+`I2CHandler` mengimplementasikan driver I2C penuh untuk dua sensor yang sudah teruji:
+
+- **DHT12**: Sensor suhu dan kelembapanEntry murah dengan alamat default `0x5C`. Handler membaca 5 byte data, melakukan validasi checksum, dan menulis hasil ke `telemetry.i2c.{name}.temperature` serta `telemetry.i2c.{name}.humidity`.
+- **BME280**: Sensor suhu, kelembapan, dan tekanan udara Bosch. Handler membaca kalibrasi pabrik, menghitung kompensasi presisi Bosch, dan menulis hasil ke `telemetry.i2c.{name}.temperature`, `telemetry.i2c.{name}.humidity`, dan `telemetry.i2c.{name}.pressure`.
+
+I2C bus diinisialisasi secara otomatis dengan `Wire.begin(sda_pin, scl_pin)` dan dilindungi oleh `initI2C()` yang mencegah inisialisasi ganda. Jika sensor tidak respons, handler menulis `"status": "offline"` dan mencoba re-inisialisasi di siklus berikutnya.
+
+Contoh konfigurasi:
+```json
+{
+  "hardware": {
+    "sensors": [
+      {
+        "name": "dht12_udara",
+        "protocol": "I2C",
+        "type": "DHT12",
+        "address": "0x5C",
+        "sda_pin": 21,
+        "scl_pin": 22
+      },
+      {
+        "name": "bme280_tekanan",
+        "protocol": "I2C",
+        "type": "BME280",
+        "address": "0x76",
+        "sda_pin": 21,
+        "scl_pin": 22
+      }
+    ]
+  }
+}
+```
+
+**Payload Telemetri Gabungan:**
+
+```json
+{
+  "node_id": "esp32-001",
+  "telemetry": {
+    "inputs": {
+      "level_air": 1,
+      "soil_moisture": 2048
+    },
+    "modbus": {
+      "suhu_udara": {
+        "temperature": 28.5,
+        "humidity": 65.2
+      }
+    },
+    "i2c": {
+      "dht12_udara": {
+        "temperature": 28.3,
+        "humidity": 64.8
+      },
+      "bme280_tekanan": {
+        "temperature": 27.1,
+        "humidity": 62.5,
+        "pressure": 1013.25
+      }
+    }
+  }
+}
+```
+
+**Cara Menambahkan Sensor Baru (I2C atau Protokol Lain):**
+
+Jika nanti ingin menambahkan sensor I2C baru atau protokol lain seperti 1-Wire, langkahnya sama:
+
+1. Buat kelas handler yang mengimplementasikan `ProtocolHandler`
+2. Daftarkan handler tersebut satu kali di `ProtocolRegistry`
+3. Tambahkan entri di `config.json`
+
+Tidak ada perubahan yang diperlukan di loop utama, struktur JSON telemetri, atau kode backend. Pendekatan ini juga mendukung hot-swap: perubahan di `config.json` dapat dimuat ulang secara *thread-safe* melalui `reloadConfiguration()` tanpa reboot ESP32.
 
 **f. Local Control Rules — Edge Computing Modular**
 
@@ -1031,7 +1304,7 @@ Dengan cara ini, respons otomatis terhadap kondisi abnormal dapat terjadi tanpa 
 
 **Cara Kerja Pemrograman Modular untuk Menambahkan Sensor Baru**
 
-Pendekatan configuration-driven ini memungkinkan penambahan sensor baru tanpa mengubah loop utama atau melakukan flashing ulang firmware. Secara teknis, ada tiga mekanisme yang bekerja bersama: registry berbasis vektor, factory pattern untuk protokol, dan konfigurasi berbasis JSON. Saat firmware boot, `ConfigManager` membaca `config.json` dan mengisi lima vektor global: `HardwareInputs` untuk pin GPIO, `HardwareOutputs` untuk aktuator, `HardwareModbus` untuk sensor RS485, `HardwareSensors` untuk sensor berbasis protokol generik seperti I2C, dan `LocalControlRules` untuk aturan edge-control. Setiap entri di `config.json` hanya berisi metadata—pin, nama, tipe, dan parameter operasional—tanpa ada logika pembacaan yang hardcoded. Setelah konfigurasi dimuat, `reloadConfiguration()` membuat instance handler untuk setiap entri: GPIO masuk ke `GPIOInputHandler`, Modbus masuk ke `ModbusHandler`, I2C masuk ke `I2CHandler`, dan seterusnya. Semua handler disimpan dalam vektor `activeHandlers` yang diiterasi oleh `telemetryTask()` setiap 5 detik; loop utama hanya memanggil `handler->read(telemetry)` untuk setiap handler, tanpa peduli apakah sensor tersebut membaca GPIO, Modbus, atau I2C. Untuk menambahkan sensor baru—misalnya sensor tekanan berbasis SPI—pengembang hanya perlu membuat satu kelas baru `PressureHandler` yang mengimplementasikan empat metode virtual (`init`, `read`, `getProtocolName`, `getSensorName`), mendaftarkannya satu kali di `ProtocolRegistry::registerProtocol("SPI", ...)`, dan menambahkan entri `{"protocol":"SPI","cs_pin":5,...}` di `config.json`. Seluruh pipeline pembacaan, pemetaan JSON, dan integrasi MQTT akan otomatis menangani sensor baru tersebut tanpa mengubah loop utama, struktur telemetri, atau kode backend. Jika nanti ingin menambah protokol lain seperti 1-Wire atau CAN, langkahnya sama: buat handler, daftarkan di registry, dan tambahkan entri konfigurasi. Pendekatan ini juga mendukung hot-swap: perubahan di `config.json` dapat dimuat ulang secara *thread-safe* melalui `reloadConfiguration()` tanpa reboot ESP32, sehingga operasi greenhouse tidak perlu terhenti untuk penambahan sensor.
+Pendekatan configuration-driven ini memungkinkan penambahan sensor baru tanpa mengubah loop utama atau melakukan flashing ulang firmware. Secara teknis, ada tiga mekanisme yang bekerja bersama: registry berbasis vektor, factory pattern untuk protokol, dan konfigurasi berbasis JSON. Saat firmware boot, `ConfigManager` membaca `config.json` dan mengisi lima vektor global: `HardwareInputs` untuk pin GPIO, `HardwareOutputs` untuk aktuator, `HardwareModbus` untuk sensor RS485, `HardwareSensors` untuk sensor berbasis protokol generik seperti I2C, dan `LocalControlRules` untuk aturan edge-control. Setiap entri di `config.json` hanya berisi metadata—pin, nama, tipe, dan parameter operasional—tanpa ada logika pembacaan yang hardcoded. Setelah konfigurasi dimuat, `reloadConfiguration()` membuat instance handler untuk setiap entri: GPIO masuk ke `GPIOInputHandler`, Modbus masuk ke `ModbusHandler`, I2C masuk ke `I2CHandler`, dan seterusnya. Semua handler disimpan dalam vektor `activeHandlers` yang diiterasi oleh `telemetryTask()` setiap 5 detik; loop utama hanya memanggil `handler->read(telemetry)` untuk setiap handler, tanpa peduli apakah sensor tersebut membaca GPIO, Modbus, atau I2C. Untuk menambahkan sensor baru—misalnya sensor suhu I2C baru—pengembang hanya perlu membuat satu kelas handler yang mengimplementasikan empat metode virtual (`init`, `read`, `getProtocolName`, `getSensorName`), mendaftarkannya satu kali di `ProtocolRegistry`, dan menambahkan entri di `config.json`. Seluruh pipeline pembacaan, pemetaan JSON, dan integrasi MQTT akan otomatis menangani sensor baru tersebut tanpa mengubah loop utama, struktur telemetri, atau kode backend. Jika nanti ingin menambah protokol lain seperti 1-Wire, langkahnya sama: buat handler, daftarkan di registry, dan tambahkan entri konfigurasi. Pendekatan ini juga mendukung hot-swap: perubahan di `config.json` dapat dimuat ulang secara thread-safe melalui `reloadConfiguration()` tanpa reboot ESP32, sehingga operasi greenhouse tidak perlu terhenti untuk penambahan sensor.
 
 #### E. Dual-Partition OTA Update dengan Rollback Otomatis
 
