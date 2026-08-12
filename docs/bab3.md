@@ -1334,29 +1334,61 @@ Tidak ada perubahan yang diperlukan di loop utama, struktur JSON telemetri, atau
 
 **f. Local Control Rules — Edge Computing Modular**
 
-Aturan kontrol lokal didefinisikan secara deklaratif di `config.json`:
+**Deskripsi Umum**
 
-```json
-{
-  "local_control": [
-    {
-      "name": "overheat_protection",
-      "input_sensor": "suhu_udara",
-      "output_target": "cooling_fan",
-      "threshold_high": 30.0,
-      "threshold_low": 25.0,
-      "enabled": true
-    }
-  ]
-}
+Local Control Rules adalah mekanisme *edge computing* yang memungkinkan ESP32 mengambil keputusan kontrol otomatis secara lokal tanpa bergantung pada koneksi MQTT atau backend. Aturan ini didefinisikan secara deklaratif di `config.json` dan dievaluasi di dalam `telemetryTask()` setelah pembacaan sensor selesai. Pendekatan ini berfungsi sebagai *safety net* saat jaringan putus, memastikan aktuator tetap merespons kondisi abnormal secara tepat.
+
+**Fungsi Utama**
+
+- Menjalankan aturan kontrol berbasis threshold secara otomatis di ESP32
+- Menghubungkan input sensor dengan output aktuator secara langsung
+- Menerapkan logika histeresis untuk mencegah aktuator menyala-mati berulang akibat fluktuasi sensor
+- Menyediakan safety net saat koneksi jaringan atau backend tidak tersedia
+- Mendukung enable/disable per aturan tanpa reboot perangkat
+
+**Alur Data dan Integrasi**
+
+- **Masuk**: Menerima definisi aturan dari `config.json` melalui `ConfigManager::loadConfig()`
+- **Proses**: `evaluateLocalControl()` memeriksa nilai sensor terbaru dari `latestSensorValues` dan membandingkannya dengan `thresholdHigh` serta `thresholdLow`
+- **Keluar**: Mengirim perintah ON/OFF atau PWM ke aktuator melalui `HardwareManager::setOutput()`
+- **Integrasi**: Berjalan di Core 1 bersama `telemetryTask()`, dipanggil setiap siklus 5 detik setelah pembacaan sensor selesai
+
+**Cara Kerja**
+
+Secara teknis, `evaluateLocalControl()` dijalankan di akhir setiap siklus `telemetryTask()`. Mekanisme ini mencakup dua logika keamanan:
+
+1. **Logika Histeresis**: Mencegah aktuator (seperti cooling fan) menyala-mati secara berulang akibat fluktuasi sensor yang tipis di sekitar ambang batas (*oscillation prevention*). Kipas pendingin dirancang aktif ketika suhu melampaui batas atas ($T_{high}$) dan hanya mati setelah suhu turun di bawah batas bawah ($T_{low}$).
+
+2. **Dry-Run Protection**: Pompa misting dirancang mati secara otomatis menggunakan interupsi tingkat perangkat keras (*hardware-level safety loop*) jika sensor ketinggian air mendeteksi tangki nutrisi kosong, guna mencegah kerusakan motor akibat berjalan tanpa cairan.
+
+Algoritma evaluasi:
+- Jika `sensorValue > thresholdHigh` dan output saat ini `0` → set output ke `1` (ON)
+- Jika `sensorValue < thresholdLow` dan output saat ini `1` → set output ke `0` (OFF)
+- Jika aturan `enabled = false`, aturan dilewati tanpa dievaluasi
+
+Flowchart Local Control Rules:
+
+```mermaid
+flowchart TD
+    A[Start telemetryTask cycle] --> B[Read all sensors]
+    B --> C[evaluateLocalControl]
+    C --> D[Loop through LocalControlRules]
+    D --> E{Rule enabled?}
+    E -->|No| F[Skip rule]
+    F --> D
+    E -->|Yes| G[Get sensor value]
+    G --> H{Value > thresholdHigh?}
+    H -->|Yes| I[Set output ON]
+    H -->|No| J{Value < thresholdLow?}
+    J -->|Yes| K[Set output OFF]
+    J -->|No| L[No action]
+    L --> D
+    I --> D
+    K --> D
+    D --> M[Publish telemetry via MQTT]
+    M --> N[Wait 5 seconds]
+    N --> A
 ```
-
-Aturan ini dievaluasi di dalam `telemetryTask()` setelah pembacaan sensor. Mekanisme ini mencakup dua logika keamanan:
-
-- **Logika Histeresis**: Mencegah aktuator (seperti cooling fan) menyala-mati secara berulang akibat fluktuasi sensor yang tipis di sekitar ambang batas (*oscillation prevention*). Kipas pendingin dirancang aktif ketika suhu melampaui batas atas ($T_{high}$) dan hanya mati setelah suhu turun di bawah batas bawah ($T_{low}$).
-- **Dry-Run Protection**: Pompa misting dirancang mati secara otomatis menggunakan interupsi tingkat perangkat keras (*hardware-level safety loop*) jika sensor ketinggian air mendeteksi tangki nutrisi kosong, guna mencegah kerusakan motor akibat berjalan tanpa cairan.
-
-Dengan cara ini, respons otomatis terhadap kondisi abnormal dapat terjadi tanpa bergantung pada koneksi MQTT atau backend.
 
 **g. Proteksi dan Keandalan Bus**
 
