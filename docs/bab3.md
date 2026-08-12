@@ -623,46 +623,6 @@ Pendekatan captive portal dipilih karena memungkinkan konfigurasi awal perangkat
 - **MQTT Discovery (`/api/publish_discovery`)**: Kirim sinyal discovery ke broker untuk registrasi otomatis perangkat.
 - **Auto-Reconnect**: Setelah simpan konfigurasi + reboot, frontend otomatis ping `/api/status` tiap 2 detik dan reload halaman saat device online kembali.
 
-**Cara Kerja Modbus Scanner:**
-
-Modbus Scanner adalah alat diagnostik industri yang berjalan di ESP32 untuk mengidentifikasi sensor RS485 baru sebelum dimasukkan ke konfigurasi produksi. Alat ini bekerja dengan cara mengirimkan request Modbus RTU ke seluruh rentang slave ID (1–247) pada baud rate yang ditentukan, lalu menganalisis respons untuk menentukan alamat slave yang valid dan register yang tersedia.
-
-Secara teknis, ketika pengguna memilih baud rate di captive portal, ESP32 akan:
-1. Menghentikan telemetri periodik sementara dengan mengambil `modbusMutex`
-2. Mengkonfigurasi ulang UART (`Serial2`) dengan baud rate yang dipilih
-3. Melakukan polling setiap slave ID dari 1 sampai 247 menggunakan `readHoldingRegisters(0, 1)`
-4. Mencatat slave yang merespons sukses atau mengembalikan exception Modbus
-5. Mengembalikan daftar slave ID yang terdeteksi ke frontend untuk dipilih
-
-Setelah slave ID ditemukan, pengguna dapat melakukan register scan spesifik:
-1. ESP32 mengirim request baca register `INPUT` atau `HOLDING` ke slave ID terpilih
-2. Nilai raw diterima, dikalikan dengan `multiplier` dari konfigurasi, dan ditampilkan di UI
-3. Pengguna dapat menentukan alamat register, tipe data, dan multiplier sebelum menyimpan ke `config.json`
-
-Flowchart Modbus Scanner:
-
-```mermaid
-flowchart TD
-    A[User selects baud rate] --> B[Start scan on Serial2]
-    B --> C[Lock modbusMutex]
-    C --> D[Loop slave ID 1 to 247]
-    D --> E[Send readHoldingRegisters]
-    E --> F{Response OK?}
-    F -->|Yes| G[Record slave ID]
-    F -->|No| H[Check exception?]
-    H -->|Yes| G
-    H -->|No| I[Continue loop]
-    I --> D
-    D --> J[Return found slave IDs]
-    J --> K[User selects slave ID]
-    K --> L[Scan specific register]
-    L --> M[Read INPUT/HOLDING register]
-    M --> N[Multiply by factor]
-    N --> O[Show value in UI]
-    O --> P[Save to config.json]
-    P --> Q[Hot-swap via reloadConfiguration]
-```
-
 #### C. Standar Komunikasi MQTT (Telemetri, Aktuator, Discovery, Status, Alert, Konfirmasi)
 
 **Deskripsi Umum**
@@ -904,7 +864,68 @@ Alert ini dipicu otomatis oleh firmware saat emergency stop interrupt terdeteksi
 - **LWT (Last Will Testament)**: Membantu deteksi offline node secara otomatis.
 - **Retained Messages**: Discovery dan status dipublikasikan dengan flag retained agar subscriber baru langsung menerima status terkini.
 
-#### D. Desain Program Input/Output Modular
+#### D. Industrial Tools — Modbus Scanner
+
+**Deskripsi Umum**
+
+Modbus Scanner adalah alat diagnostik industri yang berjalan di ESP32 untuk mengidentifikasi sensor RS485 baru sebelum dimasukkan ke konfigurasi produksi. Alat ini bekerja dengan cara mengirimkan request Modbus RTU ke seluruh rentang slave ID (1–247) pada baud rate yang ditentukan, lalu menganalisis respons untuk menentukan alamat slave yang valid dan register yang tersedia.
+
+**Fungsi Utama**
+
+- Memindai seluruh slave ID Modbus RTU (1–247) pada baud rate yang dipilih
+- Mengidentifikasi slave yang merespons sukses atau mengembalikan exception Modbus
+- Melakukan register scan spesifik pada slave ID terpilih
+- Menampilkan nilai raw dan hasil perkalian `multiplier` di UI
+- Menyimpan hasil scan ke `config.json` untuk digunakan oleh `ModbusHandler`
+
+**Alur Data dan Integrasi**
+
+- **Masuk**: Pengguna memilih baud rate dan memulai scan melalui captive portal
+- **Proses**: ESP32 mengambil `modbusMutex`, mengkonfigurasi UART, melakukan polling slave ID, dan membaca register
+- **Keluar**: Menampilkan daftar slave ID yang terdeteksi dan nilai register di UI
+- **Integrasi**: Hasil scan disimpan ke `config.json` dan dimuat secara hot-swap oleh `reloadConfiguration()`
+
+**Cara Kerja**
+
+Secara teknis, ketika pengguna memilih baud rate di captive portal, ESP32 akan:
+
+1. Menghentikan telemetri periodik sementara dengan mengambil `modbusMutex`
+2. Mengkonfigurasi ulang UART (`Serial2`) dengan baud rate yang dipilih
+3. Melakukan polling setiap slave ID dari 1 sampai 247 menggunakan `readHoldingRegisters(0, 1)`
+4. Mencatat slave yang merespons sukses atau mengembalikan exception Modbus
+5. Mengembalikan daftar slave ID yang terdeteksi ke frontend untuk dipilih
+
+Setelah slave ID ditemukan, pengguna dapat melakukan register scan spesifik:
+
+1. ESP32 mengirim request baca register `INPUT` atau `HOLDING` ke slave ID terpilih
+2. Nilai raw diterima, dikalikan dengan `multiplier` dari konfigurasi, dan ditampilkan di UI
+3. Pengguna dapat menentukan alamat register, tipe data, dan multiplier sebelum menyimpan ke `config.json`
+
+**Flowchart Modbus Scanner:**
+
+```mermaid
+flowchart TD
+    A[User selects baud rate] --> B[Start scan on Serial2]
+    B --> C[Lock modbusMutex]
+    C --> D[Loop slave ID 1 to 247]
+    D --> E[Send readHoldingRegisters]
+    E --> F{Response OK?}
+    F -->|Yes| G[Record slave ID]
+    F -->|No| H[Check exception?]
+    H -->|Yes| G
+    H -->|No| I[Continue loop]
+    I --> D
+    D --> J[Return found slave IDs]
+    J --> K[User selects slave ID]
+    K --> L[Scan specific register]
+    L --> M[Read INPUT/HOLDING register]
+    M --> N[Multiply by factor]
+    N --> O[Show value in UI]
+    O --> P[Save to config.json]
+    P --> Q[Hot-swap via reloadConfiguration]
+```
+
+#### E. Desain Program Input/Output Modular
 
 **Deskripsi Umum**
 
