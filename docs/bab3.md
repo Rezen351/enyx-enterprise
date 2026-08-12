@@ -1318,13 +1318,13 @@ flowchart TD
     C --> C4[HardwareSensors]
     C --> C5[LocalControlRules]
     C --> D[reloadConfiguration creates handlers]
-    D --> D1[GPIO → GPIOInputHandler]
-    D --> D2[MODBUS → ModbusHandler]
-    D --> D3[I2C → I2CHandler]
+    D --> D1[GPIO maps to GPIOInputHandler]
+    D --> D2[MODBUS maps to ModbusHandler]
+    D --> D3[I2C maps to I2CHandler]
     D --> E[Store in activeHandlers]
     E --> F[telemetryTask every 5s]
     F --> G{For each handler}
-    G --> H[handler->read(telemetry)]
+    G --> H[handler.read(telemetry)]
     H --> I[Write to telemetry JSON]
     I --> G
     G --> J[Publish via MQTT]
