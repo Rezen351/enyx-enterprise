@@ -1309,15 +1309,10 @@ Pendekatan configuration-driven ini memungkinkan penambahan sensor baru tanpa me
 **Flowchart Configuration-Driven Sensor:**
 
 ```mermaid
-%%{init: {'flowchart': {'nodeSpacing': 6, 'rankSpacing': 8, 'fontSize': 32}}}%%
+%%{init: {'theme': 'base', 'flowchart': {'fontSize': 80}}}%%
 flowchart LR
-    A[Boot] --> B[Read config.json]
+    A[Boot ESP32] --> B[Read config.json]
     B --> C[Fill vectors]
-    C --> C1[HardwareInputs]
-    C --> C2[HardwareOutputs]
-    C --> C3[HardwareModbus]
-    C --> C4[HardwareSensors]
-    C --> C5[LocalControlRules]
     C --> D[Create handlers]
     D --> D1[GPIO→GPIOInputHandler]
     D --> D2[MODBUS→ModbusHandler]
