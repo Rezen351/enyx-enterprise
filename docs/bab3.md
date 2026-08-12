@@ -1309,7 +1309,7 @@ Pendekatan configuration-driven ini memungkinkan penambahan sensor baru tanpa me
 **Flowchart Configuration-Driven Sensor:**
 
 ```mermaid
-%%{init: {'flowchart': {'nodeSpacing': 10, 'rankSpacing': 12, 'fontSize': 15}}}%%
+%%{init: {'flowchart': {'nodeSpacing': 8, 'rankSpacing': 10, 'fontSize': 14}}}%%
 flowchart TD
     A[Boot ESP32] --> B[Read config.json]
     B --> C[Fill vectors]
