@@ -1309,7 +1309,7 @@ Pendekatan configuration-driven ini memungkinkan penambahan sensor baru tanpa me
 **Flowchart Configuration-Driven Sensor:**
 
 ```mermaid
-%%{init: {'flowchart': {'nodeSpacing': 6, 'rankSpacing': 8, 'fontSize': 13}}}%%
+%%{init: {'flowchart': {'nodeSpacing': 6, 'rankSpacing': 8, 'fontSize': 32}}}%%
 flowchart LR
     A[Boot] --> B[Read config.json]
     B --> C[Fill vectors]
