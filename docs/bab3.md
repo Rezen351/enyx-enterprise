@@ -1424,6 +1424,23 @@ Firmware mendukung pembaruan dari jarak jauh (*Over-The-Air*) menggunakan alokas
 
 Dual-partition scheme dipilih karena memungkinkan pembaruan firmware tanpa menghentikan operasi perangkat. Jika firmware baru gagal, perangkat tetap dapat berjalan menggunakan partisi stabil sebelumnya. Boot counter di NVS memungkinkan bootloader mendeteksi firmware yang tidak stabil secara otomatis, sehingga rollback dapat terjadi tanpa intervensi manual. Mekanisme ini sangat penting untuk perangkat di lapangan yang sulit diakses secara fisik.
 
+**Flowchart OTA Update:**
+
+```mermaid
+flowchart TD
+    A[Upload .bin via /api/ota] --> B[Write to inactive partition]
+    B --> C[Set boot partition to new]
+    C --> D[Reboot ESP32]
+    D --> E{Boot OK?}
+    E -->|Yes| F[Increment boot counter in NVS]
+    F --> G[Continue normal operation]
+    E -->|No| H[Increment fail counter in NVS]
+    H --> I{Fail > 3?}
+    I -->|Yes| J[Rollback to stable partition]
+    J --> D
+    I -->|No| D
+```
+
 #### G. Alur Operasi Firmware
 
 **Deskripsi Umum**
