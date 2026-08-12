@@ -1309,31 +1309,31 @@ Pendekatan configuration-driven ini memungkinkan penambahan sensor baru tanpa me
 **Flowchart Configuration-Driven Sensor:**
 
 ```mermaid
-flowchart TD
-    A[Boot ESP32] --> B[ConfigManager reads config.json]
-    B --> C[Fill 5 global vectors]
-    C --> C1[HardwareInputs]
-    C --> C2[HardwareOutputs]
-    C --> C3[HardwareModbus]
-    C --> C4[HardwareSensors]
-    C --> C5[LocalControlRules]
-    C --> D[reloadConfiguration creates handlers]
-    D --> D1[GPIO maps to GPIOInputHandler]
-    D --> D2[MODBUS maps to ModbusHandler]
-    D --> D3[I2C maps to I2CHandler]
-    D --> E[Store in activeHandlers]
-    E --> F[telemetryTask every 5s]
-    F --> G{For each handler}
-    G --> H[handler.read(telemetry)]
-    H --> I[Write to telemetry JSON]
-    I --> G
-    G --> J[Publish via MQTT]
+sequenceDiagram
+    participant Boot as Boot ESP32
+    participant CFG as ConfigManager
+    participant REL as reloadConfiguration
+    participant REG as ProtocolRegistry
+    participant TASK as telemetryTask
+    participant MQTT as MQTT
     
-    K[Add New Sensor I2C] --> L[1. Create handler class]
-    L --> M[2. Register in ProtocolRegistry]
-    M --> N[3. Add entry in config.json]
-    N --> O[Hot-swap via reloadConfiguration]
-    O --> E
+    Boot->>CFG: Read config.json
+    CFG->>CFG: Fill 5 vectors
+    CFG->>REL: Load hardware config
+    REL->>REG: createHandler GPIO, MODBUS, I2C
+    REG-->>REL: Return handler instances
+    REL->>REL: Store in activeHandlers
+    
+    loop Every 5 seconds
+        TASK->>TASK: Clear telemetry object
+        loop For each handler
+            TASK->>TASK: handler.read(telemetry)
+            TASK->>TASK: Write to telemetry JSON
+        end
+        TASK->>MQTT: Publish telemetry
+    end
+    
+    Note over REL,MQTT: Add New I2C Sensor: create handler class, register in ProtocolRegistry, add config.json entry, hot-swap via reloadConfiguration
 ```
 
 #### E. Dual-Partition OTA Update dengan Rollback Otomatis
