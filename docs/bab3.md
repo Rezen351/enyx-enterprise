@@ -1424,6 +1424,13 @@ Firmware mendukung pembaruan dari jarak jauh (*Over-The-Air*) menggunakan alokas
 
 Dual-partition scheme dipilih karena memungkinkan pembaruan firmware tanpa menghentikan operasi perangkat. Jika firmware baru gagal, perangkat tetap dapat berjalan menggunakan partisi stabil sebelumnya. Boot counter di NVS memungkinkan bootloader mendeteksi firmware yang tidak stabil secara otomatis, sehingga rollback dapat terjadi tanpa intervensi manual. Mekanisme ini sangat penting untuk perangkat di lapangan yang sulit diakses secara fisik.
 
+Layout partisi flash 4MB:
+- `nvs` (0x9000, 20KB): Data non-volatile
+- `otadata` (0xe000, 8KB): Metadata OTA
+- `app0` / `ota_0` (0x10000, 1.25MB): Partisi firmware aktif
+- `app1` / `ota_1` (0x140000, 1.25MB): Partisi firmware cadangan
+- `spiffs` (0x270000, 1.625MB): Sistem file LittleFS untuk `config.json` dan web UI
+
 **Flowchart OTA Update:**
 
 ```mermaid
