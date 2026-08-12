@@ -1367,7 +1367,7 @@ Dengan cara ini, respons otomatis terhadap kondisi abnormal dapat terjadi tanpa 
 
 Pendekatan configuration-driven ini memungkinkan penambahan sensor baru tanpa mengubah loop utama atau melakukan flashing ulang firmware. Secara teknis, ada tiga mekanisme yang bekerja bersama: registry berbasis vektor, factory pattern untuk protokol, dan konfigurasi berbasis JSON. Saat firmware boot, `ConfigManager` membaca `config.json` dan mengisi lima vektor global: `HardwareInputs` untuk pin GPIO, `HardwareOutputs` untuk aktuator, `HardwareModbus` untuk sensor RS485, `HardwareSensors` untuk sensor berbasis protokol generik seperti I2C, dan `LocalControlRules` untuk aturan edge-control. Setiap entri di `config.json` hanya berisi metadata—pin, nama, tipe, dan parameter operasional—tanpa ada logika pembacaan yang hardcoded. Setelah konfigurasi dimuat, `reloadConfiguration()` membuat instance handler untuk setiap entri: GPIO masuk ke `GPIOInputHandler`, Modbus masuk ke `ModbusHandler`, I2C masuk ke `I2CHandler`, dan seterusnya. Semua handler disimpan dalam vektor `activeHandlers` yang diiterasi oleh `telemetryTask()` setiap 5 detik; loop utama hanya memanggil `handler->read(telemetry)` untuk setiap handler, tanpa peduli apakah sensor tersebut membaca GPIO, Modbus, atau I2C. Untuk menambahkan sensor baru—misalnya sensor suhu I2C baru—pengembang hanya perlu membuat satu kelas handler yang mengimplementasikan empat metode virtual (`init`, `read`, `getProtocolName`, `getSensorName`), mendaftarkannya satu kali di `ProtocolRegistry`, dan menambahkan entri di `config.json`. Seluruh pipeline pembacaan, pemetaan JSON, dan integrasi MQTT akan otomatis menangani sensor baru tersebut tanpa mengubah loop utama, struktur telemetri, atau kode backend. Jika nanti ingin menambah protokol lain seperti 1-Wire, langkahnya sama: buat handler, daftarkan di registry, dan tambahkan entri konfigurasi. Pendekatan ini juga mendukung hot-swap: perubahan di `config.json` dapat dimuat ulang secara thread-safe melalui `reloadConfiguration()` tanpa reboot ESP32, sehingga operasi greenhouse tidak perlu terhenti untuk penambahan sensor.
 
-#### E. Dual-Partition OTA Update dengan Rollback Otomatis
+#### F. Dual-Partition OTA Update dengan Rollback Otomatis
 
 **Deskripsi Umum**
 
@@ -1392,7 +1392,7 @@ Firmware mendukung pembaruan dari jarak jauh (*Over-The-Air*) menggunakan alokas
 
 Dual-partition scheme dipilih karena memungkinkan pembaruan firmware tanpa menghentikan operasi perangkat. Jika firmware baru gagal, perangkat tetap dapat berjalan menggunakan partisi stabil sebelumnya. Boot counter di NVS memungkinkan bootloader mendeteksi firmware yang tidak stabil secara otomatis, sehingga rollback dapat terjadi tanpa intervensi manual. Mekanisme ini sangat penting untuk perangkat di lapangan yang sulit diakses secara fisik.
 
-#### F. Alur Operasi Firmware
+#### G. Alur Operasi Firmware
 
 **Deskripsi Umum**
 
