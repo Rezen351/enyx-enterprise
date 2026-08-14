@@ -1322,15 +1322,38 @@ Contoh konfigurasi:
 }
 ```
 
-**Cara Menambahkan Sensor Baru (I2C atau Protokol Lain):**
+**Cara Menambahkan Sensor Baru — Contoh Sensor I2C SHT40:**
 
-Jika nanti ingin menambahkan sensor I2C baru atau protokol lain seperti 1-Wire, langkahnya sama:
+Untuk menambahkan sensor I2C baru seperti SHT40, pengembang hanya perlu melakukan tiga langkah terfokus tanpa menyentuh loop utama firmware. Langkah pertama adalah membuat kelas handler yang mengimplementasikan interface `ProtocolHandler` dengan empat metode: `init()` membaca alamat I2C, pin SDA/SCL, dan parameter kalibrasi dari `config.json`; `read()` membuka bus I2C, memicu pengukuran sensor, membaca register data, melakukan konversi satuan jika diperlukan, lalu menulis hasil ke objek JSON telemetri di bawah key `telemetry.i2c.{nama_sensor}`; `getProtocolName()` mengembalikan string `"I2C"`; dan `getSensorName()` mengembalikan nama sesuai entri konfigurasi. Langkah kedua adalah mendaftarkan factory handler tersebut satu kali di `ProtocolRegistry` selama inisialisasi firmware, biasanya di fungsi `setup()` atau `ConfigManager::boot()`, dengan memetakan string protokol unik seperti `"I2C_SHT40"` ke constructor kelas handler. Langkah ketiga adalah menambahkan entri di `config.json` di bagian `hardware.sensors[]` yang berisi `protocol`, `name`, `address`, `sda_pin`, dan `scl_pin`. Setelah tiga langkah ini selesai, sistem sepenuhnya mengintegrasikan sensor baru tanpa perubahan apapun di `telemetryTask()`, struktur payload JSON global, atau kode backend.
 
-1. Buat kelas handler yang mengimplementasikan `ProtocolHandler`
-2. Daftarkan handler tersebut satu kali di `ProtocolRegistry`
-3. Tambahkan entri di `config.json`
+Flowchart — Langkah Menambahkan Sensor I2C Baru:
 
-Tidak ada perubahan yang diperlukan di loop utama, struktur JSON telemetri, atau kode backend. Pendekatan ini juga mendukung hot-swap: perubahan di `config.json` dapat dimuat ulang secara *thread-safe* melalui `reloadConfiguration()` tanpa reboot ESP32.
+```mermaid
+flowchart TD
+    A[Start: Create new I2C sensor class] --> B[Implement ProtocolHandler interface]
+    B --> C{Implement 4 methods?}
+    C -->|No| D[Write init/read/getProtocolName/getSensorName]
+    D --> C
+    C -->|Yes| E[Register factory in ProtocolRegistry]
+    E --> F[Map protocol name to handler constructor]
+    F --> G[Add entry to config.json]
+    G --> H{Config valid?}
+    H -->|No| I[Fix JSON syntax / missing fields]
+    I --> G
+    H -->|Yes| J[Push config.json to LittleFS]
+    J --> K[Call reloadConfiguration or reboot]
+    K --> L{reloadConfiguration called?}
+    L -->|No| M[Hot-swap: create handler instance]
+    L -->|Yes| N[Boot: create handler instance]
+    M --> O[Push handler to activeHandlers]
+    N --> O
+    O --> P[telemetryTask calls handler->read every 5s]
+    P --> Q[Data appears in telemetry.i2c.{name}]
+    Q --> R[Published to MQTT / NATS automatically]
+    R --> S[End: No main loop or backend changes needed]
+```
+
+Keunggulan pendekatan ini adalah isolasi perubahan: seluruh logika pembacaan sensor baru dikonsepkan sebagai kelas mandiri yang tidak mempengaruhi kode yang sudah berjalan. Jika nanti ingin menambah protokol lain seperti 1-Wire atau CAN, langkahnya identik—buat handler, daftarkan di registry, tambahkan entri konfigurasi—mengapa pola factory + config-driven memberikan ekstensibilitas tanpa regresi. Pendekatan ini juga mendukung hot-swap: perubahan di `config.json` dapat dimuat ulang secara *thread-safe* melalui `reloadConfiguration()` tanpa reboot ESP32, sehingga operasi greenhouse tidak perlu terhenti untuk penambahan sensor.
 
 **f. Local Control Rules — Edge Computing Modular**
 
