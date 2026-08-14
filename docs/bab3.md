@@ -1798,11 +1798,35 @@ stateDiagram-v2
 
 **Input Contract — REST API (via Kong):**
 
-- `POST /v1/control/command` — Kirim perintah manual. Body: `{ "node_id": "node-1", "output": "pump", "type": "set_state", "value": 1, "duration_sec": 0, "targets": [], "bypass": false }`.
-  - `type` dapat berupa: `set_state`, `set_level`, `toggle`, `pulse`, `emergency_stop`.
-  - `bypass: true` memungkinkan perintah diterima meskipun node dalam mode `AUTO` — dirancang untuk layanan AI/TD3 yang perlu override output tanpa mengubah mode node.
-- `GET /v1/control/commands` — Riwayat perintah dengan filter `node_id` dan `limit`.
-- `POST /v1/control/schedules` — Buat jadwal otomatis baru.
+| Method | Endpoint | Deskripsi |
+|--------|----------|-----------|
+| `POST` | `/v1/control/command` | Kirim perintah manual ke aktuator. |
+| `GET` | `/v1/control/commands` | Riwayat perintah dengan filter `node_id` dan `limit`. |
+| `POST` | `/v1/control/schedules` | Buat jadwal otomatis baru. |
+
+**Request Body — `POST /v1/control/command`:**
+
+```json
+{
+  "node_id": "node-1",
+  "output": "pump",
+  "type": "set_state",
+  "value": 1,
+  "duration_sec": 0,
+  "targets": [],
+  "bypass": false
+}
+```
+
+| Field | Tipe | Wajib | Deskripsi |
+|-------|------|-------|-----------|
+| `node_id` | `string` | Ya | ID node target. |
+| `output` | `string` | Ya | Nama output aktuator (misal: `pump`). |
+| `type` | `string` | Ya | Jenis perintah: `set_state`, `set_level`, `toggle`, `pulse`, `emergency_stop`. |
+| `value` | `int` | Untuk `set_state`/`set_level` | Nilai yang dikirim ke aktuator (0–255). |
+| `duration_sec` | `int` | Untuk `pulse` | Durasi pulse dalam detik. |
+| `targets` | `array` | Tidak | Daftar target kontrol tambahan. |
+| `bypass` | `bool` | Tidak | Jika `true`, perintah diterima meskipun node dalam mode `AUTO`. Dirancang untuk layanan AI/TD3 yang perlu override output tanpa mengubah mode node. |
 
 **Input Contract — MQTT (dari firmware):**
 
