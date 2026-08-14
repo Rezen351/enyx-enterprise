@@ -1348,7 +1348,7 @@ flowchart TD
     M --> O[Push handler to activeHandlers]
     N --> O
     O --> P[telemetryTask calls handler->read every 5s]
-    P --> Q[Data appears in telemetry.i2c.{name}]
+    P --> Q["Data appears in telemetry.i2c.{name}"]
     Q --> R[Published to MQTT / NATS automatically]
     R --> S[End: No main loop or backend changes needed]
 ```
