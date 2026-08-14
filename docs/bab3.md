@@ -2797,11 +2797,52 @@ flowchart TD
 
 ---
 
-## 3.7 Perancangan Dashboard (Frontend)
+## 3.7 Panduan Untuk Pengguna
+
+Bagian ini menjelaskan alur operasi umum untuk menjalankan sistem enyx-enterprise, mulai dari persiapan perangkat keras di lapangan hingga aktivasi dashboard pemantauan.
+
+### 3.7.1 Persiapan Perangkat Keras dan Jaringan
+
+Langkah awal adalah memasang firmware ke ESP32 melalui proses *flashing* menggunakan ESP-IDF atau web OTA jika firmware sudah terinstal sebelumnya. Setelah boot, ESP32 menyiarkan WiFi Access Point bernama `SmartFarm-NodeID`. Pengguna menghubungkan komputer atau ponsel ke AP tersebut, membuka halaman Captive Portal, dan memasukkan kredensial WiFi lokal serta pengaturan MQTT broker (host, port, topik). Setelah disimpan, perangkat akan *reboot* dan mencoba terhubung ke jaringan lokal serta broker Mosquitto. Proses ini membuat node terdaftar di Module Service secara otomatis tanpa perlu mengubah kode firmware.
+
+### 3.7.2 Persiapan Infrastruktur dan Akses Dashboard
+
+Sementara itu, backend sistem dijalankan melalui Docker Compose. Pastikan seluruh layanan dalam kondisi sehat dengan memeriksa dashboard Grafana; setiap *service* harus menunjukkan status `UP`. Login ke dashboard menggunakan akun yang telah terdaftar melalui Auth Service (default admin dapat dibuat via seed). Dari halaman Module, pengguna melihat daftar node yang terhubung. Jika node baru belum muncul, klik tombol **Discovery** di web portal hardware untuk memaksa pemindaian device. Setelah node terdeteksi, attach sensor telemetri dan aktuator sesuai konfigurasi.
+
+### 3.7.3 Alur Operasi Menyeluruh
+
+Setelah node terhubung dan sensor/aktuator terpasang, seluruh data telemetri akan mengalir otomatis melalui MQTT ke Module Service, kemudian difan-out ke NATS dan ditampilkan di Dashboard. Data historis tersedia di halaman Analytics, sedangkan kontrol aktuator dapat dilakukan di halaman Control. Tidak ada tindakan lebih lanjut yang diperlukan — pengguna langsung dapat memantau kondisi greenhouse atau mengatur jadwal penyemprot otomatis.
+
+Flowchart — Panduan Umum Pengguna:
+
+```mermaid
+flowchart TD
+    A[Flash firmware ke ESP32] --> B[Boot ESP32 & aktifkan Captive Portal]
+    B --> C[User hubungkan ke WiFi SmartFarm-NodeID]
+    C --> D[Buka web config / captive portal]
+    D --> E[Input WiFi credential dan MQTT setting]
+    E --> F[Simpan config & reboot ESP32]
+    F --> G[ESP32 connect ke WiFi + MQTT broker]
+    G --> H[Module Service auto-detect node via MQTT]
+    H --> I{Bagaimana jika node tidak muncul?}
+    I -->|Ya| J[Klik tombol Discovery di web portal hardware]
+    I -->|Tidak| K[Node terdaftar otomatis di Module Service]
+    J --> K
+    K --> L[Attach sensor & aktuator ke node]
+    L --> M[Telemetry mulai mengalir: MQTT → NATS → Dashboard]
+    M --> N[Login dashboard]
+    N --> O[Buka halaman Module untuk verifikasi node]
+    O --> P[Analytics menampilkan data historis]
+    O --> Q[Control menampilkan aktuator siap dikendalikan]
+    P --> R[Siap untuk monitoring atau penjadwalan otomatis]
+    Q --> R
+```
+
+## 3.8 Perancangan Dashboard (Frontend)
 
 Seluruh informasi dari sistem backend hanya bernilai jika dapat diakses dan dioperasikan dengan mudah oleh pengguna.
 
-### 3.7.1 Teknologi Frontend
+### 3.8.1 Teknologi Frontend
 
 Dashboard dikembangkan menggunakan:
 - React 18 dengan Vite sebagai build tool
@@ -2809,7 +2850,7 @@ Dashboard dikembangkan menggunakan:
 - WebSocket untuk data telemetri real-time
 - REST API melalui Kong untuk operasi CRUD
 
-### 3.7.2 Halaman Utama dan Fungsionalitas
+### 3.8.2 Halaman Utama dan Fungsionalitas
 
 | Halaman | Fungsionalitas |
 |---------|----------------|
@@ -2825,9 +2866,9 @@ Dashboard dikembangkan menggunakan:
 
 ---
 
-## 3.8 Perancangan Infrastruktur dan Keamanan
+## 3.9 Perancangan Infrastruktur dan Keamanan
 
-### 3.8.1 Orkestrasi dengan Docker Compose
+### 3.9.1 Orkestrasi dengan Docker Compose
 
 Seluruh komponen sistem dikelola melalui satu file `docker-compose.yml` yang mendefinisikan:
 - 15 layanan aplikasi
@@ -2955,7 +2996,7 @@ graph TB
     style GRAF fill:#a5d6a7
 ```
 
-### 3.8.2 Strategi Keamanan Berlapis
+### 3.9.2 Strategi Keamanan Berlapis
 
 | Lapisan | Mekanisme | Detail |
 |---------|-----------|--------|
@@ -2971,11 +3012,11 @@ graph TB
 
 ---
 
-## 3.9 Perancangan Pengujian
+## 3.10 Perancangan Pengujian
 
 Perancangan pengujian ditetapkan sejak fase desain agar hasil yang diperoleh di Bab IV dapat dievaluasi secara objektif dan terukur.
 
-### 3.9.1 Strategi Pengujian
+### 3.10.1 Strategi Pengujian
 
 | Jenis Pengujian | Cakupan | Alat |
 |-----------------|---------|------|
@@ -3007,7 +3048,7 @@ Pengujian beban (*stress test*) menggunakan metodologi *breakpoint testing* untu
 
 Metodologi ini sengaja dirancang selaras dengan pengujian keandalan sistem (*resilience testing*), di mana kegagalan komponen (seperti matinya layanan tertentu atau diskoneksi broker) disimulasikan saat sistem beroperasi guna mengukur waktu pemulihan (*self-healing*) dan memastikan tidak adanya efek domino (*cascading failure*).
 
-### 3.9.2 Kriteria Keberhasilan
+### 3.10.2 Kriteria Keberhasilan
 
 | Kriteria | Target |
 |----------|--------|
