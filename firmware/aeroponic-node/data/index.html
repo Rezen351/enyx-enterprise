@@ -153,28 +153,6 @@
                 </form>
 
                 <div class="card" style="margin-top:24px;">
-                    <h3 class="card-title">RS485 Configuration</h3>
-                    <p style="color:var(--text-light); font-size:13px; margin-bottom:16px;">
-                        Configure UART pins for Modbus RS485 communication.
-                    </p>
-                    <form onsubmit="event.preventDefault(); saveRS485();">
-                        <div class="form-group">
-                            <label>RX Pin</label>
-                            <input type="number" id="cfg_rs485_rx" min="0" max="48" value="16">
-                        </div>
-                        <div class="form-group">
-                            <label>TX Pin</label>
-                            <input type="number" id="cfg_rs485_tx" min="0" max="48" value="17">
-                        </div>
-                        <div class="form-group">
-                            <label>DE Pin (GPIO Driver Enable, 255 = auto/disabled)</label>
-                            <input type="number" id="cfg_rs485_de" min="0" max="255" value="255">
-                        </div>
-                        <button type="submit">Save & Reboot</button>
-                    </form>
-                </div>
-
-                <div class="card" style="margin-top:24px;">
                     <h3 class="card-title">Backup & Restore</h3>
                     <p style="color:var(--text-light); font-size:13px; margin-bottom:16px;">
                         Export the current configuration as a JSON file, or import a saved backup configuration.
@@ -253,6 +231,27 @@
 
             <!-- MODBUS -->
             <div id="view-modbus" class="view-section">
+                <div class="card" style="margin-top:0px;">
+                    <h3 class="card-title">RS485 Configuration</h3>
+                    <p style="color:var(--text-light); font-size:13px; margin-bottom:16px;">
+                        Configure UART pins for Modbus RS485 communication.
+                    </p>
+                    <form onsubmit="event.preventDefault(); saveRS485();">
+                        <div class="form-group">
+                            <label>RX Pin</label>
+                            <input type="number" id="cfg_rs485_rx" min="0" max="48" value="16">
+                        </div>
+                        <div class="form-group">
+                            <label>TX Pin</label>
+                            <input type="number" id="cfg_rs485_tx" min="0" max="48" value="17">
+                        </div>
+                        <div class="form-group">
+                            <label>DE Pin (GPIO Driver Enable, 255 = auto/disabled)</label>
+                            <input type="number" id="cfg_rs485_de" min="0" max="255" value="255">
+                        </div>
+                        <button type="submit">Save & Reboot</button>
+                    </form>
+                </div>
 
                 <div class="card">
                     <h3 style="margin-top:0;">Modbus Scanner Tool</h3>
