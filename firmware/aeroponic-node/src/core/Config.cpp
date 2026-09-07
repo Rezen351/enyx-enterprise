@@ -48,7 +48,6 @@ namespace Config {
     uint8_t PIN_RS485_RX = 16;
     uint8_t PIN_RS485_TX = 17;
     uint8_t PIN_RS485_DE = 255; // 255 = Not Connected (Auto RS485 module)
-    uint8_t PIN_RS485_RTS = 255; // 255 = Not Connected (use GPIO DE or auto)
 
     // --- Universal Hardware Pins ---
     std::vector<InputPin> HardwareInputs;

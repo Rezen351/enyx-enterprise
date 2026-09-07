@@ -241,9 +241,6 @@ bool ConfigManager::loadConfig() {
     if (doc["hardware"]["rs485_de"]) {
         Config::PIN_RS485_DE = doc["hardware"]["rs485_de"].as<uint8_t>();
     }
-    if (doc["hardware"]["rs485_rts"]) {
-        Config::PIN_RS485_RTS = doc["hardware"]["rs485_rts"].as<uint8_t>();
-    }
 
     // Local Control Rules
     Config::LocalControlRules.clear();

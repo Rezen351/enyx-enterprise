@@ -108,8 +108,7 @@ static bool saveFullConfig() {
     doc["hardware"]["rs485_rx"] = Config::PIN_RS485_RX;
     doc["hardware"]["rs485_tx"] = Config::PIN_RS485_TX;
     doc["hardware"]["rs485_de"] = Config::PIN_RS485_DE;
-    doc["hardware"]["rs485_rts"] = Config::PIN_RS485_RTS;
-    
+
     JsonArray localControl = doc.createNestedArray("local_control");
     for (const auto& rule : Config::LocalControlRules) {
         JsonObject r = localControl.createNestedObject();
@@ -170,6 +169,7 @@ void WebConfigPortal::startAP() {
     server.on("/api/hardware", HTTP_POST, handleApiHardwarePost);
     server.on("/api/hardware/discover", HTTP_GET, handleApiHardwareDiscover);
     server.on("/api/modbus/start_scan", HTTP_POST, handleApiModbusStartScan);
+    server.on("/api/modbus/cancel_scan", HTTP_POST, handleApiModbusCancelScan);
     server.on("/api/modbus/scan_reg", HTTP_GET, handleApiModbusScanReg);
     server.on("/api/account", HTTP_POST, handleApiAccountPost);
     server.on("/api/status", HTTP_GET, handleApiStatusGet);
@@ -429,7 +429,6 @@ void WebConfigPortal::handleApiFullConfigGet() {
     doc["hardware"]["rs485_rx"] = Config::PIN_RS485_RX;
     doc["hardware"]["rs485_tx"] = Config::PIN_RS485_TX;
     doc["hardware"]["rs485_de"] = Config::PIN_RS485_DE;
-    doc["hardware"]["rs485_rts"] = Config::PIN_RS485_RTS;
     
     // Sensors (I2C / 1-Wire / SPI)
     JsonArray sensors = doc["hardware"].createNestedArray("sensors");
@@ -501,7 +500,6 @@ void WebConfigPortal::handleApiDevicePost() {
     if (server.hasArg("rs485_rx")) { Config::PIN_RS485_RX = server.arg("rs485_rx").toInt(); }
     if (server.hasArg("rs485_tx")) { Config::PIN_RS485_TX = server.arg("rs485_tx").toInt(); }
     if (server.hasArg("rs485_de")) { Config::PIN_RS485_DE = server.arg("rs485_de").toInt(); }
-    if (server.hasArg("rs485_rts")) { Config::PIN_RS485_RTS = server.arg("rs485_rts").toInt(); }
 
     if (saveFullConfig()) {
         server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true,\"message\":\"Device config updated. Rebooting...\"}");
@@ -609,6 +607,12 @@ void WebConfigPortal::handleApiModbusStartScan() {
         return server.send(200, "application/json", response);
     }
     server.send(400, "application/json", "{\"error\":\"Missing baud\"}");
+}
+
+void WebConfigPortal::handleApiModbusCancelScan() {
+    if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+    HardwareManager::requestScanCancel();
+    server.send(200, "application/json", "{\"status\":\"cancelled\"}");
 }
 
 void WebConfigPortal::handleApiModbusScanReg() {

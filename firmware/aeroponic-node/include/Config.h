@@ -102,7 +102,6 @@ namespace Config {
     extern uint8_t PIN_RS485_RX;
     extern uint8_t PIN_RS485_TX;
     extern uint8_t PIN_RS485_DE;
-    extern uint8_t PIN_RS485_RTS;
 
     // ==================== UNIVERSAL HARDWARE PINS ====================
     extern std::vector<InputPin> HardwareInputs;

@@ -239,9 +239,6 @@ async function loadFullConfig() {
         if (document.getElementById('cfg_rs485_de')) {
             document.getElementById('cfg_rs485_de').value = (d.hardware && d.hardware.rs485_de != null) ? d.hardware.rs485_de : 255;
         }
-        if (document.getElementById('cfg_rs485_rts')) {
-            document.getElementById('cfg_rs485_rts').value = (d.hardware && d.hardware.rs485_rts != null) ? d.hardware.rs485_rts : 255;
-        }
         document.getElementById('cfg_admin_u').value = d.security.admin_user || '';
         document.getElementById('cfg_ssid').value = wifi.ssid || '';
         document.getElementById('cfg_pass').value = wifi.password || '';
@@ -528,7 +525,8 @@ function addI2CSensor() {
 async function startScanId() {
     let baud = document.getElementById('scan_baud').value;
     let resDiv = document.getElementById('scan_results');
-    resDiv.innerHTML = `<div style="color:var(--primary);">Scanning ID 1-247 on ${baud} baud... Please wait (this may take a few minutes).</div>`;
+    resDiv.innerHTML = `<div style="color:var(--primary);">Scanning ID 1-247 on ${baud} baud... Please wait (this may take a few minutes).</div>
+                        <button id="cancel_scan_btn" onclick="cancelScanId()" style="margin-top:10px;">Cancel Scan</button>`;
 
     try {
         let res = await fetch('/api/modbus/start_scan', {
@@ -559,7 +557,26 @@ async function startScanId() {
             }
         }
     } catch (e) {
-        resDiv.innerHTML = `<div style="color:var(--danger);">Network error or timeout. Error: ${e.message}</div>`;
+        resDiv.innerHTML = `<div style='color:var(--danger);'>Network error or timeout. Error: ${e.message}</div>`;
+    }
+}
+
+async function cancelScanId() {
+    try {
+        let res = await fetch('/api/modbus/cancel_scan', {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token
+            }
+        });
+
+        if (res.ok) {
+            document.getElementById('scan_results').innerHTML = "<div style='color:var(--warning);'>Scan cancelled by user.</div>";
+        } else {
+            document.getElementById('scan_results').innerHTML = "<div style='color:var(--danger);'>Failed to cancel scan.</div>";
+        }
+    } catch (e) {
+        document.getElementById('scan_results').innerHTML = `<div style='color:var(--danger);'>Network error. Error: ${e.message}</div>`;
     }
 }
 
@@ -595,16 +612,6 @@ async function saveHardware() {
 async function saveDevice() {
     let v = document.getElementById('cfg_node_id').value;
     let d = await api('/api/device', 'POST', `node_id=${v}`);
-    if (d) triggerRebootSequence();
-}
-
-async function saveRS485() {
-    let rx = document.getElementById('cfg_rs485_rx').value;
-    let tx = document.getElementById('cfg_rs485_tx').value;
-    let de = document.getElementById('cfg_rs485_de').value;
-    let rts = document.getElementById('cfg_rs485_rts').value;
-    let body = `rs485_rx=${rx}&rs485_tx=${tx}&rs485_de=${de}&rs485_rts=${rts}`;
-    let d = await api('/api/device', 'POST', body);
     if (d) triggerRebootSequence();
 }
 

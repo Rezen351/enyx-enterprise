@@ -205,9 +205,6 @@ bool ModbusHandler::read(JsonObject& telemetry) {
         if (HardwareManager::currentBaud != baudrate) {
             Serial2.end();
             vTaskDelay(100 / portTICK_PERIOD_MS);
-            if (Config::PIN_RS485_RTS != 255) {
-                Serial2.setRts(Config::PIN_RS485_RTS);
-            }
             Serial2.begin(baudrate, SERIAL_8N1, Config::PIN_RS485_RX, Config::PIN_RS485_TX);
             vTaskDelay(300 / portTICK_PERIOD_MS);
             HardwareManager::currentBaud = baudrate;

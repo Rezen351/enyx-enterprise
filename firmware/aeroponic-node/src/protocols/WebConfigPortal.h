@@ -16,6 +16,7 @@ private:
     static void handleApiDevicePost();
     static void handleApiHardwarePost();
     static void handleApiModbusStartScan();
+    static void handleApiModbusCancelScan();
     static void handleApiModbusScanReg();
     static void handleApiAccountPost();
     static void handleApiStatusGet();

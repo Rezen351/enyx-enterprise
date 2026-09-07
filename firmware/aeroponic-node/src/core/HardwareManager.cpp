@@ -15,6 +15,7 @@ namespace HardwareManager {
 
     ModbusMaster node;
     uint32_t currentBaud = 0;
+    volatile bool scanCancelRequested = false;
     
     SemaphoreHandle_t modbusMutex;
     SemaphoreHandle_t handlersMutex = NULL;
@@ -56,6 +57,11 @@ namespace HardwareManager {
     void IRAM_ATTR gpioInterruptHandler() {
         // Generic interrupt handler — set flag, actual processing in telemetryTask
         emergencyShutdownTriggered = true;
+    }
+
+    // ==================== SCAN CANCEL ====================
+    void requestScanCancel() {
+        scanCancelRequested = true;
     }
 
     // ==================== LOCAL CONTROL EVALUATION ====================
@@ -252,18 +258,12 @@ namespace HardwareManager {
         // Modbus Setup
         modbusMutex = xSemaphoreCreateMutex();
         currentBaud = 0;
-
-        if (Config::PIN_RS485_RTS != 255) {
-            Serial2.setRts(Config::PIN_RS485_RTS);
-            Serial.println("[RS485] Hardware RTS mode enabled on pin " + String(Config::PIN_RS485_RTS));
-        } else if (Config::PIN_RS485_DE != 255) {
+        
+        if (Config::PIN_RS485_DE != 255) {
             pinMode(Config::PIN_RS485_DE, OUTPUT);
             digitalWrite(Config::PIN_RS485_DE, LOW);
             node.preTransmission([]() { digitalWrite(Config::PIN_RS485_DE, HIGH); });
             node.postTransmission([]() { digitalWrite(Config::PIN_RS485_DE, LOW); });
-            Serial.println("[RS485] GPIO DE mode enabled on pin " + String(Config::PIN_RS485_DE));
-        } else {
-            Serial.println("[RS485] Auto-direction mode (no DE/RTS control)");
         }
 
         // LED indikator (GAP #18)
@@ -414,13 +414,11 @@ namespace HardwareManager {
     String runFullScanSync(uint32_t baud) {
         String scanResultsJson = "[";
         bool firstFound = true;
+        scanCancelRequested = false;
         
         if (xSemaphoreTake(modbusMutex, portMAX_DELAY) == pdTRUE) {
             Serial2.end();
             vTaskDelay(100 / portTICK_PERIOD_MS);
-            if (Config::PIN_RS485_RTS != 255) {
-                Serial2.setRts(Config::PIN_RS485_RTS);
-            }
             Serial2.begin(baud, SERIAL_8N1, Config::PIN_RS485_RX, Config::PIN_RS485_TX);
             vTaskDelay(300 / portTICK_PERIOD_MS);
             currentBaud = baud;
@@ -430,6 +428,10 @@ namespace HardwareManager {
             Serial.println("================================");
             
             for (uint16_t id = 1; id <= 247; id++) {
+                if (scanCancelRequested) {
+                    Serial.println("SCAN CANCELLED BY USER");
+                    break;
+                }
                 // GAP #6: Feed watchdog setiap iterasi
                 esp_task_wdt_reset();
                 TaskWatchdog::heartbeat("TelemetryTask");
@@ -461,6 +463,7 @@ namespace HardwareManager {
         }
         
         scanResultsJson += "]";
+        scanCancelRequested = false;
         return scanResultsJson;
     }
     
@@ -469,9 +472,6 @@ namespace HardwareManager {
             if (currentBaud != baud) {
                 Serial2.end();
                 vTaskDelay(100 / portTICK_PERIOD_MS);
-                if (Config::PIN_RS485_RTS != 255) {
-                    Serial2.setRts(Config::PIN_RS485_RTS);
-                }
                 Serial2.begin(baud, SERIAL_8N1, Config::PIN_RS485_RX, Config::PIN_RS485_TX);
                 vTaskDelay(300 / portTICK_PERIOD_MS);
                 currentBaud = baud;

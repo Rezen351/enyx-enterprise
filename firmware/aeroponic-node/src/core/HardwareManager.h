@@ -11,6 +11,7 @@ namespace HardwareManager {
     extern uint32_t currentBaud;
     extern SemaphoreHandle_t modbusMutex;
     extern std::map<String, float> latestSensorValues;
+    extern volatile bool scanCancelRequested;
 
     void init();
     void telemetryTask(void* parameter);
@@ -19,6 +20,7 @@ namespace HardwareManager {
     
     // Synchronous Scan ID
     String runFullScanSync(uint32_t baud);
+    void requestScanCancel();
 
     // Dynamic configuration and discovery
     void reloadConfiguration();
