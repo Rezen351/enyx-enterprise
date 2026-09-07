@@ -23,6 +23,7 @@ namespace HardwareManager {
     std::map<String, float> latestSensorValues;
     String latestTelemetryJson = "{}";
     std::vector<ProtocolHandler*> activeHandlers;
+    std::map<String, ProtocolHandler*> activeOutputHandlers;   // name -> actuator handler
     
     // State terakhir output
     std::map<String, int> outputStates;
@@ -102,6 +103,12 @@ namespace HardwareManager {
                 delete h;
             }
             activeHandlers.clear();
+
+            // Delete old output (actuator) handlers
+            for (auto& kv : activeOutputHandlers) {
+                delete kv.second;
+            }
+            activeOutputHandlers.clear();
             
             // Re-initialize GPIO pin modes for legacy inputs/outputs
             for (const auto& hw : Config::HardwareInputs) {
@@ -120,14 +127,22 @@ namespace HardwareManager {
                 }
             }
 
+            // Create handlers for outputs (actuator) via ProtocolRegistry
             for (const auto& hw : Config::HardwareOutputs) {
-                pinMode(hw.pin, OUTPUT);
-                if (hw.type == "PWM") {
+                StaticJsonDocument<256> cdoc;
+                JsonObject obj = cdoc.to<JsonObject>();
+                obj["pin"] = hw.pin;
+                obj["type"] = hw.type;
+                obj["name"] = hw.name;
+                obj["protocol"] = hw.protocol;
+                ProtocolHandler* h = ProtocolRegistry::createHandler(hw.protocol, obj);
+                if (h) {
+                    activeOutputHandlers[hw.name] = h;
                     int oldVal = outputStates.count(hw.name) ? outputStates[hw.name] : 0;
-                    analogWrite(hw.pin, oldVal);
+                    h->write(oldVal);   // restore last known state
+                    Serial.printf("Registered Output: %s (Protocol: %s)\n", hw.name.c_str(), hw.protocol.c_str());
                 } else {
-                    int oldVal = outputStates.count(hw.name) ? outputStates[hw.name] : 0;
-                    digitalWrite(hw.pin, oldVal ? HIGH : LOW);
+                    Serial.printf("Failed to create output handler for: %s (Protocol: %s)\n", hw.name.c_str(), hw.protocol.c_str());
                 }
             }
 
@@ -212,6 +227,8 @@ namespace HardwareManager {
                     dev["detected_type"] = "DHT12";
                 } else if (address == 0x76 || address == 0x77) {
                     dev["detected_type"] = "BME280";
+                } else if (address == 0x40 || address == 0x41 || address == 0x44 || address == 0x45) {
+                    dev["detected_type"] = "INA219";
                 } else {
                     dev["detected_type"] = "UNKNOWN_I2C";
                 }
@@ -235,12 +252,18 @@ namespace HardwareManager {
         // Modbus Setup
         modbusMutex = xSemaphoreCreateMutex();
         currentBaud = 0;
-        
-        if (Config::PIN_RS485_DE != 255) {
+
+        if (Config::PIN_RS485_RTS != 255) {
+            Serial2.setRts(Config::PIN_RS485_RTS);
+            Serial.println("[RS485] Hardware RTS mode enabled on pin " + String(Config::PIN_RS485_RTS));
+        } else if (Config::PIN_RS485_DE != 255) {
             pinMode(Config::PIN_RS485_DE, OUTPUT);
             digitalWrite(Config::PIN_RS485_DE, LOW);
             node.preTransmission([]() { digitalWrite(Config::PIN_RS485_DE, HIGH); });
             node.postTransmission([]() { digitalWrite(Config::PIN_RS485_DE, LOW); });
+            Serial.println("[RS485] GPIO DE mode enabled on pin " + String(Config::PIN_RS485_DE));
+        } else {
+            Serial.println("[RS485] Auto-direction mode (no DE/RTS control)");
         }
 
         // LED indikator (GAP #18)
@@ -266,6 +289,7 @@ namespace HardwareManager {
         ProtocolRegistry::registerProtocol("I2C", []() -> ProtocolHandler* { return new I2CHandler(); });
         ProtocolRegistry::registerProtocol("1-WIRE", []() -> ProtocolHandler* { return new OneWireHandler(); });
         ProtocolRegistry::registerProtocol("SPI", []() -> ProtocolHandler* { return new SPIHandler(); });
+        ProtocolRegistry::registerProtocol("GPIO_OUT", []() -> ProtocolHandler* { return new GpioOutputHandler(); });
 
         // Load handlers initially
         reloadConfiguration();
@@ -294,12 +318,7 @@ namespace HardwareManager {
                 Serial.println("EMERGENCY: Shutdown triggered by interrupt!");
                 
                 for (const auto& hw : Config::HardwareOutputs) {
-                    if (hw.type == "PWM") {
-                        analogWrite(hw.pin, 0);
-                    } else {
-                        digitalWrite(hw.pin, LOW);
-                    }
-                    outputStates[hw.name] = 0;
+                    setOutput(hw.name, 0);
                 }
                 
                 // Kirim alert via MQTT
@@ -376,23 +395,16 @@ namespace HardwareManager {
     
     // ==================== SET OUTPUT ====================
     bool setOutput(String targetName, int value) {
-        for (const auto& hw : Config::HardwareOutputs) {
-            if (hw.name == targetName) {
-                if (hw.type == "PWM") {
-                    value = constrain(value, 0, 255);
-                    analogWrite(hw.pin, value);
-                    Serial.printf("Actuator: Setting PWM %s (GPIO %d) to %d\n", targetName.c_str(), hw.pin, value);
-                } else {
-                    value = value > 0 ? 1 : 0;
-                    digitalWrite(hw.pin, value > 0 ? HIGH : LOW);
-                    Serial.printf("Actuator: Setting DIGITAL %s (GPIO %d) to %d\n", targetName.c_str(), hw.pin, value);
-                }
-                outputStates[targetName] = value;
-                if (telemetryTaskHandle != NULL) {
-                    xTaskNotifyGive(telemetryTaskHandle);
-                }
-                return true;
+        auto it = activeOutputHandlers.find(targetName);
+        if (it != activeOutputHandlers.end()) {
+            it->second->write(value);
+            outputStates[targetName] = value;
+            Serial.printf("Actuator: %s -> %d (via %s handler)\n",
+                targetName.c_str(), value, it->second->getProtocolName().c_str());
+            if (telemetryTaskHandle != NULL) {
+                xTaskNotifyGive(telemetryTaskHandle);
             }
+            return true;
         }
         Serial.printf("Actuator: Target '%s' not found in Output Configuration.\n", targetName.c_str());
         return false;
@@ -406,6 +418,9 @@ namespace HardwareManager {
         if (xSemaphoreTake(modbusMutex, portMAX_DELAY) == pdTRUE) {
             Serial2.end();
             vTaskDelay(100 / portTICK_PERIOD_MS);
+            if (Config::PIN_RS485_RTS != 255) {
+                Serial2.setRts(Config::PIN_RS485_RTS);
+            }
             Serial2.begin(baud, SERIAL_8N1, Config::PIN_RS485_RX, Config::PIN_RS485_TX);
             vTaskDelay(300 / portTICK_PERIOD_MS);
             currentBaud = baud;
@@ -454,6 +469,9 @@ namespace HardwareManager {
             if (currentBaud != baud) {
                 Serial2.end();
                 vTaskDelay(100 / portTICK_PERIOD_MS);
+                if (Config::PIN_RS485_RTS != 255) {
+                    Serial2.setRts(Config::PIN_RS485_RTS);
+                }
                 Serial2.begin(baud, SERIAL_8N1, Config::PIN_RS485_RX, Config::PIN_RS485_TX);
                 vTaskDelay(300 / portTICK_PERIOD_MS);
                 currentBaud = baud;

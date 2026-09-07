@@ -77,9 +77,6 @@ Topik akan mengikuti format: `<prefix>/<node_id>/<kategori>`
 2. **Actuator Command**
    - Topic: `smartfarm/node-01/actuator`
    - Digunakan untuk menerima perintah (misalnya menyalakan pompa/relay).
-3. **Diagnostics**
-   - Topic: `smartfarm/node-01/diagnostics`
-   - Mengirim status *hardware* (RAM, Uptime, WiFi RSSI).
 
 ### Web Portal API Endpoints (Local IP)
 1. **`GET /api/status`**

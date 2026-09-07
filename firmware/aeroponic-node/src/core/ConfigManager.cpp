@@ -149,13 +149,11 @@ bool ConfigManager::loadConfig() {
     // Updating dynamic topics based on potentially new NODE_ID and TOPIC_PREFIX
     Config::TOPIC_TELEMETRY = Config::MQTT_TOPIC_PREFIX + "/" + Config::NODE_ID + "/telemetry";
     Config::TOPIC_ACTUATOR  = Config::MQTT_TOPIC_PREFIX + "/actuator/" + Config::NODE_ID;
-    Config::TOPIC_DIAGNOSTICS = Config::MQTT_TOPIC_PREFIX + "/" + Config::NODE_ID + "/diagnostics";
     Config::TOPIC_ALERT = Config::MQTT_TOPIC_PREFIX + "/" + Config::NODE_ID + "/alert";
 
     Serial.printf("MQTT Topics:\n");
     Serial.printf("  Telemetry : %s\n", Config::TOPIC_TELEMETRY.c_str());
     Serial.printf("  Actuator  : %s\n", Config::TOPIC_ACTUATOR.c_str());
-    Serial.printf("  Diagnos   : %s\n", Config::TOPIC_DIAGNOSTICS.c_str());
     Serial.printf("  Alert     : %s\n", Config::TOPIC_ALERT.c_str());
 
     // Hardware
@@ -185,6 +183,8 @@ bool ConfigManager::loadConfig() {
             pin.pin = output["pin"].as<uint8_t>();
             pin.type = output["type"].as<String>(); pin.type.trim();
             pin.name = output["name"].as<String>(); pin.name.trim();
+            pin.protocol = output["protocol"].as<String>(); pin.protocol.trim();
+            if (pin.protocol == "") pin.protocol = "GPIO_OUT";
             Config::HardwareOutputs.push_back(pin);
         }
     }
@@ -229,6 +229,20 @@ bool ConfigManager::loadConfig() {
             }
             Config::HardwareSensors.push_back(sensor);
         }
+    }
+
+    // RS485 pins
+    if (doc["hardware"]["rs485_rx"]) {
+        Config::PIN_RS485_RX = doc["hardware"]["rs485_rx"].as<uint8_t>();
+    }
+    if (doc["hardware"]["rs485_tx"]) {
+        Config::PIN_RS485_TX = doc["hardware"]["rs485_tx"].as<uint8_t>();
+    }
+    if (doc["hardware"]["rs485_de"]) {
+        Config::PIN_RS485_DE = doc["hardware"]["rs485_de"].as<uint8_t>();
+    }
+    if (doc["hardware"]["rs485_rts"]) {
+        Config::PIN_RS485_RTS = doc["hardware"]["rs485_rts"].as<uint8_t>();
     }
 
     // Local Control Rules

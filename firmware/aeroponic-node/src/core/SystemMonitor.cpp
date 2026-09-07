@@ -1,6 +1,5 @@
 #include "SystemMonitor.h"
 #include "../../include/Config.h"
-#include <ArduinoJson.h>
 #include <WiFi.h>
 
 void SystemMonitor::init() {
@@ -30,27 +29,15 @@ void SystemMonitor::printDiagnostics() {
     Serial.println("--------------------------");
 }
 
-String SystemMonitor::getDiagnosticsJSON() {
-    StaticJsonDocument<256> doc;
-    doc["free_heap_kb"] = ESP.getFreeHeap() / 1024;
-    doc["uptime_s"] = millis() / 1000;
-    doc["wifi_rssi"] = WiFi.RSSI();
-    
-    String output;
-    serializeJson(doc, output);
-    return output;
-}
-
 void SystemMonitor::monitorTask(void* parameter) {
     while (true) {
-        // printDiagnostics(); // Uncomment for debugging
+        printDiagnostics();
         
-        // Optional: Check if heap is critically low and trigger soft reset
         if (ESP.getFreeHeap() < 10000) {
             Serial.println("CRITICAL: Low memory! Restarting...");
             ESP.restart();
         }
 
-        vTaskDelay(Config::DIAGNOSTICS_INTERVAL / portTICK_PERIOD_MS);
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
     }
 }

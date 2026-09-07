@@ -72,9 +72,10 @@ static bool saveFullConfig() {
     JsonArray outputs = hardware.createNestedArray("outputs");
     for (const auto& pin : Config::HardwareOutputs) {
         JsonObject p = outputs.createNestedObject();
-        p["pin"]  = pin.pin;
+        p["pin"] = pin.pin;
         p["type"] = pin.type;
         p["name"] = pin.name;
+        p["protocol"] = pin.protocol;
     }
     
     JsonArray modbus = hardware.createNestedArray("modbus");
@@ -102,6 +103,12 @@ static bool saveFullConfig() {
             sensorObj[pair.first] = pair.second;
         }
     }
+
+    // RS485 pins
+    doc["hardware"]["rs485_rx"] = Config::PIN_RS485_RX;
+    doc["hardware"]["rs485_tx"] = Config::PIN_RS485_TX;
+    doc["hardware"]["rs485_de"] = Config::PIN_RS485_DE;
+    doc["hardware"]["rs485_rts"] = Config::PIN_RS485_RTS;
     
     JsonArray localControl = doc.createNestedArray("local_control");
     for (const auto& rule : Config::LocalControlRules) {
@@ -395,9 +402,10 @@ void WebConfigPortal::handleApiFullConfigGet() {
     JsonArray outputs = doc["hardware"].createNestedArray("outputs");
     for (const auto& pin : Config::HardwareOutputs) {
         JsonObject p = outputs.createNestedObject();
-        p["pin"]  = pin.pin;
+        p["pin"] = pin.pin;
         p["type"] = pin.type;
         p["name"] = pin.name;
+        p["protocol"] = pin.protocol;
     }
     
     // Modbus
@@ -416,7 +424,24 @@ void WebConfigPortal::handleApiFullConfigGet() {
             reg["type"]       = r.type;
         }
     }
+
+    // RS485 pins
+    doc["hardware"]["rs485_rx"] = Config::PIN_RS485_RX;
+    doc["hardware"]["rs485_tx"] = Config::PIN_RS485_TX;
+    doc["hardware"]["rs485_de"] = Config::PIN_RS485_DE;
+    doc["hardware"]["rs485_rts"] = Config::PIN_RS485_RTS;
     
+    // Sensors (I2C / 1-Wire / SPI)
+    JsonArray sensors = doc["hardware"].createNestedArray("sensors");
+    for (const auto& s : Config::HardwareSensors) {
+        JsonObject sensorObj = sensors.createNestedObject();
+        sensorObj["name"] = s.name;
+        sensorObj["protocol"] = s.protocol;
+        for (const auto& pair : s.params) {
+            sensorObj[pair.first] = pair.second;
+        }
+    }
+
     // Local Control Rules
     JsonArray localControl = doc.createNestedArray("local_control");
     for (const auto& rule : Config::LocalControlRules) {
@@ -473,8 +498,13 @@ void WebConfigPortal::handleApiDevicePost() {
     if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
     if (server.hasArg("node_id")) { Config::NODE_ID = server.arg("node_id"); Config::NODE_ID.trim(); }
     
+    if (server.hasArg("rs485_rx")) { Config::PIN_RS485_RX = server.arg("rs485_rx").toInt(); }
+    if (server.hasArg("rs485_tx")) { Config::PIN_RS485_TX = server.arg("rs485_tx").toInt(); }
+    if (server.hasArg("rs485_de")) { Config::PIN_RS485_DE = server.arg("rs485_de").toInt(); }
+    if (server.hasArg("rs485_rts")) { Config::PIN_RS485_RTS = server.arg("rs485_rts").toInt(); }
+
     if (saveFullConfig()) {
-        server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true,\"message\":\"Device ID updated. Rebooting...\"}");
+        server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true,\"message\":\"Device config updated. Rebooting...\"}");
         delay(1000);
         ESP.restart();
     } else {
@@ -512,6 +542,8 @@ void WebConfigPortal::handleApiHardwarePost() {
                     pin.pin = gpio["pin"].as<uint8_t>();
                     pin.type = gpio["type"].as<String>(); pin.type.trim();
                     pin.name = gpio["name"].as<String>(); pin.name.trim();
+                    pin.protocol = gpio["protocol"].as<String>(); pin.protocol.trim();
+                    if (pin.protocol == "") pin.protocol = "GPIO_OUT";
                     Config::HardwareOutputs.push_back(pin);
                 }
             }
@@ -536,7 +568,23 @@ void WebConfigPortal::handleApiHardwarePost() {
                     Config::HardwareModbus.push_back(ms);
                 }
             }
-            
+
+            if (pdoc["sensors"].is<JsonArray>()) {
+                Config::HardwareSensors.clear();
+                for (JsonObject sj : pdoc["sensors"].as<JsonArray>()) {
+                    Config::GenericSensor sensor;
+                    sensor.name = sj["name"].as<String>(); sensor.name.trim();
+                    sensor.protocol = sj["protocol"].as<String>(); sensor.protocol.trim();
+                    for (JsonPair pair : sj) {
+                        String key = pair.key().c_str();
+                        if (key != "name" && key != "protocol") {
+                            sensor.params[key] = pair.value().as<String>();
+                        }
+                    }
+                    Config::HardwareSensors.push_back(sensor);
+                }
+            }
+
             if (saveFullConfig()) {
                 HardwareManager::reloadConfiguration();
                 server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":false,\"message\":\"Hardware config updated dynamically (Hot-Swapped)!\"}");

@@ -3,6 +3,7 @@
 
 #include "ProtocolHandler.h"
 #include <Wire.h>
+#include <Adafruit_INA219.h>
 
 // Light weight Bosch BME280 driver
 class LightBME280 {
@@ -58,6 +59,20 @@ public:
     String getSensorName() override { return name; }
 };
 
+// GpioOutputHandler (Actuator) — output via ProtocolHandler abstraction
+class GpioOutputHandler : public ProtocolHandler {
+private:
+    uint8_t pin;
+    String type;
+    String name;
+public:
+    bool init(const JsonObject& config) override;
+    bool read(JsonObject& telemetry) override;
+    bool write(int value) override;
+    String getProtocolName() override { return "GPIO_OUT"; }
+    String getSensorName()  override { return name; }
+};
+
 // Modbus Handler
 class ModbusHandler : public ProtocolHandler {
 private:
@@ -88,6 +103,7 @@ private:
     uint8_t scl_pin;
     bool initialized;
     LightBME280* bme;
+    Adafruit_INA219* ina219;
 public:
     I2CHandler();
     ~I2CHandler();

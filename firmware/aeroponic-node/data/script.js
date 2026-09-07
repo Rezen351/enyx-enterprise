@@ -230,6 +230,18 @@ async function loadFullConfig() {
         let wifi = (d.protocols && d.protocols.wifi) || {};
         let mqtt = (d.protocols && d.protocols.mqtt) || {};
         document.getElementById('cfg_node_id').value = d.device.node_id || '';
+        if (document.getElementById('cfg_rs485_rx')) {
+            document.getElementById('cfg_rs485_rx').value = (d.hardware && d.hardware.rs485_rx != null) ? d.hardware.rs485_rx : 16;
+        }
+        if (document.getElementById('cfg_rs485_tx')) {
+            document.getElementById('cfg_rs485_tx').value = (d.hardware && d.hardware.rs485_tx != null) ? d.hardware.rs485_tx : 17;
+        }
+        if (document.getElementById('cfg_rs485_de')) {
+            document.getElementById('cfg_rs485_de').value = (d.hardware && d.hardware.rs485_de != null) ? d.hardware.rs485_de : 255;
+        }
+        if (document.getElementById('cfg_rs485_rts')) {
+            document.getElementById('cfg_rs485_rts').value = (d.hardware && d.hardware.rs485_rts != null) ? d.hardware.rs485_rts : 255;
+        }
         document.getElementById('cfg_admin_u').value = d.security.admin_user || '';
         document.getElementById('cfg_ssid').value = wifi.ssid || '';
         document.getElementById('cfg_pass').value = wifi.password || '';
@@ -249,8 +261,8 @@ async function loadFullConfig() {
         pwDirty.cfg_eap_pass = false;
         pwDirty.cfg_mqtt_p = false;
 
-        // Render hardware
-        renderHardwareRows(d.hardware || { inputs: [], outputs: [] });
+        // Render GPIO (inputs/outputs/modbus) + I2C sensors
+        renderGpioRows(d.hardware || { inputs: [], outputs: [] });
 
         // Load local control rules
         if (d.local_control) {
@@ -260,24 +272,29 @@ async function loadFullConfig() {
     }
 }
 
-// Hardware Logic
+// GPIO (Hardware) Logic
 let hwInputs = [];
 let hwOutputs = [];
 let hwModbus = [];
+let hwI2C = [];
 let editInputIdx = -1;
 let editOutputIdx = -1;
 let editModbusIdx = -1;
+let editI2CIdx = -1;
 
-function renderHardwareRows(hw) {
+function renderGpioRows(hw) {
     hwInputs = hw.inputs || [];
     hwOutputs = hw.outputs || [];
     hwModbus = hw.modbus || [];
+    hwI2C = hw.sensors || [];
     editInputIdx = -1;
     editOutputIdx = -1;
     editModbusIdx = -1;
+    editI2CIdx = -1;
     drawInputs();
     drawOutputs();
     drawModbus();
+    drawI2C();
 }
 
 function drawInputs() {
@@ -453,6 +470,60 @@ function addModbusSensor() {
     drawModbus();
 }
 
+function drawI2C() {
+    let html = '';
+    hwI2C.forEach((s, idx) => {
+        if (editI2CIdx === idx) {
+            html += `
+            <div class="hw-row" style="flex-wrap:wrap; gap:8px;">
+                <div style="flex:1; min-width:120px;">
+                    <label>Sensor Name</label>
+                    <input type="text" value="${s.name || ''}" onchange="hwI2C[${idx}].name=this.value">
+                </div>
+                <div style="flex:1; min-width:120px;">
+                    <label>Sensor Type</label>
+                    <select onchange="hwI2C[${idx}].type=this.value">
+                        <option value="INA219" ${(s.type || '') === 'INA219' ? 'selected' : ''}>INA219</option>
+                        <option value="BME280" ${(s.type || '') === 'BME280' ? 'selected' : ''}>BME280</option>
+                        <option value="DHT12" ${(s.type || '') === 'DHT12' ? 'selected' : ''}>DHT12</option>
+                    </select>
+                </div>
+                <div style="flex:1; min-width:100px;">
+                    <label>I2C Address</label>
+                    <input type="text" value="${s.address || '0x40'}" onchange="hwI2C[${idx}].address=this.value">
+                </div>
+                <div style="flex:1; min-width:80px;">
+                    <label>SDA Pin</label>
+                    <input type="number" min="0" max="48" value="${s.sda_pin || 21}" onchange="hwI2C[${idx}].sda_pin=this.value">
+                </div>
+                <div style="flex:1; min-width:80px;">
+                    <label>SCL Pin</label>
+                    <input type="number" min="0" max="48" value="${s.scl_pin || 22}" onchange="hwI2C[${idx}].scl_pin=this.value">
+                </div>
+                <div style="display:flex; gap:6px; margin-top:8px;">
+                    <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editI2CIdx=-1; drawI2C();">Done</button>
+                </div>
+            </div>`;
+        } else {
+            html += `
+            <div class="hw-row" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <span class="hw-name">${s.name || 'Unnamed'} (${s.type || '?'}) @ ${s.address || '?'}</span>
+                <div style="display:flex; gap:6px;">
+                    <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editI2CIdx=${idx}; drawI2C();">Edit</button>
+                    <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="hwI2C.splice(${idx},1); if(editI2CIdx===${idx}) editI2CIdx=-1; else if(editI2CIdx>${idx}) editI2CIdx--; drawI2C();">Remove</button>
+                </div>
+            </div>`;
+        }
+    });
+    document.getElementById('i2c-rows').innerHTML = html;
+}
+
+function addI2CSensor() {
+    hwI2C.push({ name: 'New I2C Sensor', type: 'INA219', protocol: 'I2C', address: '0x40', sda_pin: '21', scl_pin: '22' });
+    editI2CIdx = hwI2C.length - 1;
+    drawI2C();
+}
+
 // Scanner logic
 async function startScanId() {
     let baud = document.getElementById('scan_baud').value;
@@ -516,7 +587,7 @@ async function startScanReg() {
 }
 
 async function saveHardware() {
-    let payload = encodeURIComponent(JSON.stringify({ inputs: hwInputs, outputs: hwOutputs, modbus: hwModbus }));
+    let payload = encodeURIComponent(JSON.stringify({ inputs: hwInputs, outputs: hwOutputs, modbus: hwModbus, sensors: hwI2C }));
     let d = await api('/api/hardware', 'POST', `payload=${payload}`);
     if (d) triggerRebootSequence();
 }
@@ -524,6 +595,16 @@ async function saveHardware() {
 async function saveDevice() {
     let v = document.getElementById('cfg_node_id').value;
     let d = await api('/api/device', 'POST', `node_id=${v}`);
+    if (d) triggerRebootSequence();
+}
+
+async function saveRS485() {
+    let rx = document.getElementById('cfg_rs485_rx').value;
+    let tx = document.getElementById('cfg_rs485_tx').value;
+    let de = document.getElementById('cfg_rs485_de').value;
+    let rts = document.getElementById('cfg_rs485_rts').value;
+    let body = `rs485_rx=${rx}&rs485_tx=${tx}&rs485_de=${de}&rs485_rts=${rts}`;
+    let d = await api('/api/device', 'POST', body);
     if (d) triggerRebootSequence();
 }
 

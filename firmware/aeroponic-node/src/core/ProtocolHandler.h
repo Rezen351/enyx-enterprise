@@ -11,6 +11,7 @@ public:
     virtual ~ProtocolHandler() {}
     virtual bool init(const JsonObject& config) = 0;
     virtual bool read(JsonObject& telemetry) = 0;
+    virtual bool write(int value) { return false; }   // actuator output (default no-op)
     virtual String getProtocolName() = 0;
     virtual String getSensorName() = 0;
 };

@@ -7,7 +7,6 @@ class SystemMonitor {
 public:
     static void init();
     static void printDiagnostics();
-    static String getDiagnosticsJSON();
 
 private:
     static void monitorTask(void* parameter);

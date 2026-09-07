@@ -150,6 +150,31 @@ bool GPIOInputHandler::read(JsonObject& telemetry) {
     return true;
 }
 
+// ==================== GpioOutputHandler Implementation (Actuator) ====================
+bool GpioOutputHandler::init(const JsonObject& config) {
+    if (!config.containsKey("pin") || !config.containsKey("name")) return false;
+    pin = config["pin"].as<uint8_t>();
+    type = config["type"] | "DIGITAL";
+    name = config["name"].as<String>();
+    pinMode(pin, OUTPUT);
+    write(0);   // safe default; reloadConfiguration() restores last known state
+    return true;
+}
+
+bool GpioOutputHandler::read(JsonObject& telemetry) {
+    // Output handler does not read sensor values
+    return true;
+}
+
+bool GpioOutputHandler::write(int value) {
+    if (type == "PWM") {
+        analogWrite(pin, constrain(value, 0, 255));
+    } else {
+        digitalWrite(pin, value > 0 ? HIGH : LOW);
+    }
+    return true;
+}
+
 // ==================== ModbusHandler Implementation ====================
 bool ModbusHandler::init(const JsonObject& config) {
     if (!config.containsKey("name") || !config.containsKey("slave_id")) return false;
@@ -180,6 +205,9 @@ bool ModbusHandler::read(JsonObject& telemetry) {
         if (HardwareManager::currentBaud != baudrate) {
             Serial2.end();
             vTaskDelay(100 / portTICK_PERIOD_MS);
+            if (Config::PIN_RS485_RTS != 255) {
+                Serial2.setRts(Config::PIN_RS485_RTS);
+            }
             Serial2.begin(baudrate, SERIAL_8N1, Config::PIN_RS485_RX, Config::PIN_RS485_TX);
             vTaskDelay(300 / portTICK_PERIOD_MS);
             HardwareManager::currentBaud = baudrate;
@@ -208,10 +236,11 @@ bool ModbusHandler::read(JsonObject& telemetry) {
 }
 
 // ==================== I2CHandler Implementation ====================
-I2CHandler::I2CHandler() : address(0), sda_pin(21), scl_pin(22), initialized(false), bme(nullptr) {}
+I2CHandler::I2CHandler() : address(0), sda_pin(21), scl_pin(22), initialized(false), bme(nullptr), ina219(nullptr) {}
 
 I2CHandler::~I2CHandler() {
     if (bme) delete bme;
+    if (ina219) delete ina219;
 }
 
 bool I2CHandler::init(const JsonObject& config) {
@@ -234,7 +263,9 @@ bool I2CHandler::init(const JsonObject& config) {
             }
         }
     } else {
-        address = (type == "DHT12") ? 0x5C : 0x76;
+        if (type == "DHT12") address = 0x5C;
+        else if (type == "INA219") address = 0x40;
+        else address = 0x76;
     }
 
     initI2C(sda_pin, scl_pin);
@@ -244,6 +275,12 @@ bool I2CHandler::init(const JsonObject& config) {
         initialized = bme->begin();
         if (!initialized) {
             Serial.printf("Failed to init BME280 at 0x%02X\n", address);
+        }
+    } else if (type == "INA219") {
+        ina219 = new Adafruit_INA219(address);
+        initialized = ina219->begin();
+        if (!initialized) {
+            Serial.printf("Failed to init INA219 at 0x%02X\n", address);
         }
     } else if (type == "DHT12") {
         Wire.beginTransmission(address);
@@ -267,6 +304,8 @@ bool I2CHandler::read(JsonObject& telemetry) {
     if (!initialized) {
         if (type == "BME280" && bme) {
             initialized = bme->begin();
+        } else if (type == "INA219" && ina219) {
+            initialized = ina219->begin();
         } else if (type == "DHT12") {
             Wire.beginTransmission(address);
             initialized = (Wire.endTransmission() == 0);
@@ -277,7 +316,22 @@ bool I2CHandler::read(JsonObject& telemetry) {
         }
     }
 
-    if (type == "BME280" && bme) {
+    if (type == "INA219" && ina219) {
+        float busVoltage = ina219->getBusVoltage_V();
+        float shuntVoltage = ina219->getShuntVoltage_mV();
+        float current = ina219->getCurrent_mA();
+        float power = ina219->getPower_mW();
+
+        devObj["bus_voltage_v"] = busVoltage;
+        devObj["shunt_voltage_mv"] = shuntVoltage;
+        devObj["current_ma"] = current;
+        devObj["power_mw"] = power;
+
+        HardwareManager::latestSensorValues[name + "_bus_voltage"] = busVoltage;
+        HardwareManager::latestSensorValues[name + "_current"] = current;
+        HardwareManager::latestSensorValues[name + "_power"] = power;
+        HardwareManager::latestSensorValues[name] = current;
+    } else if (type == "BME280" && bme) {
         float temp = bme->getTemperature();
         float humid = bme->getHumidity();
         devObj["temperature"] = temp;

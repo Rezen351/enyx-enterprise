@@ -39,7 +39,6 @@ namespace Config {
     // --- Topik MQTT Default ---
     String TOPIC_TELEMETRY = MQTT_TOPIC_PREFIX + "/" + NODE_ID + "/telemetry";
     String TOPIC_ACTUATOR = MQTT_TOPIC_PREFIX + "/actuator/" + NODE_ID;
-    String TOPIC_DIAGNOSTICS = MQTT_TOPIC_PREFIX + "/" + NODE_ID + "/diagnostics";
     String TOPIC_ALERT = MQTT_TOPIC_PREFIX + "/" + NODE_ID + "/alert";
 
     // --- Pin Mapping ---
@@ -49,6 +48,7 @@ namespace Config {
     uint8_t PIN_RS485_RX = 16;
     uint8_t PIN_RS485_TX = 17;
     uint8_t PIN_RS485_DE = 255; // 255 = Not Connected (Auto RS485 module)
+    uint8_t PIN_RS485_RTS = 255; // 255 = Not Connected (use GPIO DE or auto)
 
     // --- Universal Hardware Pins ---
     std::vector<InputPin> HardwareInputs;
@@ -60,5 +60,4 @@ namespace Config {
     // --- Interval Waktu (ms) ---
     uint32_t SENSOR_READ_INTERVAL = 5000;
     uint32_t MQTT_PUBLISH_INTERVAL = 5000;
-    uint32_t DIAGNOSTICS_INTERVAL = 10000;
 }

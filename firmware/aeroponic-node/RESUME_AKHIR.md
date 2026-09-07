@@ -83,7 +83,6 @@ Firmware berjalan di **ESP32 dual-core** dengan **6 task FreeRTOS independen**:
 |-------|------|--------|
 | `smartfarm/{node_id}/telemetry` | Publish | Data sensor & sistem |
 | `smartfarm/actuator/{node_id}` | Subscribe | Perintah aktuator |
-| `smartfarm/{node_id}/diagnostics` | Publish | Diagnostik hardware |
 | `smartfarm/{node_id}/alert` | Publish | Alert darurat |
 | `smartfarm/{node_id}/confirm` | Publish | Konfirmasi eksekusi perintah |
 | `smartfarm/discovery` | Publish | Discovery node |

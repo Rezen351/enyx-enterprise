@@ -48,8 +48,9 @@
             <div class="menu-item" onclick="switchView('device')">Device</div>
             <div class="menu-item" onclick="switchView('wifi')">Wi-Fi</div>
             <div class="menu-item" onclick="switchView('mqtt')">MQTT</div>
-            <div class="menu-item" onclick="switchView('hardware')">Hardware</div>
+            <div class="menu-item" onclick="switchView('gpio')">GPIO</div>
             <div class="menu-item" onclick="switchView('modbus')">Modbus</div>
+            <div class="menu-item" onclick="switchView('i2c')">I2C</div>
             <div class="menu-item" onclick="switchView('local_control')">Local Control</div>
             <div class="menu-item" onclick="switchView('ota')">Firmware Update</div>
 
@@ -153,6 +154,32 @@
                 </form>
 
                 <div class="card" style="margin-top:24px;">
+                    <h3 class="card-title">RS485 / Serial Configuration</h3>
+                    <p style="color:var(--text-light); font-size:13px; margin-bottom:16px;">
+                        Configure UART pins for Modbus RS485 communication. Set RTS to 255 to disable hardware RTS and use GPIO DE mode instead.
+                    </p>
+                    <form onsubmit="event.preventDefault(); saveRS485();">
+                        <div class="form-group">
+                            <label>RX Pin (default: 16)</label>
+                            <input type="number" id="cfg_rs485_rx" min="0" max="48" value="16">
+                        </div>
+                        <div class="form-group">
+                            <label>TX Pin (default: 17)</label>
+                            <input type="number" id="cfg_rs485_tx" min="0" max="48" value="17">
+                        </div>
+                        <div class="form-group">
+                            <label>DE Pin (GPIO Driver Enable, 255 = auto/disabled)</label>
+                            <input type="number" id="cfg_rs485_de" min="0" max="255" value="255">
+                        </div>
+                        <div class="form-group">
+                            <label>RTS Pin (Hardware RTS, 255 = disabled)</label>
+                            <input type="number" id="cfg_rs485_rts" min="0" max="255" value="255">
+                        </div>
+                        <button type="submit">Save RS485 Config & Reboot</button>
+                    </form>
+                </div>
+
+                <div class="card" style="margin-top:24px;">
                     <h3 class="card-title">Backup & Restore</h3>
                     <p style="color:var(--text-light); font-size:13px; margin-bottom:16px;">
                         Export the current configuration as a JSON file, or import a saved backup configuration.
@@ -211,7 +238,7 @@
                 </form>
             </div>
 
-            <div id="view-hardware" class="view-section">
+            <div id="view-gpio" class="view-section">
                 <form class="card" onsubmit="event.preventDefault(); saveHardware();">
                     <h3 style="margin-top:0;">Input</h3>
                     <div id="input-rows"></div>
@@ -227,7 +254,7 @@
                 </form>
 
                 <button style="width:100%; margin-top:10px;" onclick="saveHardware()">Save & Reboot All
-                    Hardware</button>
+                    GPIO</button>
             </div>
 
             <!-- MODBUS -->
@@ -276,6 +303,20 @@
                         Modbus
                         Sensor</button>
                     <button style="width:100%; margin-top:10px;" type="submit">Save & Reboot</button>
+                </form>
+            </div>
+
+            <!-- I2C -->
+            <div id="view-i2c" class="view-section">
+                <form class="card" onsubmit="event.preventDefault(); saveHardware();">
+                    <h3 style="margin-top:0;">I2C Sensors</h3>
+                    <p style="color:var(--text-light); font-size:13px; margin-bottom:16px;">
+                        Tambahkan sensor I2C (INA219, BME280, DHT12). Pastikan alamat dan pin SDA/SCL sesuai wiring perangkat.
+                    </p>
+                    <div id="i2c-rows"></div>
+                    <button class="outline" onclick="addI2CSensor()" style="margin-top:10px;" type="button">+ Add
+                        I2C Sensor</button>
+                    <button style="width:100%; margin-top:10px;" type="submit">Save & Reboot All I2C</button>
                 </form>
             </div>
 

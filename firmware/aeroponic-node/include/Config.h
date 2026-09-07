@@ -22,8 +22,9 @@ namespace Config {
 
     struct OutputPin {
         uint8_t pin;
-        String type; // "DIGITAL", "PWM"
+        String type;       // "DIGITAL", "PWM"
         String name;
+        String protocol;   // ProtocolHandler name, default "GPIO_OUT"
     };
 
     struct ModbusRegister {
@@ -92,7 +93,6 @@ namespace Config {
     // ==================== TOPIK MQTT ====================
     extern String TOPIC_TELEMETRY;
     extern String TOPIC_ACTUATOR;
-    extern String TOPIC_DIAGNOSTICS;
     extern String TOPIC_ALERT;
 
     // ==================== PIN MAPPING ====================
@@ -102,6 +102,7 @@ namespace Config {
     extern uint8_t PIN_RS485_RX;
     extern uint8_t PIN_RS485_TX;
     extern uint8_t PIN_RS485_DE;
+    extern uint8_t PIN_RS485_RTS;
 
     // ==================== UNIVERSAL HARDWARE PINS ====================
     extern std::vector<InputPin> HardwareInputs;
@@ -113,7 +114,6 @@ namespace Config {
     // ==================== INTERVAL WAKTU (ms) ====================
     extern uint32_t SENSOR_READ_INTERVAL;
     extern uint32_t MQTT_PUBLISH_INTERVAL;
-    extern uint32_t DIAGNOSTICS_INTERVAL;
 }
 
 #endif // CONFIG_H
