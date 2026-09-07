@@ -1,5 +1,6 @@
 #include "SystemMonitor.h"
 #include "../../include/Config.h"
+#include "../../include/Logger.h"
 #include <WiFi.h>
 
 void SystemMonitor::init() {
@@ -16,17 +17,11 @@ void SystemMonitor::init() {
 }
 
 void SystemMonitor::printDiagnostics() {
-    Serial.println("--- System Diagnostics ---");
-    Serial.print("Free Heap: ");
-    Serial.print(ESP.getFreeHeap() / 1024);
-    Serial.println(" KB");
-    Serial.print("Uptime: ");
-    Serial.print(millis() / 1000);
-    Serial.println(" s");
-    Serial.print("WiFi RSSI: ");
-    Serial.print(WiFi.RSSI());
-    Serial.println(" dBm");
-    Serial.println("--------------------------");
+    Logger::system("--- System Diagnostics ---");
+    Logger::system("Free Heap: %d KB", ESP.getFreeHeap() / 1024);
+    Logger::system("Uptime: %d s", millis() / 1000);
+    Logger::system("WiFi RSSI: %d dBm", WiFi.RSSI());
+    Logger::system("--------------------------");
 }
 
 void SystemMonitor::monitorTask(void* parameter) {
@@ -34,7 +29,7 @@ void SystemMonitor::monitorTask(void* parameter) {
         printDiagnostics();
         
         if (ESP.getFreeHeap() < 10000) {
-            Serial.println("CRITICAL: Low memory! Restarting...");
+            Logger::system("CRITICAL: Low memory! Restarting...");
             ESP.restart();
         }
 

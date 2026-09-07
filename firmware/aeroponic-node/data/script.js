@@ -10,7 +10,7 @@ let pwDirty = { cfg_pass: false, cfg_eap_pass: false, cfg_mqtt_p: false };
     if (el) el.addEventListener('input', () => { pwDirty[id] = true; });
 });
 
-const PW_PLACEHOLDER = '•••••••• (biarkan kosong untuk mempertahankan)';
+const PW_PLACEHOLDER = '•••••••• (leave empty to keep current)';
 
 function showMsg(msg, isErr = false) {
     let box = document.getElementById('alert');
@@ -116,16 +116,12 @@ function switchView(id) {
     document.querySelectorAll('.menu-item').forEach(e => e.classList.remove('active'));
     document.getElementById('view-' + id).classList.add('active');
     event.currentTarget.classList.add('active');
-    // Hide sidebar on mobile after clicking
     document.getElementById('sidebarMenu').classList.remove('show');
 
     if (statusTimer) clearInterval(statusTimer);
     if (id === 'status') {
         loadStatus();
         statusTimer = setInterval(loadStatus, 3000);
-    }
-    if (id === 'local_control') {
-        loadLocalControl();
     }
 }
 
@@ -260,12 +256,6 @@ async function loadFullConfig() {
 
         // Render GPIO (inputs/outputs/modbus) + I2C sensors
         renderGpioRows(d.hardware || { inputs: [], outputs: [] });
-
-        // Load local control rules
-        if (d.local_control) {
-            localControlRules = d.local_control;
-            drawLocalControl();
-        }
     }
 }
 
@@ -604,22 +594,24 @@ async function startScanReg() {
 }
 
 async function saveHardware() {
+    if (!confirm('Save hardware config and reboot?')) return;
     let payload = encodeURIComponent(JSON.stringify({ inputs: hwInputs, outputs: hwOutputs, modbus: hwModbus, sensors: hwI2C }));
     let d = await api('/api/hardware', 'POST', `payload=${payload}`);
     if (d) triggerRebootSequence();
 }
 
 async function saveDevice() {
+    if (!confirm('Save device config and reboot?')) return;
     let v = document.getElementById('cfg_node_id').value;
     let d = await api('/api/device', 'POST', `node_id=${v}`);
     if (d) triggerRebootSequence();
 }
 
 async function saveWifi() {
+    if (!confirm('Save WiFi config and reboot?')) return;
     let s = document.getElementById('cfg_ssid').value;
     let ei = document.getElementById('cfg_eap_id').value;
     let body = `ssid=${encodeURIComponent(s)}&eap_identity=${encodeURIComponent(ei)}`;
-    // Hanya kirim password bila user mengubahnya, agar password tersimpan tidak tertimpa kosong.
     if (pwDirty.cfg_pass) body += `&pass=${encodeURIComponent(document.getElementById('cfg_pass').value)}`;
     if (pwDirty.cfg_eap_pass) body += `&eap_password=${encodeURIComponent(document.getElementById('cfg_eap_pass').value)}`;
     let d = await api('/api/wifi', 'POST', body);
@@ -627,6 +619,7 @@ async function saveWifi() {
 }
 
 async function saveMqtt() {
+    if (!confirm('Save MQTT config and reboot?')) return;
     let s = document.getElementById('cfg_mqtt_srv').value;
     let p = document.getElementById('cfg_mqtt_port').value;
     let pre = document.getElementById('cfg_mqtt_pre').value;
@@ -639,6 +632,7 @@ async function saveMqtt() {
 }
 
 async function saveAccount() {
+    if (!confirm('Update admin credentials and reboot?')) return;
     let u = document.getElementById('cfg_admin_u').value;
     let p = document.getElementById('cfg_admin_p').value;
     if (!u || !p) { showMsg('Cannot be empty', true); return; }
@@ -647,94 +641,6 @@ async function saveAccount() {
         logout();
         triggerRebootSequence();
     }
-}
-
-// ==================== LOCAL CONTROL ====================
-let localControlRules = [];
-let editLocalControlIdx = -1;
-
-async function loadLocalControl() {
-    let d = await api('/api/local_control', 'GET');
-    if (d && d.local_control) {
-        localControlRules = d.local_control;
-        editLocalControlIdx = -1;
-        drawLocalControl();
-    }
-}
-
-function drawLocalControl() {
-    let html = '';
-    localControlRules.forEach((r, idx) => {
-        if (editLocalControlIdx === idx) {
-            html += `
-            <div class="hw-row">
-                <div style="flex:2; min-width:150px;">
-                    <label>Rule Name</label>
-                    <input type="text" value="${r.name}" onchange="localControlRules[${idx}].name=this.value">
-                </div>
-                <div style="flex:2; min-width:150px;">
-                    <label>Input Sensor</label>
-                    <input type="text" value="${r.input_sensor}" onchange="localControlRules[${idx}].input_sensor=this.value">
-                </div>
-                <div style="flex:2; min-width:150px;">
-                    <label>Output Target</label>
-                    <input type="text" value="${r.output_target}" onchange="localControlRules[${idx}].output_target=this.value">
-                </div>
-                <button style="margin-top:24px; background:#10b981; border-color:#10b981;" onclick="editLocalControlIdx=-1; drawLocalControl();">Done</button>
-            </div>
-            <div class="hw-row" style="margin-top:10px;">
-                <div style="flex:1; min-width:100px;">
-                    <label>Threshold High (ON)</label>
-                    <input type="number" step="0.1" value="${r.threshold_high}" onchange="localControlRules[${idx}].threshold_high=parseFloat(this.value)">
-                </div>
-                <div style="flex:1; min-width:100px;">
-                    <label>Threshold Low (OFF)</label>
-                    <input type="number" step="0.1" value="${r.threshold_low}" onchange="localControlRules[${idx}].threshold_low=parseFloat(this.value)">
-                </div>
-                <div style="flex:1; min-width:100px;">
-                    <label>Enabled</label>
-                    <select onchange="localControlRules[${idx}].enabled=this.value==='true'">
-                        <option value="true" ${r.enabled ? 'selected' : ''}>Yes</option>
-                        <option value="false" ${!r.enabled ? 'selected' : ''}>No</option>
-                    </select>
-                </div>
-            </div>
-            `;
-        } else {
-            html += `
-            <div class="hw-list-item">
-                <div class="hw-info">
-                    <span class="hw-name">${r.name || 'Unnamed Rule'}</span>
-                    <span class="hw-meta">${r.input_sensor} → ${r.output_target} | High: ${r.threshold_high} | Low: ${r.threshold_low} | ${r.enabled ? 'Enabled' : 'Disabled'}</span>
-                </div>
-                <div class="hw-actions">
-                    <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editLocalControlIdx=${idx}; drawLocalControl();">Edit</button>
-                    <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="localControlRules.splice(${idx}, 1); if(editLocalControlIdx==${idx}) editLocalControlIdx=-1; else if(editLocalControlIdx > ${idx}) editLocalControlIdx--; drawLocalControl();">Remove</button>
-                </div>
-            </div>
-            `;
-        }
-    });
-    document.getElementById('local-control-rows').innerHTML = html;
-}
-
-function addLocalControlRow() {
-    localControlRules.push({
-        name: 'New Rule',
-        input_sensor: '',
-        output_target: '',
-        threshold_high: 30.0,
-        threshold_low: 25.0,
-        enabled: true
-    });
-    editLocalControlIdx = localControlRules.length - 1;
-    drawLocalControl();
-}
-
-async function saveLocalControl() {
-    let payload = encodeURIComponent(JSON.stringify({ local_control: localControlRules }));
-    let d = await api('/api/local_control', 'POST', `payload=${payload}`);
-    if (d) triggerRebootSequence();
 }
 
 // --- Reboot & Auto-Reconnect Sequence ---

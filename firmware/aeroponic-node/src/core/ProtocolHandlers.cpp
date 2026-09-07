@@ -1,6 +1,7 @@
 #include "ProtocolHandlers.h"
 #include "HardwareManager.h"
 #include "../../include/Config.h"
+#include "../../include/Logger.h"
 
 // I2C bus tracking variables
 static bool wireInitialized = false;
@@ -13,7 +14,7 @@ void initI2C(uint8_t sda, uint8_t scl) {
         wireInitialized = true;
         activeSda = sda;
         activeScl = scl;
-        Serial.printf("I2C Bus Initialized on SDA: %d, SCL: %d\n", sda, scl);
+        Logger::hardware("I2C Bus Initialized on SDA: %d, SCL: %d", sda, scl);
     }
 }
 
@@ -271,19 +272,19 @@ bool I2CHandler::init(const JsonObject& config) {
         bme = new LightBME280(address);
         initialized = bme->begin();
         if (!initialized) {
-            Serial.printf("Failed to init BME280 at 0x%02X\n", address);
+            Logger::hardware("Failed to init BME280 at 0x%02X", address);
         }
     } else if (type == "INA219") {
         ina219 = new Adafruit_INA219(address);
         initialized = ina219->begin();
         if (!initialized) {
-            Serial.printf("Failed to init INA219 at 0x%02X\n", address);
+            Logger::hardware("Failed to init INA219 at 0x%02X", address);
         }
     } else if (type == "DHT12") {
         Wire.beginTransmission(address);
         initialized = (Wire.endTransmission() == 0);
         if (!initialized) {
-            Serial.printf("Failed to find DHT12 at 0x%02X\n", address);
+            Logger::hardware("Failed to find DHT12 at 0x%02X", address);
         }
     } else {
         initialized = true;

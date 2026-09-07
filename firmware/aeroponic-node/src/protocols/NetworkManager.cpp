@@ -1,6 +1,7 @@
 #include "NetworkManager.h"
 #include "WebConfigPortal.h"
 #include "../../include/Config.h"
+#include "../../include/Logger.h"
 #include <WiFi.h>
 
 void NetworkManager::init() {
@@ -30,35 +31,31 @@ void NetworkManager::wifiTask(void* parameter) {
     
     while (true) {
         if (WiFi.status() != WL_CONNECTED) {
-            Serial.print("Connecting to WiFi: ");
-            Serial.println(Config::WIFI_SSID);
+            Logger::network("Connecting to WiFi: %s", Config::WIFI_SSID.c_str());
             
             if (Config::WIFI_EAP_IDENTITY.length() > 0) {
-                Serial.println("Using WPA2-Enterprise (Eduroam/Radius) mode...");
-                WiFi.disconnect(true);  // Disconnect from any previous AP
-                // Identity and Username are usually the same for PEAP
+                Logger::network("Using WPA2-Enterprise (Eduroam/Radius) mode...");
+                WiFi.disconnect(true);
                 WiFi.begin(Config::WIFI_SSID, WPA2_AUTH_PEAP, Config::WIFI_EAP_IDENTITY, Config::WIFI_EAP_IDENTITY, Config::WIFI_EAP_PASSWORD);
             } else {
-                Serial.println("Using standard WPA2-Personal mode...");
+                Logger::network("Using standard WPA2-Personal mode...");
                 WiFi.begin(Config::WIFI_SSID.c_str(), Config::WIFI_PASS.c_str());
             }
             
-            // Wait up to 10 seconds for connection
             int retries = 0;
             while (WiFi.status() != WL_CONNECTED && retries < 20) {
                 vTaskDelay(500 / portTICK_PERIOD_MS);
-                WebConfigPortal::loop(); // Keep portal alive during connection
+                WebConfigPortal::loop();
                 Serial.print(".");
                 retries++;
             }
             Serial.println();
             
             if (WiFi.status() == WL_CONNECTED) {
-                Serial.println("WiFi Connected!");
-                Serial.print("IP Address: ");
-                Serial.println(WiFi.localIP());
+                Logger::network("WiFi Connected!");
+                Logger::network("IP Address: %s", WiFi.localIP().toString().c_str());
             } else {
-                Serial.println("WiFi Connect Failed! Retrying in 5 seconds...");
+                Logger::network("WiFi Connect Failed! Retrying in 5 seconds...");
             }
         }
 

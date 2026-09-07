@@ -1,5 +1,6 @@
 #include "MqttManager.h"
 #include "../../include/Config.h"
+#include "../../include/Logger.h"
 #include "../core/HardwareManager.h"
 #include "../core/TaskWatchdog.h"
 #include "NetworkManager.h"
@@ -71,9 +72,11 @@ void MqttManager::init() {
             espClientSecure.setPrivateKey(Config::MQTT_CLIENT_KEY.c_str());
         }
         mqttClient = new PubSubClient(espClientSecure);
+        Logger::mqtt("MQTT TLS mode enabled");
         addLog("MQTT TLS mode enabled");
     } else {
         mqttClient = new PubSubClient(espClientPlain);
+        Logger::mqtt("MQTT Plain TCP mode");
         addLog("MQTT Plain TCP mode");
     }
     
@@ -100,9 +103,11 @@ bool MqttManager::publish(String topic, String payload) {
     if (isConnected()) {
         if (mqttClient->publish(topic.c_str(), payload.c_str())) {
             String logMsg = "Pub to " + topic.substring(0, 30);
+            Logger::mqtt("%s", logMsg.c_str());
             addLog(logMsg.c_str());
             return true;
         } else {
+            Logger::mqtt("Pub FAILED");
             addLog("Pub FAILED");
             return false;
         }
@@ -127,8 +132,10 @@ void MqttManager::publishDiscovery() {
             "\", \"fw_version\": \"" + Config::FW_VERSION +
             "\", \"status\": \"online\"}";
         mqttClient->publish(discoveryTopic.c_str(), discoveryPayload.c_str());
+        Logger::mqtt("Discovery published");
         addLog("Discovery published");
     } else {
+        Logger::mqtt("Discovery FAILED: MQTT disconnected");
         addLog("Discovery FAILED: MQTT disconnected");
     }
 }
@@ -140,6 +147,7 @@ void MqttManager::mqttTask(void* parameter) {
         if (NetworkManager::isConnected()) {
             if (!mqttClient->connected()) {
                 // GAP #18: Track disconnect
+                Logger::mqtt("Connecting to broker...");
                 addLog("Connecting to broker...");
                 
                 String clientId = "SmartFarmNode-" + Config::NODE_ID;
@@ -164,10 +172,12 @@ void MqttManager::mqttTask(void* parameter) {
                 }
                 
                 if (connected) {
+                    Logger::mqtt("Connected to broker!");
                     addLog("Connected to broker!");
                     
                     // Subscribe topics
                     mqttClient->subscribe(Config::TOPIC_ACTUATOR.c_str());
+                    Logger::mqtt("Sub: %s", Config::TOPIC_ACTUATOR.c_str());
                     addLog(("Sub: " + Config::TOPIC_ACTUATOR).c_str());
                     
                     // Publish online status (retained)
@@ -200,6 +210,7 @@ void MqttManager::mqttTask(void* parameter) {
 
                  } else {
                     int state = mqttClient->state();
+                    Logger::mqtt("Conn failed, rc=%d", state);
                     addLog(("Conn failed, rc=" + String(state)).c_str());
                     vTaskDelay(5000 / portTICK_PERIOD_MS);
                 }
@@ -218,6 +229,7 @@ void MqttManager::mqttCallback(char* topic, byte* payload, unsigned int length) 
         msg += (char)payload[i];
     }
     
+    Logger::mqtt("Recv: %s %s", String(topic).substring(0, 25).c_str(), msg.substring(0, 30).c_str());
     addLog(("Recv: " + String(topic).substring(0, 25) + " " + msg.substring(0, 30)).c_str());
     
     if (String(topic) == Config::TOPIC_ACTUATOR) {
@@ -242,6 +254,7 @@ void MqttManager::mqttCallback(char* topic, byte* payload, unsigned int length) 
                 mqttClient->publish(confirmTopic.c_str(), confirmPayload.c_str());
             }
         } else {
+            Logger::mqtt("Actuator: JSON parse error");
             addLog("Actuator: JSON parse error");
         }
     }

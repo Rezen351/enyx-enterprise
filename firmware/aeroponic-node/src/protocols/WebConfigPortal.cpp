@@ -2,6 +2,7 @@
 #include "../core/ConfigManager.h"
 #include "../core/HardwareManager.h"
 #include "../../include/Config.h"
+#include "../../include/Logger.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
@@ -145,7 +146,7 @@ bool WebConfigPortal::checkAuthToken() {
 
 // ==================== START PORTAL ====================
 void WebConfigPortal::startAP() {
-    Serial.println("Starting Captive Portal Access Point...");
+    Logger::portal("Starting Captive Portal Access Point...");
     WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
     String apName = "SmartFarm-" + Config::NODE_ID;
     WiFi.softAP(apName.c_str());
@@ -189,8 +190,7 @@ void WebConfigPortal::startAP() {
 
     server.begin();
     portalActive = true;
-    Serial.printf("Captive Portal Started at %s. SSID: 'SmartFarm-%s'\n", 
-                  apIP.toString().c_str(), Config::NODE_ID.c_str());
+    Logger::portal("Captive Portal Started at %s. SSID: 'SmartFarm-%s'", apIP.toString().c_str(), Config::NODE_ID.c_str());
 }
 
 void WebConfigPortal::loop() {
@@ -675,7 +675,7 @@ void WebConfigPortal::handleApiOtaUpload() {
 
     HTTPUpload& upload = server.upload();
     if (upload.status == UPLOAD_FILE_START) {
-        Serial.printf("OTA Update Start: %s\n", upload.filename.c_str());
+        Logger::portal("OTA Update Start: %s", upload.filename.c_str());
         if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
             Update.printError(Serial);
         }
@@ -685,7 +685,7 @@ void WebConfigPortal::handleApiOtaUpload() {
         }
     } else if (upload.status == UPLOAD_FILE_END) {
         if (Update.end(true)) {
-            Serial.printf("OTA Update Success: %u bytes\n", upload.totalSize);
+            Logger::portal("OTA Update Success: %u bytes", upload.totalSize);
         } else {
             Update.printError(Serial);
         }

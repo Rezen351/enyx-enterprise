@@ -1,6 +1,7 @@
 #include "HardwareManager.h"
 #include "TaskWatchdog.h"
 #include "../../include/Config.h"
+#include "../../include/Logger.h"
 #include "../protocols/MqttManager.h"
 #include "../protocols/NetworkManager.h"
 #include "ProtocolHandler.h"
@@ -85,13 +86,13 @@ namespace HardwareManager {
             
             if (currentOutput == 0 && sensorValue > rule.thresholdHigh) {
                 setOutput(rule.outputTarget, 1);
-                Serial.printf("LOCAL CONTROL: %s -> %s ON (%.1f > %.1f)\n",
+                Logger::control("%s -> %s ON (%.1f > %.1f)",
                     rule.name.c_str(), rule.outputTarget.c_str(),
                     sensorValue, rule.thresholdHigh);
             }
             else if (currentOutput == 1 && sensorValue < rule.thresholdLow) {
                 setOutput(rule.outputTarget, 0);
-                Serial.printf("LOCAL CONTROL: %s -> %s OFF (%.1f < %.1f)\n",
+                Logger::control("%s -> %s OFF (%.1f < %.1f)",
                     rule.name.c_str(), rule.outputTarget.c_str(),
                     sensorValue, rule.thresholdLow);
             }
@@ -102,7 +103,7 @@ namespace HardwareManager {
     void reloadConfiguration() {
         if (!handlersMutex) return;
         if (xSemaphoreTake(handlersMutex, portMAX_DELAY) == pdTRUE) {
-            Serial.println("Reloading Hardware Handlers (Hot-Swap)...");
+            Logger::hardware("Reloading Hardware Handlers (Hot-Swap)...");
 
             // Delete old handlers
             for (auto h : activeHandlers) {
@@ -145,10 +146,10 @@ namespace HardwareManager {
                 if (h) {
                     activeOutputHandlers[hw.name] = h;
                     int oldVal = outputStates.count(hw.name) ? outputStates[hw.name] : 0;
-                    h->write(oldVal);   // restore last known state
-                    Serial.printf("Registered Output: %s (Protocol: %s)\n", hw.name.c_str(), hw.protocol.c_str());
+                    h->write(oldVal);
+                    Logger::hardware("Registered Output: %s (Protocol: %s)", hw.name.c_str(), hw.protocol.c_str());
                 } else {
-                    Serial.printf("Failed to create output handler for: %s (Protocol: %s)\n", hw.name.c_str(), hw.protocol.c_str());
+                    Logger::hardware("Failed to create output handler for: %s (Protocol: %s)", hw.name.c_str(), hw.protocol.c_str());
                 }
             }
 
@@ -203,14 +204,14 @@ namespace HardwareManager {
                 ProtocolHandler* h = ProtocolRegistry::createHandler(s.protocol, obj);
                 if (h) {
                     activeHandlers.push_back(h);
-                    Serial.printf("Registered Sensor: %s (Protocol: %s)\n", s.name.c_str(), s.protocol.c_str());
+                    Logger::hardware("Registered Sensor: %s (Protocol: %s)", s.name.c_str(), s.protocol.c_str());
                 } else {
-                    Serial.printf("Failed to create handler for Sensor: %s (Protocol: %s)\n", s.name.c_str(), s.protocol.c_str());
+                    Logger::hardware("Failed to create handler for Sensor: %s (Protocol: %s)", s.name.c_str(), s.protocol.c_str());
                 }
             }
 
             xSemaphoreGive(handlersMutex);
-            Serial.println("Hardware Handlers Reloaded Successfully.");
+            Logger::hardware("Hardware Handlers Reloaded Successfully.");
         }
     }
 
@@ -253,7 +254,7 @@ namespace HardwareManager {
 
     // ==================== INIT ====================
     void init() {
-        Serial.println("Initializing Universal Hardware Pins...");
+        Logger::hardware("Initializing Universal Hardware Pins...");
         
         // Modbus Setup
         modbusMutex = xSemaphoreCreateMutex();
@@ -277,7 +278,7 @@ namespace HardwareManager {
             pinMode(Config::PIN_EMERGENCY_STOP, INPUT_PULLUP);
             attachInterrupt(digitalPinToInterrupt(Config::PIN_EMERGENCY_STOP),
                             emergencyInterruptHandler, FALLING);
-            Serial.println("Emergency stop interrupt attached");
+            Logger::hardware("Emergency stop interrupt attached");
         }
 
         // Create Handlers Mutex
@@ -315,7 +316,7 @@ namespace HardwareManager {
             // GAP #11: Cek flag interrupt untuk emergency shutdown
             if (emergencyShutdownTriggered) {
                 emergencyShutdownTriggered = false;
-                Serial.println("EMERGENCY: Shutdown triggered by interrupt!");
+                Logger::emergency("Shutdown triggered by interrupt!");
                 
                 for (const auto& hw : Config::HardwareOutputs) {
                     setOutput(hw.name, 0);
@@ -399,14 +400,14 @@ namespace HardwareManager {
         if (it != activeOutputHandlers.end()) {
             it->second->write(value);
             outputStates[targetName] = value;
-            Serial.printf("Actuator: %s -> %d (via %s handler)\n",
+            Logger::actuator("%s -> %d (via %s handler)",
                 targetName.c_str(), value, it->second->getProtocolName().c_str());
             if (telemetryTaskHandle != NULL) {
                 xTaskNotifyGive(telemetryTaskHandle);
             }
             return true;
         }
-        Serial.printf("Actuator: Target '%s' not found in Output Configuration.\n", targetName.c_str());
+        Logger::actuator("Target '%s' not found in Output Configuration.", targetName.c_str());
         return false;
     }
 
@@ -423,42 +424,41 @@ namespace HardwareManager {
             vTaskDelay(300 / portTICK_PERIOD_MS);
             currentBaud = baud;
             
-            Serial.println("\n================================");
-            Serial.printf("STARTING MODBUS SCAN ON %d BAUD\n", baud);
-            Serial.println("================================");
+            Logger::modbus("================================");
+            Logger::modbus("STARTING MODBUS SCAN ON %d BAUD", baud);
+            Logger::modbus("================================");
             
             for (uint16_t id = 1; id <= 247; id++) {
                 if (scanCancelRequested) {
-                    Serial.println("SCAN CANCELLED BY USER");
+                    Logger::modbus("SCAN CANCELLED BY USER");
                     break;
                 }
-                // GAP #6: Feed watchdog setiap iterasi
                 esp_task_wdt_reset();
                 TaskWatchdog::heartbeat("TelemetryTask");
                 
-                Serial.printf("Checking Slave ID %d ... ", id);
+                Logger::modbus("Checking Slave ID %d ...", id);
                 node.begin(id, Serial2);
                 uint8_t result = node.readHoldingRegisters(0, 1);
                 
                 if (result == node.ku8MBSuccess) {
-                    Serial.println("FOUND");
-                    Serial.printf("Register0 = %d\n", node.getResponseBuffer(0));
+                    Logger::modbus("FOUND");
+                    Logger::modbus("Register0 = %d", node.getResponseBuffer(0));
                     if (!firstFound) scanResultsJson += ",";
                     scanResultsJson += String(id);
                     firstFound = false;
                 } else if (result >= node.ku8MBIllegalFunction && result <= node.ku8MBSlaveDeviceFailure) {
-                    Serial.println("FOUND (Exception)");
+                    Logger::modbus("FOUND (Exception)");
                     if (!firstFound) scanResultsJson += ",";
                     scanResultsJson += String(id);
                     firstFound = false;
                 } else {
-                    Serial.printf("No Response (%d)\n", result);
+                    Logger::modbus("No Response (%d)", result);
                 }
                 vTaskDelay(50 / portTICK_PERIOD_MS);
             }
-            Serial.println("================================");
-            Serial.println("SCAN COMPLETE");
-            Serial.println("================================");
+            Logger::modbus("================================");
+            Logger::modbus("SCAN COMPLETE");
+            Logger::modbus("================================");
             xSemaphoreGive(modbusMutex);
         }
         
@@ -470,13 +470,13 @@ namespace HardwareManager {
     uint16_t scanModbusReg(uint8_t id, uint32_t baud, uint16_t reg, String type, bool& success) {
         if (xSemaphoreTake(modbusMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
             if (currentBaud != baud) {
-                Serial2.end();
-                vTaskDelay(100 / portTICK_PERIOD_MS);
-                Serial2.begin(baud, SERIAL_8N1, Config::PIN_RS485_RX, Config::PIN_RS485_TX);
-                vTaskDelay(300 / portTICK_PERIOD_MS);
-                currentBaud = baud;
+            Serial2.end();
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            Serial2.begin(baud, SERIAL_8N1, Config::PIN_RS485_RX, Config::PIN_RS485_TX);
+            vTaskDelay(300 / portTICK_PERIOD_MS);
+            currentBaud = baud;
             }
-            Serial.printf("Scanning %s Register %d on ID %d (Baud: %d)... ", type.c_str(), reg, id, baud);
+            Logger::modbus("Scanning %s Register %d on ID %d (Baud: %d)...", type.c_str(), reg, id, baud);
             node.begin(id, Serial2);
             uint8_t result;
             if (type == "INPUT") {
@@ -488,15 +488,15 @@ namespace HardwareManager {
             if (result == node.ku8MBSuccess) {
                 success = true;
                 val = node.getResponseBuffer(0);
-                Serial.printf("SUCCESS! Value = %d\n", val);
+                Logger::modbus("SUCCESS! Value = %d", val);
             } else {
                 success = false;
-                Serial.printf("FAILED (Error Code: %d)\n", result);
+                Logger::modbus("FAILED (Error Code: %d)", result);
             }
             xSemaphoreGive(modbusMutex);
             return val;
         }
-        Serial.println("FAILED (Could not take Modbus Mutex)");
+        Logger::modbus("FAILED (Could not take Modbus Mutex)");
         success = false;
         return 0;
     }

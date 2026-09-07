@@ -1,4 +1,5 @@
 #include "TaskWatchdog.h"
+#include "../../include/Logger.h"
 #include <Arduino.h>
 
 std::vector<ManagedTask> TaskWatchdog::tasks;
@@ -16,7 +17,7 @@ void TaskWatchdog::init() {
         NULL,
         0   // Core 0
     );
-    Serial.println("TaskWatchdog: Initialized");
+    Logger::watchdog("Initialized");
 }
 
 void TaskWatchdog::registerTask(const char* name, TaskHandle_t handle, unsigned long timeoutMs, void (*restartFunc)()) {
@@ -30,7 +31,7 @@ void TaskWatchdog::registerTask(const char* name, TaskHandle_t handle, unsigned 
         tasks.push_back(t);
         xSemaphoreGive(mutex);
         
-        Serial.printf("TaskWatchdog: Registered '%s' (timeout: %lu ms)\n", name, timeoutMs);
+        Logger::watchdog("Registered '%s' (timeout: %lu ms)", name, timeoutMs);
     }
 }
 
@@ -57,19 +58,18 @@ void TaskWatchdog::watchdogTask(void* parameter) {
                 unsigned long elapsed = now - t.lastHeartbeatMs;
                 
                 if (elapsed > t.timeoutMs && t.timeoutMs > 0) {
-                    Serial.printf("WATCHDOG: Task '%s' timeout! Elapsed: %lu ms, Limit: %lu ms\n",
+                    Logger::watchdog("Task '%s' timeout! Elapsed: %lu ms, Limit: %lu ms",
                                   t.name.c_str(), elapsed, t.timeoutMs);
                     
-                    // Try to restart the task if a restart function is provided
                     if (t.restartFunc != nullptr) {
                         if (t.handle != NULL) {
                             vTaskDelete(t.handle);
                             t.handle = NULL;
                         }
-                        Serial.printf("WATCHDOG: Restarting task '%s'...\n", t.name.c_str());
+                        Logger::watchdog("Restarting task '%s'...", t.name.c_str());
                         t.restartFunc();
                     } else {
-                        Serial.printf("WATCHDOG: No restart function for '%s'. Resetting ESP32...\n", t.name.c_str());
+                        Logger::watchdog("No restart function for '%s'. Resetting ESP32...", t.name.c_str());
                         delay(1000);
                         ESP.restart();
                     }

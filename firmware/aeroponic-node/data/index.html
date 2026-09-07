@@ -44,19 +44,18 @@
                 style="display:flex; align-items:center; justify-content:center; padding: 24px 20px;">
                 <img src="logo.svg" alt="Logo" style="max-width: 100%; max-height: 50px;">
             </div>
-            <div class="menu-item active" onclick="switchView('status')">Status</div>
-            <div class="menu-item" onclick="switchView('device')">Device</div>
-            <div class="menu-item" onclick="switchView('wifi')">Wi-Fi</div>
+            <div class="menu-item active" onclick="switchView('status')">STATUS</div>
+            <div class="menu-item" onclick="switchView('device')">DEVICE</div>
+            <div class="menu-item" onclick="switchView('wifi')">WIFI</div>
             <div class="menu-item" onclick="switchView('mqtt')">MQTT</div>
             <div class="menu-item" onclick="switchView('gpio')">GPIO</div>
-            <div class="menu-item" onclick="switchView('modbus')">Modbus</div>
+            <div class="menu-item" onclick="switchView('modbus')">RS485</div>
             <div class="menu-item" onclick="switchView('i2c')">I2C</div>
-            <div class="menu-item" onclick="switchView('local_control')">Local Control</div>
-            <div class="menu-item" onclick="switchView('ota')">Firmware Update</div>
+            <div class="menu-item" onclick="switchView('ota')">FIRMWARE</div>
 
             <div class="sidebar-bottom">
-                <div class="menu-item" onclick="switchView('account')">Admin Account</div>
-                <div class="menu-item" style="color:var(--danger);" onclick="logout()">Logout</div>
+                <div class="menu-item" onclick="switchView('account')">ACCOUNT</div>
+                <div class="menu-item" style="color:var(--danger);" onclick="logout()">LOG-OUT</div>
             </div>
         </div>
 
@@ -67,7 +66,7 @@
                     <h3 class="card-title">System Status</h3>
                     <div class="metric-grid">
                         <div class="metric-card">
-                            <span class="metric-label">Wi-Fi Status</span>
+                            <span class="metric-label">WiFi Status</span>
                             <span class="metric-value" id="stat_conn">-</span>
                         </div>
                         <div class="metric-card">
@@ -154,7 +153,7 @@
                 </form>
 
                 <div class="card" style="margin-top:24px;">
-                    <h3 class="card-title">RS485 / Serial Configuration</h3>
+                    <h3 class="card-title">RS485 Configuration</h3>
                     <p style="color:var(--text-light); font-size:13px; margin-bottom:16px;">
                         Configure UART pins for Modbus RS485 communication.
                     </p>
@@ -171,7 +170,7 @@
                             <label>DE Pin (GPIO Driver Enable, 255 = auto/disabled)</label>
                             <input type="number" id="cfg_rs485_de" min="0" max="255" value="255">
                         </div>
-                        <button type="submit">Save RS485 Config & Reboot</button>
+                        <button type="submit">Save & Reboot</button>
                     </form>
                 </div>
 
@@ -196,7 +195,7 @@
             <!-- WIFI -->
             <div id="view-wifi" class="view-section">
                 <form class="card" onsubmit="event.preventDefault(); saveWifi();">
-                    <h3 class="card-title">Wi-Fi</h3>
+                    <h3 class="card-title">WiFi</h3>
                     <div class="form-group"><label>SSID</label><input type="text" id="cfg_ssid" required
                             autocomplete="username"></div>
                     <div class="form-group"><label>Password</label><input type="password" id="cfg_pass"
@@ -236,21 +235,20 @@
 
             <div id="view-gpio" class="view-section">
                 <form class="card" onsubmit="event.preventDefault(); saveHardware();">
-                    <h3 style="margin-top:0;">Input</h3>
+                    <h3 style="margin-top:0;">Input Mapping</h3>
                     <div id="input-rows"></div>
                     <button class="outline" onclick="addInputRow()" style="margin-top:10px;" type="button">+ Add
                         Input</button>
                 </form>
 
                 <form class="card" onsubmit="event.preventDefault(); saveHardware();">
-                    <h3 style="margin-top:0;">Output</h3>
+                    <h3 style="margin-top:0;">Output Mapping</h3>
                     <div id="output-rows"></div>
                     <button class="outline" onclick="addOutputRow()" style="margin-top:10px;" type="button">+ Add
                         Output</button>
                 </form>
 
-                <button style="width:100%; margin-top:10px;" onclick="saveHardware()">Save & Reboot All
-                    GPIO</button>
+                <button style="width:100%; margin-top:10px;" onclick="saveHardware()">Save & Reboot</button>
             </div>
 
             <!-- MODBUS -->
@@ -307,7 +305,8 @@
                 <form class="card" onsubmit="event.preventDefault(); saveHardware();">
                     <h3 style="margin-top:0;">I2C Sensors</h3>
                     <p style="color:var(--text-light); font-size:13px; margin-bottom:16px;">
-                        Tambahkan sensor I2C (INA219, BME280, DHT12). Pastikan alamat dan pin SDA/SCL sesuai wiring perangkat.
+                        Add I2C sensors (INA219, BME280, DHT12). Make sure the address and SDA/SCL pins match the device
+                        wiring.
                     </p>
                     <div id="i2c-rows"></div>
                     <button class="outline" onclick="addI2CSensor()" style="margin-top:10px;" type="button">+ Add
@@ -316,25 +315,10 @@
                 </form>
             </div>
 
-            <!-- LOCAL CONTROL -->
-            <div id="view-local_control" class="view-section">
-                <form class="card" onsubmit="event.preventDefault(); saveLocalControl();">
-                    <h3 class="card-title">Local Control Rules (Edge Computing)</h3>
-                    <p style="color:var(--text-light); font-size:13px; margin-bottom:16px;">
-                        These rules run directly on the ESP32 without requiring MQTT. They act as a safety net when the
-                        network is unavailable.
-                    </p>
-                    <div id="local-control-rows"></div>
-                    <button class="outline" onclick="addLocalControlRow()" style="margin-top:10px;" type="button">+ Add
-                        Rule</button>
-                    <button style="width:100%; margin-top:10px;" type="submit">Save & Reboot</button>
-                </form>
-            </div>
-
             <!-- OTA -->
             <div id="view-ota" class="view-section">
                 <div class="card">
-                    <h3 class="card-title">Firmware Update (OTA)</h3>
+                    <h3 class="card-title">Firmware</h3>
                     <p style="color:var(--text-light); font-size:13px; margin-bottom:16px;">
                         Upload a compiled <code>.bin</code> firmware file to update the device over the air.
                     </p>

@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "../include/Config.h"
+#include "../include/Logger.h"
 #include "core/SystemMonitor.h"
 #include "core/ConfigManager.h"
 #include "core/HardwareManager.h"
@@ -19,7 +20,7 @@ void checkBootHealth() {
     bootCount++;
     prefs.putInt("boot_count", bootCount);
     
-    Serial.printf("Boot health check: boot_count=%d\n", bootCount);
+    Logger::boot("Boot health check: boot_count=%d", bootCount);
     
     if (bootCount <= 2) {
         // First or second boot after OTA - mark as success
@@ -27,12 +28,12 @@ void checkBootHealth() {
         bool isHealthy = prefs.getBool("healthy", false);
         if (!isHealthy) {
             prefs.putBool("healthy", true);
-            Serial.println("Boot health: OK");
+            Logger::boot("Boot health: OK");
         }
     } else if (bootCount > 3) {
         // Boot failed 3+ times - rollback needed
-        Serial.println("CRITICAL: Boot failure detected multiple times!");
-        Serial.println("Attempting rollback to previous firmware...");
+        Logger::boot("CRITICAL: Boot failure detected multiple times!");
+        Logger::boot("Attempting rollback to previous firmware...");
         
         const esp_partition_t* running = esp_ota_get_running_partition();
         const esp_partition_t* next = esp_ota_get_next_update_partition(NULL);
@@ -40,9 +41,9 @@ void checkBootHealth() {
         if (running != NULL && next != NULL && running != next) {
             esp_ota_set_boot_partition(next);
             prefs.putInt("boot_count", 0);
-            Serial.println("Rollback initiated. Rebooting...");
+            Logger::boot("Rollback initiated. Rebooting...");
         } else {
-            Serial.println("ERROR: Cannot perform rollback - no alternate partition");
+            Logger::boot("ERROR: Cannot perform rollback - no alternate partition");
         }
         
         delay(1000);
@@ -55,7 +56,7 @@ void checkBootHealth() {
 void setup() {
     Serial.begin(115200);
     delay(500);
-    Serial.println("\n--- SmartFarm Node Initializing ---");
+    Logger::init("\n--- SmartFarm Node Initializing ---");
     
     // 0. Check boot health (GAP #8)
     checkBootHealth();
@@ -82,7 +83,7 @@ void setup() {
     // Note: Task handles are internal, we track by name
     // heartbeat calls from each task loop keep them alive
     
-    Serial.println("--- Initialization Complete ---");
+    Logger::init("--- Initialization Complete ---");
 }
 
 void loop() {

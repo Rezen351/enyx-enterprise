@@ -1,35 +1,35 @@
 #include "ConfigManager.h"
 #include "../../include/Config.h"
+#include "../../include/Logger.h"
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <WiFi.h>
 #include "esp_partition.h"
 
 void ConfigManager::init() {
-    Serial.println("Mounting LittleFS...");
+    Logger::config("Mounting LittleFS...");
 
-    // Verify partition table contains a 'spiffs' partition (used by LittleFS)
     const esp_partition_t* part = esp_partition_find_first(
         ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "spiffs");
     if (part == NULL) {
-        Serial.println("[ERROR] LittleFS: Partition 'spiffs' NOT found in flash!");
-        Serial.println("[ERROR] Re-flash firmware + partition table, then run 'uploadfs'.");
-        Serial.println("Using default compiled configs.");
+        Logger::error("LittleFS: Partition 'spiffs' NOT found in flash!");
+        Logger::error("Re-flash firmware + partition table, then run 'uploadfs'.");
+        Logger::config("Using default compiled configs.");
         return;
     }
-    Serial.printf("[INFO] LittleFS: Partition found at 0x%06X, size %u bytes\n",
-                  part->address, part->size);
+    Logger::config("LittleFS: Partition found at 0x%06X, size %u bytes",
+                   part->address, part->size);
 
-    if (!LittleFS.begin(true)) {  // true = formatOnFail
-        Serial.println("[ERROR] LittleFS mount failed even after format attempt.");
-        Serial.println("Using default compiled configs.");
+    if (!LittleFS.begin(true)) {
+        Logger::error("LittleFS mount failed even after format attempt.");
+        Logger::config("Using default compiled configs.");
         return;
     }
 
-    Serial.println("[OK] LittleFS mounted successfully.");
+    Logger::config("LittleFS mounted successfully.");
 
     if (!loadConfig()) {
-        Serial.println("Failed to load config.json. Using default compiled configs.");
+        Logger::config("Failed to load config.json. Using default compiled configs.");
     }
 }
 
@@ -44,12 +44,11 @@ bool ConfigManager::loadConfig() {
     file.close();
 
     if (error) {
-        Serial.print("Failed to parse config.json: ");
-        Serial.println(error.c_str());
+        Logger::config("Failed to parse config.json: %s", error.c_str());
         return false;
     }
 
-    Serial.println("config.json loaded successfully. Applying core configurations...");
+    Logger::config("config.json loaded successfully. Applying core configurations...");
 
     // Device Metadata
     if (doc["device"]["node_id"]) {
@@ -94,9 +93,9 @@ bool ConfigManager::loadConfig() {
             generated += String(esp_random() % 16, HEX);
         }
         Config::ADMIN_PASS = generated;
-        Serial.printf("INFO: No admin password in config.json. Generated random password: %s\n",
-                      Config::ADMIN_PASS.c_str());
-        Serial.println("INFO: Change it via the Web Portal at your earliest convenience.");
+        Logger::config("No admin password in config.json. Generated random password: %s",
+                       Config::ADMIN_PASS.c_str());
+        Logger::config("Change it via the Web Portal at your earliest convenience.");
     }
 
     // Protocols - WiFi
@@ -151,10 +150,10 @@ bool ConfigManager::loadConfig() {
     Config::TOPIC_ACTUATOR  = Config::MQTT_TOPIC_PREFIX + "/actuator/" + Config::NODE_ID;
     Config::TOPIC_ALERT = Config::MQTT_TOPIC_PREFIX + "/" + Config::NODE_ID + "/alert";
 
-    Serial.printf("MQTT Topics:\n");
-    Serial.printf("  Telemetry : %s\n", Config::TOPIC_TELEMETRY.c_str());
-    Serial.printf("  Actuator  : %s\n", Config::TOPIC_ACTUATOR.c_str());
-    Serial.printf("  Alert     : %s\n", Config::TOPIC_ALERT.c_str());
+    Logger::config("MQTT Topics:");
+    Logger::config("  Telemetry : %s", Config::TOPIC_TELEMETRY.c_str());
+    Logger::config("  Actuator  : %s", Config::TOPIC_ACTUATOR.c_str());
+    Logger::config("  Alert     : %s", Config::TOPIC_ALERT.c_str());
 
     // Hardware
     Config::HardwareInputs.clear();
@@ -263,12 +262,12 @@ bool ConfigManager::loadConfig() {
 bool ConfigManager::saveConfig(String jsonPayload) {
     File file = LittleFS.open("/config.json", "w");
     if (!file) {
-        Serial.println("Failed to open config.json for writing");
+        Logger::error("Failed to open config.json for writing");
         return false;
     }
     
     file.print(jsonPayload);
     file.close();
-    Serial.println("config.json successfully saved!");
+    Logger::config("config.json successfully saved!");
     return true;
 }
