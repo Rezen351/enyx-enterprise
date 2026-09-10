@@ -607,6 +607,16 @@ async function saveDevice() {
     if (d) triggerRebootSequence();
 }
 
+async function saveRS485() {
+    if (!confirm('Save RS485 config and reboot?')) return;
+    let rx = document.getElementById('cfg_rs485_rx').value;
+    let tx = document.getElementById('cfg_rs485_tx').value;
+    let de = document.getElementById('cfg_rs485_de').value;
+    let body = `rs485_rx=${encodeURIComponent(rx)}&rs485_tx=${encodeURIComponent(tx)}&rs485_de=${encodeURIComponent(de)}`;
+    let d = await api('/api/device', 'POST', body);
+    if (d) triggerRebootSequence();
+}
+
 async function saveWifi() {
     if (!confirm('Save WiFi config and reboot?')) return;
     let s = document.getElementById('cfg_ssid').value;
