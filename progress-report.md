@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary
 
-Sistem **enyx-enterprise** saat ini berada pada tahap **Fase 0–13 (+ observability & tunneling)** dengan arsitektur microservice yang sudah berjalan penuh meliputi 13+ service, 12 instance database, observability terintegrasi (Prometheus + exporters), akses internet via Cloudflare Tunnel, dan kontrol AI berbasis TD3. Migrasi algoritma kontrol dari PPO ke **TD3 telah selesai** dan di-deploy sebagai dua service terpisah (`model-controller` + `model-control`). **Spray Automation Logic** dijalankan oleh `model-control`; **Webhook Service** (settings, logs, dispatch Telegram/Email/generic HTTP, AES-GCM, NATS) juga telah selesai. Semua service backend telah di-build, diintegrasikan ke Kong API Gateway, dan didokumentasikan integration guide-nya.
+Sistem **enyx-enterprise** saat ini berada pada tahap **Fase 0–13 (+ observability & tunneling)** dengan arsitektur microservice yang sudah berjalan penuh meliputi 13+ service, 12 instance database, observability terintegrasi (Prometheus + exporters), akses internet via Cloudflare Tunnel, dan kontrol AI berbasis TD3. Migrasi algoritma kontrol dari PPO ke **TD3 telah selesai** dan di-deploy sebagai dua service terpisah (`model-controller` + `model-control`). **Spray Automation Logic** dijalankan oleh `model-control`; **Notification Service (termasuk fitur Webhook)** (settings, logs, dispatch Telegram/Email/Push/Webhook HTTP, AES-GCM, NATS) juga telah selesai. Semua service backend telah di-build, diintegrasikan ke Kong API Gateway, dan didokumentasikan integration guide-nya.
 
 ---
 
@@ -109,7 +109,7 @@ Module Service (Go) ──► MariaDB module_db
 | Monitoring (Prometheus + exporters, cAdvisor, node-exporter) | Fase 1 | ✅ |
 | TD3 Controller Inference (`model-controller`) | Fase 6e | ✅ |
 | TD3 Control Scheduler (`model-control`) | Fase 6f | ✅ |
-| Webhook Service (settings, logs, test dispatch, NATS `webhook.delivery`/`webhook.retry`, AES-GCM secret, Redis queue) | — | ✅ |
+| Notification Service (termasuk Webhook: settings, logs, test dispatch, NATS `webhook.delivery`/`webhook.retry`, AES-GCM secret, Redis queue) | — | ✅ |
 | Spray Automation Logic (disediakan oleh `model-control`/TD3) | Fase 13 | ✅ |
 | Prometheus Monitoring (scrape jobs aktif: auth, module, analytics, control, stream, alert, ml, webhook, model-controller, model-control, Kong, DB exporters, cAdvisor, node-exporter) | Fase 1/11 | ✅ |
 | Cloudflare Tunnel (`cloudflared` service di `docker-compose.yml`) | Fase 12 | ✅ |
@@ -134,7 +134,7 @@ Tidak ada item yang sedang dikerjakan pada cycle terkini. Seluruh layanan ekspli
 Berdasarkan artefak terakhir di `test/results/`:
 - **Gambar `01_unit_test_summary.png`** menampilkan **100.0% Skipped** untuk seluruh service. Ini berarti pada eksekusi terakhir, **seluruh 106 test case terlewat (skipped)**.
 - Penyebab utama yang tercatat di `test/results/05_unit_test_payloads.json` adalah **`Connection refused` ke `localhost:8000`** — API Gateway tidak reachable saat test dijalankan.
-- Rekomendasi: Pastikan `docker compose up -d` sudah healthy sebelum menjalankan `python3 test/run_all_tests.py`. Lihat `docs/testing-plan-agent.md` untuk prosedur pre-flight.
+- Rekomendasi: Pastikan `docker compose up -d` sudah healthy sebelum menjalankan `python3 test/unit_test.py`. Lihat `docs/testing-plan-agent.md` untuk prosedur pre-flight.
 
 ### 4.2 Stress Test Suite
 
@@ -163,7 +163,7 @@ Berdasarkan master dashboard (`04_overall_system_dashboard_detailed.png`), siste
 
 **Rekomendasi tindak lanjut:**
 1. Verifikasi `docker compose ps` — seluruh service harus `healthy`.
-2. Jalankan `python3 test/run_all_tests.py` untukmerefresh artefak test.
+2. Jalankan `python3 test/unit_test.py`, `python3 test/stress_test.py`, dan `python3 test/resilience_test.py` secara berurutan untuk merefresh artefak test.
 3. Update checklist otomatis di `docs/testing-plan-agent.md` setelah setiap verifikasi step.
 
 ---
@@ -301,7 +301,7 @@ TD3 di-deploy melalui dua service:
 
 | Item | Masalah | Dampak | Rekomendasi |
 |---|---|---|---|
-| Unit Tests | 100% skipped pada run terakhir | Tidak ada verifikasi otomatis CI | Jalankan `python3 test/run_all_tests.py` setelah `docker compose up -d` healthy |
+| Unit Tests | 100% skipped pada run terakhir | Tidak ada verifikasi otomatis CI | Jalankan `python3 test/unit_test.py` setelah `docker compose up -d` healthy |
 | Stress Tests | Artefak kosong | Kapasitas maksimal sistem tidak terukur | Pastikan Kong `:8000` reachable sebelum eksekusi |
 | Resilience Tests | Artefak kosong | Chaos readiness tidak terverifikasi | Jalankan fase 3 suite setelah phase 1 & 2 sukses |
 
@@ -333,6 +333,6 @@ Satu-satunya open item yang masih menunggu adalah penerapan restart container Mo
 
 ## 9. Kesimpulan
 
-Sistem **enyx-enterprise** saat ini memiliki fondasi arsitektur yang solid: **13+ microservices** (Go + Python), **12 instance database** (MariaDB/TimescaleDB/Redis/MinIO) dengan prinsip Database-per-Service, **NATS JetStream** sebagai event bus, **Kong** sebagai API Gateway tunggal, **Prometheus** + exporters untuk observability, **Cloudflare Tunnel** untuk akses internet, dan **dashboard React** yang telah terintegrasi penuh. Kontrol tanaman berbasis **TD3** telah selesai dilatih (2M timesteps) dan di-deploy (`model-controller` + `model-control`) menggantikan PPO sepenuhnya. **Webhook Service** juga telah selesai diimplementasikan dengan delivery Telegram/Email/generic HTTP, AES-GCM secret encryption, Redis queue, dan NATS `webhook.delivery`/`webhook.retry`.
+Sistem **enyx-enterprise** saat ini memiliki fondasi arsitektur yang solid: **13+ microservices** (Go + Python), **12 instance database** (MariaDB/TimescaleDB/Redis/MinIO) dengan prinsip Database-per-Service, **NATS JetStream** sebagai event bus, **Kong** sebagai API Gateway tunggal, **Prometheus** + exporters untuk observability, **Cloudflare Tunnel** untuk akses internet, dan **dashboard React** yang telah terintegrasi penuh. Kontrol tanaman berbasis **TD3** telah selesai dilatih (2M timesteps) dan di-deploy (`model-controller` + `model-control`) menggantikan PPO sepenuhnya. **Notification Service (termasuk fitur Webhook)** juga telah selesai diimplementasikan dengan delivery Telegram/Email/Push/Webhook HTTP, AES-GCM secret encryption, Redis queue, dan NATS `webhook.delivery`/`webhook.retry`.
 
 Area yang memerlukan perhatian segera adalah **eksekusi ulang test suite** agar artefak testing (unit, stress, resilience) merefleksikan kondisi sistem yang sebenarnya. Firmware dan simulator telah siap mendukung pengujian end-to-end tanpa hardware fisik.

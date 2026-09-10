@@ -128,7 +128,7 @@ func (s *ModuleService) CreateModule(ctx context.Context, req model.CreateModule
 	if req.Name == "" {
 		return nil, ErrNameRequired
 	}
-	m := &model.Module{Name: req.Name, Description: req.Description, Config: req.Config}
+	m := &model.Module{Name: req.Name, Description: req.Description}
 	if err := s.repo.CreateModule(ctx, m); err != nil {
 		return nil, err
 	}
@@ -325,6 +325,42 @@ func (s *ModuleService) StartTouchFlusher(ctx context.Context, interval time.Dur
 		case <-ticker.C:
 			s.flushTouch()
 		}
+	}
+}
+
+// StartOfflineSweeper periodically marks nodes that have not refreshed their
+// last_seen_at within the staleness threshold as "offline". This keeps the
+// persisted node status truthful so the dashboard and other consumers never
+// show a node as "online" when no device is actually active. On context
+// cancellation it performs one final sweep before returning.
+func (s *ModuleService) StartOfflineSweeper(ctx context.Context, interval, threshold time.Duration) {
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	if threshold <= 0 {
+		threshold = 3 * time.Minute
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			s.sweepOffline(threshold)
+			return
+		case <-ticker.C:
+			s.sweepOffline(threshold)
+		}
+	}
+}
+
+// sweepOffline runs one offline-detection pass.
+func (s *ModuleService) sweepOffline(threshold time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if n, err := s.repo.MarkStaleNodesOffline(ctx, threshold); err != nil {
+		log.Printf("[svc] offline sweep failed: %v", err)
+	} else if n > 0 {
+		log.Printf("[svc] marked %d stale node(s) offline", n)
 	}
 }
 

@@ -1,4 +1,4 @@
-"""ppo-control service configuration."""
+"""model-control service configuration."""
 
 from __future__ import annotations
 

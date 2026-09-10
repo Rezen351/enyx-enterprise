@@ -148,10 +148,17 @@ For complete architectural details, bounded contexts, and system design decision
 
 ## 🧪 Testing
 
-The project includes a comprehensive Master Integrated Test Suite executed via:
+Run the test suites manually as needed:
 
 ```bash
-python3 test/run_all_tests.py
+# Unit & Feature Tests
+python3 test/unit_test.py
+
+# Stress Test
+python3 test/stress_test.py
+
+# Resilience / Chaos Test
+python3 test/resilience_test.py
 ```
 
 ### Generated Test Artifacts

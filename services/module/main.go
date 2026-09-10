@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -189,6 +190,10 @@ func main() {
 	// Batched TouchNode flusher: collapses per-message last_seen writes into one
 	// UPDATE per node per interval (default 30s).
 	go svc.StartTouchFlusher(bgCtx, 30*time.Second)
+	// Offline detection: flips nodes that stopped reporting (no clean LWT) from
+	// "online" to "offline" so the dashboard never shows a stale online state.
+	offlineThreshold := time.Duration(cfg.OfflineAfterSec) * time.Second
+	go svc.StartOfflineSweeper(bgCtx, 30*time.Second, offlineThreshold)
 
 	// ─── Router ────────────────────────────────────────────────────────
 	r := chi.NewRouter()
@@ -263,14 +268,32 @@ func main() {
 	log.Println("module-svc stopped")
 }
 
+// ensureMySQLTimeouts appends connection timeouts to a MySQL DSN when missing.
+// Without readTimeout/writeTimeout, a query against a dead connection hangs
+// until the OS TCP timeout (minutes), exhausting the pool and making the
+// service unreachable during/after a DB outage (chaos test failure).
+func ensureMySQLTimeouts(dsn string) string {
+	if strings.Contains(dsn, "readTimeout=") &&
+		strings.Contains(dsn, "writeTimeout=") &&
+		strings.Contains(dsn, "timeout=") {
+		return dsn
+	}
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	return dsn + sep + "timeout=10s&readTimeout=10s&writeTimeout=10s&maxAllowedPacket=4194304"
+}
+
 func openDB(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("mysql", dsn)
+	db, err := sql.Open("mysql", ensureMySQLTimeouts(dsn))
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(10)
 	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetConnMaxIdleTime(1 * time.Minute)
 
 	for i := range 10 {
 		if err = db.Ping(); err == nil {

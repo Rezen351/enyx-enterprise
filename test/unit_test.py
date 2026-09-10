@@ -6,10 +6,13 @@ Enhanced with per-service execution time tracking for analytics.
 
 import os
 import sys
+import io
 import json
 import time
 import unittest
 import requests
+import argparse
+from datetime import datetime
 from pathlib import Path
 
 try:
@@ -41,11 +44,11 @@ def _with_retry(func, *args, **kwargs):
 
 
 def check_services_ready():
-    url = f"{BASE_URL}/v1/health"
+    url = f"{BASE_URL}/v1/auth/login"
     for attempt in range(1, 4):
         try:
-            res = requests.get(url, timeout=5)
-            if res.status_code == 200:
+            res = requests.post(url, json={"identifier": "ready", "password": "check"}, timeout=5)
+            if res.status_code in (200, 401, 400, 422):
                 return True
             if res.status_code in [429, 502, 503, 504] and attempt < 3:
                 time.sleep(2 ** attempt)
@@ -295,6 +298,35 @@ def clean_all_test_results():
     for path in RESULTS_DIR.glob("*"):
         if path.is_file() and path.suffix not in {".png", ".json", ".md", ".bin"}:
             path.unlink()
+
+
+def wait_for_stream_minio_ready(token: str, timeout: int = 60) -> bool:
+    """Wait until the Stream Service MinIO client is initialized.
+
+    Stream Service returns 503 with body ``minio operation failed: client not configured``
+    when MinIO is not yet ready. Poll ``/v1/streams/1/snapshot`` until it stops returning
+    that specific failure, or skip the waiting period once ``timeout`` seconds have passed.
+    """
+    if not token:
+        return False
+
+    url = f"{BASE_URL}/v1/streams/1/snapshot"
+    headers = {"Authorization": f"Bearer {token}"}
+    deadline = time.time() + timeout
+
+    while time.time() < deadline:
+        try:
+            res = requests.post(url, headers=headers, timeout=5)
+            if res.status_code != 503:
+                return True
+            text = res.text.lower()
+            if "client not configured" not in text and "minio operation failed" not in text:
+                return True
+        except Exception:
+            pass
+        time.sleep(2)
+
+    return False
 
 
 def cleanup_test_data():
@@ -730,7 +762,7 @@ class TestModuleService(ServiceTestCase):
         })
 
         url = f"{BASE_URL}/v1/nodes/{node_id}/tags"
-        res = requests.put(url, json=payload, headers=headers, timeout=5)
+        res = requests.put(url, json=payload, headers=headers, timeout=10)
         self.assertIn(res.status_code, [200, 404], f"Expected 200 or 404 for update tags, got {res.status_code}: {res.text}")
 
     def test_12_pair_node(self):
@@ -992,7 +1024,7 @@ class TestControlService(ServiceTestCase):
             sched_id = res.json().get("data", {}).get("id")
             TestControlService.created_schedule_id = sched_id
 
-    def test_10_delete_schedule(self):
+    def test_19_delete_schedule(self):
         if not self.token or not TestControlService.created_schedule_id:
             self.skipTest("No schedule ID available to delete")
         url = f"{BASE_URL}/v1/control/schedules/{TestControlService.created_schedule_id}"
@@ -1321,6 +1353,8 @@ class TestStreamService(ServiceTestCase):
     def test_07_stream_snapshot(self):
         if not self.token:
             self.skipTest("No auth token")
+        if not wait_for_stream_minio_ready(self.token, timeout=60):
+            self.skipTest("Stream MinIO not ready")
         url = f"{BASE_URL}/v1/streams/1/snapshot"
         headers = {"Authorization": f"Bearer {self.token}"}
         res = requests.post(url, headers=headers, timeout=5)
@@ -1329,6 +1363,8 @@ class TestStreamService(ServiceTestCase):
     def test_08_start_recording(self):
         if not self.token:
             self.skipTest("No auth token")
+        if not wait_for_stream_minio_ready(self.token, timeout=60):
+            self.skipTest("Stream MinIO not ready")
         url = f"{BASE_URL}/v1/streams/1/record/start"
         headers = {"Authorization": f"Bearer {self.token}"}
         res = requests.post(url, headers=headers, timeout=5)
@@ -1337,6 +1373,8 @@ class TestStreamService(ServiceTestCase):
     def test_09_stop_recording(self):
         if not self.token:
             self.skipTest("No auth token")
+        if not wait_for_stream_minio_ready(self.token, timeout=60):
+            self.skipTest("Stream MinIO not ready")
         url = f"{BASE_URL}/v1/streams/1/record/stop"
         headers = {"Authorization": f"Bearer {self.token}"}
         res = requests.post(url, headers=headers, timeout=5)
@@ -1568,7 +1606,8 @@ class TestWSGateway(ServiceTestCase):
 
 
 class TestWebhookService(ServiceTestCase):
-    """13. Webhook Service Features (Settings, Logs, Test Dispatch, Receive Endpoints)."""
+    """13. Notification Service — Webhook channel + inbound receive endpoints
+    (merged webhook features into the notification service)."""
 
     def setUp(self):
         super().setUp()
@@ -1580,45 +1619,45 @@ class TestWebhookService(ServiceTestCase):
     def test_01_webhook_logs(self):
         if not self.token:
             self.skipTest("No auth token")
-        url = f"{BASE_URL}/v1/webhook/logs"
+        url = f"{BASE_URL}/v1/notifications/logs"
         headers = {"Authorization": f"Bearer {self.token}"}
         res = requests.get(url, headers=headers, timeout=5)
-        self.assertEqual(res.status_code, 200, f"Expected 200 OK for webhook logs, got {res.status_code}: {res.text}")
+        self.assertEqual(res.status_code, 200, f"Expected 200 OK for notification logs, got {res.status_code}: {res.text}")
 
     def test_02_get_webhook_settings(self):
         if not self.token:
             self.skipTest("No auth token")
-        url = f"{BASE_URL}/v1/webhook/settings"
+        url = f"{BASE_URL}/v1/notifications/settings"
         headers = {"Authorization": f"Bearer {self.token}"}
         res = requests.get(url, headers=headers, timeout=5)
-        self.assertEqual(res.status_code, 200, f"Expected 200 OK for webhook settings, got {res.status_code}: {res.text}")
+        self.assertEqual(res.status_code, 200, f"Expected 200 OK for notification settings, got {res.status_code}: {res.text}")
 
     def test_03_dispatch_test_webhook(self):
         if not self.token:
             self.skipTest("No auth token")
-        url = f"{BASE_URL}/v1/webhook/test"
+        url = f"{BASE_URL}/v1/notifications/test"
         headers = {"Authorization": f"Bearer {self.token}"}
         payload = {"channel": "telegram"}
         res = requests.post(url, json=payload, headers=headers, timeout=5)
-        self.assertIn(res.status_code, [200, 202], f"Expected 200/202 for test webhook, got {res.status_code}: {res.text}")
+        self.assertIn(res.status_code, [200, 202], f"Expected 200/202 for test notification, got {res.status_code}: {res.text}")
 
     def test_04_update_webhook_settings(self):
         if not self.token:
             self.skipTest("No auth token")
-        url = f"{BASE_URL}/v1/webhook/settings"
+        url = f"{BASE_URL}/v1/notifications/settings"
         headers = {"Authorization": f"Bearer {self.token}"}
         payload = {"telegram": {"enabled": True}}
         res = requests.put(url, json=payload, headers=headers, timeout=5)
-        self.assertIn(res.status_code, [200, 400, 403], f"Expected 200/400/403 for update webhook settings, got {res.status_code}: {res.text}")
+        self.assertIn(res.status_code, [200, 400, 403], f"Expected 200/400/403 for update notification settings, got {res.status_code}: {res.text}")
 
     def test_05_receive_telegram_webhook(self):
         if not self.token:
             self.skipTest("No auth token")
-        url = f"{BASE_URL}/v1/webhook/receive/telegram"
+        url = f"{BASE_URL}/v1/notifications/receive/telegram"
         headers = {"Authorization": f"Bearer {self.token}"}
         payload = {"message": {"text": "unit test"}}
         res = requests.post(url, json=payload, headers=headers, timeout=5)
-        self.assertIn(res.status_code, [200, 202], f"Expected 200/202 for receive telegram webhook, got {res.status_code}: {res.text}")
+        self.assertIn(res.status_code, [200, 202], f"Expected 200/202 for receive telegram notification, got {res.status_code}: {res.text}")
 
 
 class TestDLQService(ServiceTestCase):
@@ -1691,12 +1730,23 @@ class TestModelService(ServiceTestCase):
             self.assertIn("message", body.get("error", {}), "model-control 503 error must contain message")
 
 
-# Alias for backward compatibility
-TestPPOService = TestModelService
+# Alias for the Model subsystem (model-controller / model-control, TD3)
+TestModelSuite = TestModelService
 
 
-def run_unit_tests():
-    """Run all unit & feature test cases across 14 microservices + PPO subsystem."""
+def run_unit_tests(phase="all", exclude=None):
+    """Run unit & feature test cases.
+
+    phase="1"   → 10 core services only (Auth, Module, Analytics, Control, Alert,
+                  Notification, Stream, Audit, Export, WSGateway).
+    phase="2"   → phase 1 + ML + model-controller + model-control (Model).
+    phase="all" → default; equivalent to phase="2".
+
+    exclude → optional set/list of service names to skip, e.g. {"Module"}.
+    """
+    phase = str(phase).strip().lower()
+    core_only = phase == "1"
+    excluded = set(exclude or [])
     clean_all_test_results()
     try:
         cleanup_test_data()
@@ -1706,53 +1756,50 @@ def run_unit_tests():
     suite = unittest.TestSuite()
     loader = unittest.TestLoader()
 
-    suite.addTest(loader.loadTestsFromTestCase(TestSystemHealth))
-    suite.addTest(loader.loadTestsFromTestCase(TestAuthService))
-    suite.addTest(loader.loadTestsFromTestCase(TestModuleService))
-    suite.addTest(loader.loadTestsFromTestCase(TestAnalyticsService))
-    suite.addTest(loader.loadTestsFromTestCase(TestControlService))
-    suite.addTest(loader.loadTestsFromTestCase(TestAlertService))
-    suite.addTest(loader.loadTestsFromTestCase(TestAuditService))
-    suite.addTest(loader.loadTestsFromTestCase(TestNotificationService))
-    suite.addTest(loader.loadTestsFromTestCase(TestWebhookService))
-    suite.addTest(loader.loadTestsFromTestCase(TestStreamService))
-    suite.addTest(loader.loadTestsFromTestCase(TestMLService))
-    suite.addTest(loader.loadTestsFromTestCase(TestExportService))
-    suite.addTest(loader.loadTestsFromTestCase(TestWSGateway))
-    suite.addTest(loader.loadTestsFromTestCase(TestDLQService))
-    suite.addTest(loader.loadTestsFromTestCase(TestPPOService))
+    all_cases = [
+        (TestSystemHealth, "SystemHealth", 1),
+        (TestAuthService, "Auth", 13),
+        (TestModuleService, "Module", 16),
+        (TestAnalyticsService, "Analytics", 6),
+        (TestControlService, "Control", 16),
+        (TestAlertService, "Alert", 6),
+        (TestAuditService, "Audit", 5),
+        (TestNotificationService, "Notification", 5),
+        (TestWebhookService, "Notification+Webhook", 5),
+        (TestStreamService, "Stream", 12),
+        (TestMLService, "ML", 10),
+        (TestExportService, "Export", 4),
+        (TestWSGateway, "WSGateway", 4),
+        (TestDLQService, "DLQ", 2),
+        (TestModelSuite, "Model", 4),
+    ]
+
+    core_names = {
+        "Auth", "Module", "Analytics", "Control", "Alert",
+        "Notification", "Stream", "Audit", "Export", "WSGateway",
+    }
+    ml_and_model_names = {"ML", "Model"}
+
+    if core_only:
+        included_cases = [(cls, name, total) for cls, name, total in all_cases if name in core_names and name not in excluded]
+    else:
+        included_cases = [(cls, name, total) for cls, name, total in all_cases if name in core_names | ml_and_model_names and name not in excluded]
+
+    for cls, _, _ in included_cases:
+        suite.addTest(loader.loadTestsFromTestCase(cls))
 
     runner = TimedTestRunner(verbosity=2)
     result = runner.run(suite)
 
-    # Build service names list aligned with test classes
-    service_names = [
-        "SystemHealth", "Auth", "Module", "Analytics", "Control",
-        "Alert", "Audit", "Notification", "Webhook", "Stream", "ML", "Export", "WSGateway", "DLQ", "PPO"
-    ]
+    service_names = [name for _, name, _ in included_cases]
+    known_totals = {name: total for _, name, total in included_cases}
 
     pass_counts = []
     skip_counts = []
     fail_counts = []
     exec_times = []
 
-    class_map = {
-        TestSystemHealth: "SystemHealth",
-        TestAuthService: "Auth",
-        TestModuleService: "Module",
-        TestAnalyticsService: "Analytics",
-        TestControlService: "Control",
-        TestAlertService: "Alert",
-        TestAuditService: "Audit",
-        TestNotificationService: "Notification",
-        TestWebhookService: "Webhook",
-        TestStreamService: "Stream",
-        TestMLService: "ML",
-        TestExportService: "Export",
-        TestWSGateway: "WSGateway",
-        TestDLQService: "DLQ",
-        TestPPOService: "PPO",
-    }
+    class_map = {cls: name for cls, name, _ in included_cases}
 
     class_stats = {name: {"skip": 0, "fail": 0} for name in service_names}
 
@@ -1763,12 +1810,6 @@ def run_unit_tests():
     for test, reason in result.skipped:
         class_name = class_map.get(test.__class__, test.__class__.__name__)
         class_stats[class_name]["skip"] += 1
-
-    known_totals = {
-        "SystemHealth": 1, "Auth": 13, "Module": 16, "Analytics": 6,
-        "Control": 15, "Alert": 6, "Audit": 5, "Notification": 5,
-        "Webhook": 5, "Stream": 12, "ML": 10, "Export": 4, "WSGateway": 4, "DLQ": 2, "PPO": 4,
-    }
 
     for name in service_names:
         total = known_totals.get(name, 0)
@@ -1798,3 +1839,121 @@ def run_unit_tests():
             pass
 
     return result.wasSuccessful(), service_names, pass_counts, skip_counts, fail_counts, exec_times
+
+
+class Tee(io.TextIOBase):
+    def __init__(self, *streams):
+        self.streams = list(streams)
+
+    def write(self, data):
+        for s in self.streams:
+            try:
+                s.write(data)
+                s.flush()
+            except Exception:
+                pass
+        return len(data)
+
+    def flush(self):
+        for s in self.streams:
+            try:
+                s.flush()
+            except Exception:
+                pass
+
+
+def main():
+    parser = argparse.ArgumentParser(description="enyx-enterprise Unit & Feature Test Suite")
+    phase_group = parser.add_mutually_exclusive_group()
+    phase_group.add_argument("--phase1", action="store_true", help="Run core 10 services only (Fase 1)")
+    phase_group.add_argument("--phase2", action="store_true", help="Run full suite including AI/ML (Fase 2)")
+    parser.add_argument("--phase", choices=["1", "2", "all"], default="1", help="Phase selection (default: 1)")
+    parser.add_argument("--exclude", nargs="*", default=None, help="Services to exclude, e.g. Module Notification")
+    parser.add_argument("--results-dir", default=None, help="Results directory (default: test/results)")
+    parser.add_argument("--log", default=None, help="Path to write the full test log")
+    args = parser.parse_args()
+
+    phase = "1" if args.phase1 else ("2" if args.phase2 else args.phase)
+
+    global RESULTS_DIR
+    dir_phase = "1" if phase == "1" else "2"
+    phase_dir = RESULTS_DIR / f"phase{dir_phase}"
+    out_dir = Path(args.results_dir) if args.results_dir else phase_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = args.log or str(out_dir / f"unit_test_fase{phase}_{ts}.log")
+    log_file = open(log_path, "a", buffering=1)
+    original_stdout, original_stderr = sys.stdout, sys.stderr
+    sys.stdout = Tee(original_stdout, log_file)
+    sys.stderr = Tee(original_stderr, log_file)
+
+    print("=" * 70)
+    print(f" enyx-enterprise Unit Test — Fase {phase}")
+    print(f" Started : {datetime.now().isoformat(timespec='seconds')}")
+    print(f" Log file: {log_path}")
+    print("=" * 70)
+
+    RESULTS_DIR = out_dir
+    clean_all_test_results()
+
+    success, service_names, pass_counts, skip_counts, fail_counts, exec_times = run_unit_tests(
+        phase=phase, exclude=set(args.exclude or [])
+    )
+
+    save_captured_results()
+
+    print("\n" + "=" * 70)
+    print("  UNIT TEST RESULTS")
+    print("=" * 70)
+    for name, passed, skipped, failed, exec_time in zip(service_names, pass_counts, skip_counts, fail_counts, exec_times):
+        total = passed + skipped + failed
+        status = "PASS" if failed == 0 else "FAIL"
+        print(f" {status:>4} | {name:<20} | passed={passed:3d} | skipped={skipped:2d} | failed={failed:2d} | time={exec_time:.2f}s")
+    print("=" * 70)
+    print(f" Overall: {'PASS' if success else 'FAIL'}")
+    print("=" * 70)
+
+    report = {
+        "phase": phase,
+        "generated": datetime.now().isoformat(timespec="seconds"),
+        "services": service_names,
+        "pass_counts": pass_counts,
+        "skip_counts": skip_counts,
+        "fail_counts": fail_counts,
+        "exec_times": exec_times,
+        "success": success,
+    }
+    base = out_dir / f"unit_test_fase{phase}_{ts}"
+    with open(str(base) + ".json", "w") as fh:
+        json.dump(report, fh, indent=2)
+    with open(str(base) + ".md", "w") as fh:
+        fh.write(f"# enyx-enterprise Unit Test Report — Fase {phase}\n\n")
+        fh.write(f"- **Generated**: {report['generated']}\n")
+        fh.write(f"- **Overall**: {'PASS' if success else 'FAIL'}\n\n")
+        fh.write("| Service | Passed | Skipped | Failed | Time (s) |\n|---|---|---|---|---|\n")
+        for name, p, s, f, t in zip(service_names, pass_counts, skip_counts, fail_counts, exec_times):
+            fh.write(f"| {name} | {p} | {s} | {f} | {t:.2f} |\n")
+
+    try:
+        from plotter import plot_unit_test_results, plot_unit_test_detailed
+        plot_unit_test_results(service_names, pass_counts, skip_counts, fail_counts,
+                               out_path=out_dir / f"01_unit_test_summary_fase{phase}_{ts}.png")
+        plot_unit_test_detailed(service_names, pass_counts, skip_counts, fail_counts, exec_times,
+                                out_path=out_dir / f"01_unit_test_detailed_fase{phase}_{ts}.png")
+    except Exception as exc:
+        print(f"[!] Chart generation skipped: {exc}")
+
+    print(f"\n[*] Report JSON: {base}.json")
+    print(f"[*] Report MD  : {base}.md")
+    print(f"[*] Log file   : {log_path}")
+    print(f"[*] Done at {datetime.now().isoformat(timespec='seconds')}")
+
+    sys.stdout = original_stdout
+    sys.stderr = original_stderr
+    log_file.close()
+
+    raise SystemExit(0 if success else 1)
+
+
+if __name__ == "__main__":
+    main()

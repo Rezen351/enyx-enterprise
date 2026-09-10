@@ -31,7 +31,7 @@ The Aeroponic Model Control Subsystem consists of two FastAPI microservices that
 
 ## 2. State Space (10D)
 
-Assembled in `services/model-control/app/ppo_loop.py:assemble_state()`:
+Assembled in `services/model-control/app/control_loop.py:assemble_state()`:
 
 | Index | Field | Source | Default | Range / Clamp |
 |---|---|---|---|---|

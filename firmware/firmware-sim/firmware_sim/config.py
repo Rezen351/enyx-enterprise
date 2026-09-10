@@ -23,7 +23,7 @@ from typing import Any
 TOPIC_PREFIX = "smartfarm"
 DEFAULT_FW_VERSION = "1.0.0"
 DEFAULT_PUBLISH_INTERVAL = 5  # seconds
-DEFAULT_MQTT = {"server": "tcp://mosquitto:1883", "port": 1883, "user": "esp32", "pass": "esp32pass", "use_tls": False}
+DEFAULT_MQTT = {"server": "tcp://localhost:1883", "port": 1883, "user": "smartfarm-svc", "pass": "SmartFarmPass123", "use_tls": False}
 
 # Default virtual pin layout — mirrors the real node ECE334219870 so a clone
 # publishes an *identical* payload structure (digital inputs/outputs + cwt modbus).
@@ -85,7 +85,7 @@ def _next_node_id(instances_dir: str) -> str:
             m = re.match(r"(node-\d+)\.json$", fn)
             if m:
                 used.add(m.group(1))
-    n = 1
+    n = 0
     while True:
         candidate = f"node-{n:02d}"
         if candidate not in used:
@@ -100,6 +100,7 @@ class InstanceConfig:
     fw_version: str = DEFAULT_FW_VERSION
     mqtt: dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_MQTT))
     publish_interval: int = DEFAULT_PUBLISH_INTERVAL
+    publish_rate_hz: float = 0.0
     inputs: list[dict] = field(default_factory=lambda: [dict(i) for i in DEFAULT_INPUTS])
     outputs: list[dict] = field(default_factory=lambda: [dict(o) for o in DEFAULT_OUTPUTS])
     modbus: list[dict] = field(default_factory=lambda: [dict(m) for m in DEFAULT_MODBUS])
@@ -115,6 +116,7 @@ class InstanceConfig:
             "fw_version": self.fw_version,
             "mqtt": self.mqtt,
             "publish_interval": self.publish_interval,
+            "publish_rate_hz": self.publish_rate_hz,
             "inputs": self.inputs,
             "outputs": self.outputs,
             "modbus": self.modbus,
@@ -131,6 +133,7 @@ class InstanceConfig:
             fw_version=d.get("fw_version", DEFAULT_FW_VERSION),
             mqtt={**DEFAULT_MQTT, **d.get("mqtt", {})},
             publish_interval=d.get("publish_interval", DEFAULT_PUBLISH_INTERVAL),
+            publish_rate_hz=d.get("publish_rate_hz", 0.0),
             inputs=d.get("inputs", [dict(i) for i in DEFAULT_INPUTS]),
             outputs=d.get("outputs", [dict(o) for o in DEFAULT_OUTPUTS]),
             modbus=d.get("modbus", []),

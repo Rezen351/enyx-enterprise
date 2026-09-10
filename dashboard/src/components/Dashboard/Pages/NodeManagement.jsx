@@ -38,6 +38,21 @@ function NodeManagement({ selectedModule, onBack, onOpenNodeConfig }) {
     return diff < 10000;
   };
 
+  // Staleness threshold (ms) for deriving a node's *effective* status from its
+  // last_seen_at. The persisted status can lag (it is only flipped to "offline"
+  // by the backend sweep every ~30s), so the UI downgrades a stale "online"
+  // node to "offline" immediately instead of showing it as active when no
+  // device is actually reporting. Mirrors the backend NODE_OFFLINE_AFTER_SEC.
+  const OFFLINE_AFTER_MS = 120000;
+  const effectiveStatus = (node, nowMs) => {
+    const status = node?.status || 'unknown';
+    if (status === 'online' && node?.last_seen_at) {
+      const diff = nowMs - new Date(node.last_seen_at).getTime();
+      if (diff > OFFLINE_AFTER_MS) return 'offline';
+    }
+    return status;
+  };
+
   const fetchData = useCallback(async () => {
     try {
       const [pairedRes, discoveredRes] = await Promise.all([
@@ -171,7 +186,7 @@ function NodeManagement({ selectedModule, onBack, onOpenNodeConfig }) {
                   <div>
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Found</span>
-                      <StatusPill status={node.status} />
+                      <StatusPill status={effectiveStatus(node, nowMs)} />
                     </div>
                     <div className="space-y-1 text-xs font-black text-slate-400 font-mono">
                       <div className="flex justify-between gap-2">

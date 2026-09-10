@@ -49,6 +49,8 @@ class FirmwareSimulator:
         self._stop = threading.Event()
         self._telemetry_thread: threading.Thread | None = None
         self.paired = bool(cfg.paired)
+        self._local_ip_cache: str | None = None
+        self._publish_count = 0
 
     # ---- topic helpers ----------------------------------------------------
     def t(self, suffix: str) -> str:
@@ -131,11 +133,14 @@ class FirmwareSimulator:
         logger.warning("[%s] disconnected rc=%s", self.node_id, rc)
 
     def _local_ip(self) -> str:
+        if self._local_ip_cache is not None:
+            return self._local_ip_cache
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             ip = s.getsockname()[0]
             s.close()
+            self._local_ip_cache = ip
             return ip
         except Exception:
             return "127.0.0.1"
@@ -259,6 +264,7 @@ class FirmwareSimulator:
             "node_id": self.node_id,
             "mac": self.cfg.mac,
             "fw_version": self.cfg.fw_version,
+            "ts_publish": int(time.time() * 1000),
             "network": {
                 "ssid": "Aeroponik 1",
                 "ip_address": self._local_ip(),
@@ -283,14 +289,24 @@ class FirmwareSimulator:
         return doc, fired
 
     def _telemetry_loop(self) -> None:
-        interval = max(1, int(self.cfg.publish_interval))
+        rate = getattr(self.cfg, "publish_rate_hz", 0.0)
+        if rate and rate > 0:
+            interval = 1.0 / max(0.1, rate)
+        else:
+            interval = max(1, int(self.cfg.publish_interval))
+        next_time = time.time() + interval
         while not self._stop.is_set():
             if self.client and self.client.is_connected():
                 doc, fired = self._build_telemetry()
                 for f in fired:
                     logger.info("[%s] local-control: %s", self.node_id, f)
                 self.client.publish(self._telemetry_topic(), json.dumps(doc), qos=0)
-            self._stop.wait(interval)
+                self._publish_count += 1
+            now = time.time()
+            sleep_time = next_time - now
+            if sleep_time > 0:
+                self._stop.wait(sleep_time)
+            next_time += interval
 
     # ---- run / stop -------------------------------------------------------
     def run(self) -> None:

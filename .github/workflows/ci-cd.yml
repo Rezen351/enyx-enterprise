@@ -100,9 +100,7 @@ jobs:
           - export
           - wsgateway
           - dlq
-          - webhook
           - ml
-          - webhook
           - mysqld-exporter-all
           - postgres-exporter-all
     steps:
@@ -266,7 +264,6 @@ jobs:
           echo "SMTP_FROM=${{ secrets.SMTP_FROM || 'alert@smartfarm.local' }}" >> .env
           echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN || '123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ' }}" >> .env
           echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID || '-1001234567890' }}" >> .env
-          echo "WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET || 'changeme-webhook-secret' }}" >> .env
           echo "IMAGE_TAG=${{ github.sha }}" >> .env
 
       - name: Fix Volume Permissions

@@ -12,7 +12,7 @@ import {
   Mail,
 } from 'lucide-react';
 import PageHeader from './PageHeader';
-import { webhookApi } from '../../../api/webhook';
+import { notificationApi } from '../../../api/notification';
 
 const PAGE_SIZES = [25, 50, 100];
 
@@ -60,6 +60,7 @@ export default function Webhook() {
   const [settings, setSettings] = useState({
     telegram: { enabled: false, target: '', secret: '' },
     email: { enabled: false, target: '', secret: '' },
+    push: { enabled: false, target: '', secret: '' },
     webhook: { enabled: false, target: '', secret: '' },
   });
 
@@ -76,19 +77,20 @@ export default function Webhook() {
     setError('');
     try {
       const res = await Promise.race([
-        webhookApi.getSettings(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout loading webhook settings')), 5000))
+        notificationApi.getSettings(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout loading notification settings')), 5000))
       ]);
       if (res) {
         const payload = res.data ?? res;
         setSettings((prev) => ({
           telegram: { ...prev.telegram, ...(payload.telegram || {}) },
           email: { ...prev.email, ...(payload.email || {}) },
+          push: { ...prev.push, ...(payload.push || {}) },
           webhook: { ...prev.webhook, ...(payload.webhook || {}) },
         }));
       }
     } catch (err) {
-      setError(err?.message || 'Failed to load webhook settings');
+      setError(err?.message || 'Failed to load notification settings');
     } finally {
       setLoading(false);
     }
@@ -102,8 +104,8 @@ export default function Webhook() {
       if (logFilter.channel) params.channel = logFilter.channel;
       if (logFilter.status) params.status = logFilter.status;
       const res = await Promise.race([
-        webhookApi.listLogs(params),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout loading webhook logs')), 5000))
+        notificationApi.listLogs(params),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout loading notification logs')), 5000))
       ]);
       const payload = res?.data ?? res ?? {};
       setLogs(Array.isArray(payload.logs) ? payload.logs : []);
@@ -125,7 +127,7 @@ export default function Webhook() {
   if (!isAdmin()) {
     return (
       <div className="border border-red-500/20 bg-red-500/5 p-6 text-red-300">
-        You do not have permission to manage webhooks.
+        You do not have permission to manage notifications.
       </div>
     );
   }
@@ -135,8 +137,8 @@ export default function Webhook() {
     setError('');
     setSuccess('');
     try {
-      await webhookApi.updateSettings(settings);
-      setSuccess('Webhook settings saved successfully.');
+      await notificationApi.updateSettings(settings);
+      setSuccess('Notification settings saved successfully.');
     } catch (err) {
       setError(err?.message || 'Failed to save webhook settings');
     } finally {
@@ -150,7 +152,7 @@ export default function Webhook() {
     setError('');
     setSuccess('');
     try {
-      const res = await webhookApi.testDelivery({ channel: testChannel || undefined });
+      const res = await notificationApi.testDelivery({ channel: testChannel || undefined });
       setSuccess(res?.message || `Test delivery queued for ${testChannel || 'all channels'}.`);
     } catch (err) {
       setError(err?.message || 'Failed to enqueue test delivery');
@@ -311,6 +313,82 @@ export default function Webhook() {
                   </label>
                 </div>
               </div>
+
+              {/* Push */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-purple-300">
+                  <Send className="w-4 h-4" />
+                  Push
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.push?.enabled || false}
+                      onChange={(e) => updateChannel('push', 'enabled', e.target.checked)}
+                      className="accent-emerald-500 w-4 h-4"
+                    />
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-300">Enabled</span>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Device Token</span>
+                    <input
+                      value={settings.push?.target || ''}
+                      onChange={(e) => updateChannel('push', 'target', e.target.value)}
+                      placeholder="device-token"
+                      className="w-full h-10 px-3 bg-slate-900/80 border border-emerald-500/20 text-emerald-50 text-xs placeholder-slate-600 focus:outline-none focus:border-emerald-500/60"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Server Key</span>
+                    <input
+                      type="password"
+                      value={settings.push?.secret || ''}
+                      onChange={(e) => updateChannel('push', 'secret', e.target.value)}
+                      placeholder="encrypted / plain"
+                      className="w-full h-10 px-3 bg-slate-900/80 border border-emerald-500/20 text-emerald-50 text-xs placeholder-slate-600 focus:outline-none focus:border-emerald-500/60"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Webhook */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-300">
+                  <Globe className="w-4 h-4" />
+                  Webhook
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.webhook?.enabled || false}
+                      onChange={(e) => updateChannel('webhook', 'enabled', e.target.checked)}
+                      className="accent-emerald-500 w-4 h-4"
+                    />
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-300">Enabled</span>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Callback URL</span>
+                    <input
+                      value={settings.webhook?.target || ''}
+                      onChange={(e) => updateChannel('webhook', 'target', e.target.value)}
+                      placeholder="https://example.com/hook"
+                      className="w-full h-10 px-3 bg-slate-900/80 border border-emerald-500/20 text-emerald-50 text-xs placeholder-slate-600 focus:outline-none focus:border-emerald-500/60"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Signature Secret</span>
+                    <input
+                      type="password"
+                      value={settings.webhook?.secret || ''}
+                      onChange={(e) => updateChannel('webhook', 'secret', e.target.value)}
+                      placeholder="encrypted / plain"
+                      className="w-full h-10 px-3 bg-slate-900/80 border border-emerald-500/20 text-emerald-50 text-xs placeholder-slate-600 focus:outline-none focus:border-emerald-500/60"
+                    />
+                  </label>
+                </div>
+              </div>
             </>
           )}
         </div>
@@ -334,6 +412,8 @@ export default function Webhook() {
                   <option value="">All</option>
                   <option value="telegram">Telegram</option>
                   <option value="email">Email</option>
+                  <option value="push">Push</option>
+                  <option value="webhook">Webhook</option>
                 </select>
               </label>
               <label className="space-y-1">
@@ -456,6 +536,8 @@ export default function Webhook() {
                 <option value="">All channels</option>
                 <option value="telegram">Telegram</option>
                 <option value="email">Email</option>
+                <option value="push">Push</option>
+                <option value="webhook">Webhook</option>
               </select>
             </label>
             <div className="flex items-end">

@@ -273,7 +273,7 @@ services/model-control/
 │   ├── __init__.py
 │   ├── config.py           # Settings: node_id, schedule_id, interval, URLs
 │   ├── main.py             # FastAPI app: /health, /trigger-predict
-│   ├── ppo_loop.py         # Background TD3 prediction loop
+│   ├── control_loop.py         # Background TD3 prediction loop
 │   ├── telemetry_cache.py  # In-memory telemetry cache
 │   ├── minio_client.py     # MinIO client untuk metadata vision
 │   ├── model_controller_client.py  # HTTP client ke model-controller
@@ -365,7 +365,7 @@ NATS_URL=nats://nats:4222
 ### Week 1
 1. Buat `model-control` service structure
 2. Implement `telemetry_cache.py` untuk cache telemetry
-3. Implement `ppo_loop.py` dengan MinIO metadata + state assembly + pump schedule update + valve direct command
+3. Implement `control_loop.py` dengan MinIO metadata + state assembly + pump schedule update + valve direct command
 4. Implement `minio_client.py` untuk baca metadata vision dari MinIO
 
 ### Week 2
@@ -383,7 +383,7 @@ NATS_URL=nats://nats:4222
 ## 13. File Changes Summary
 
 ### File Baru
-- `services/model-control/app/ppo_loop.py` — Background TD3 prediction loop
+- `services/model-control/app/control_loop.py` — Background TD3 prediction loop
 - `services/model-control/app/telemetry_cache.py` — In-memory telemetry cache
 - `services/model-control/app/minio_client.py` — MinIO client untuk metadata vision
 - `services/model-control/app/model_controller_client.py` — HTTP client ke model-controller

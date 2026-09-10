@@ -29,8 +29,8 @@ export const moduleApi = {
   // ─── Modules ──────────────────────────────────────────────────────────
   listModules: () => unwrap(request('/modules', { auth: true })),
   getModule: (id) => unwrap(request(`/modules/${id}`, { auth: true })),
-  createModule: ({ name, description, config }) =>
-    unwrap(request('/modules', { method: 'POST', auth: true, body: { name, description, config } })),
+  createModule: ({ name, description }) =>
+    unwrap(request('/modules', { method: 'POST', auth: true, body: { name, description } })),
   updateModule: (id, body) => unwrap(request(`/modules/${id}`, { method: 'PUT', auth: true, body })),
   deleteModule: (id) => unwrap(request(`/modules/${id}`, { method: 'DELETE', auth: true })),
 

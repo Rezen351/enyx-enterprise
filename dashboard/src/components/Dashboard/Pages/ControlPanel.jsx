@@ -48,6 +48,7 @@ function actuatorsToTargets(tags) {
     node_id: t.node_id,
     source_key: t.source_key, // firmware output name, e.g. "pump"
     tag_name: t.tag_name,
+    display_name: t.display_name,
     label: displayOf(t),
     output_type: outputTypeOf(t),
     last_value: t.last_value ?? (t.value ?? 0),
@@ -130,7 +131,7 @@ function TargetTile({ tag, allTargets, onCommand, nodeMode, onToggleBypass }) {
         <div className="min-w-0">
           <div className="text-sm font-black uppercase tracking-wide text-slate-100 truncate">{displayOf(tag)}</div>
           <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">
-            {outputTypeOf(tag)} · {tag.tag_name || '—'}
+            {outputTypeOf(tag)} · {displayOf(tag)}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">

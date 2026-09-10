@@ -1,14 +1,16 @@
 """
 enyx-enterprise - Test Results Chart Generator (Matplotlib)
-Generates high-resolution PNG charts in test/results/ summarizing Unit, Stress, and Resilience tests.
+Generates high-resolution PNG charts in test/results/phase1/ or test/results/phase2/ summarizing Unit, Stress, and Resilience tests.
 Enhanced with comprehensive multi-chart analytics per test suite.
 """
 
 import os
 from pathlib import Path
+from typing import Any, Dict, Optional
 import matplotlib
 matplotlib.use("Agg")  # Non-interactive backend
 import matplotlib.pyplot as plt
+import matplotlib.colors
 import numpy as np
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
@@ -62,7 +64,7 @@ def plot_unit_test_detailed(service_names, pass_counts, skip_counts, fail_counts
     if out_path is None:
         out_path = RESULTS_DIR / "01_unit_test_detailed.png"
 
-    fig = plt.figure(figsize=(16, 12))
+    fig = plt.figure(figsize=(20, 14), constrained_layout=True)
     fig.suptitle("enyx-enterprise - Detailed Unit & Feature Test Analytics", fontsize=14, fontweight="bold")
 
     # Subplot 1: Horizontal stacked bar (pass/skip/fail per service)
@@ -122,7 +124,6 @@ def plot_unit_test_detailed(service_names, pass_counts, skip_counts, fail_counts
         ax4.set_title("4. Test Execution Time per Service")
         ax4.axis("off")
 
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.savefig(out_path, dpi=300)
     plt.close()
     print(f"[*] Detailed Unit Test Chart generated: {out_path}")
@@ -544,3 +545,329 @@ def plot_master_dashboard_detailed(unit_data, stress_data, resilience_data, out_
     plt.savefig(out_path, dpi=300)
     plt.close()
     print(f"[*] Detailed Master Dashboard Chart generated: {out_path}")
+
+
+# ─────────────────────────────────────────────────────────────
+# CHAOS SCENARIO SPECIFIC PLOTS
+# ─────────────────────────────────────────────────────────────
+
+def _status_color(code):
+    if code == 200:
+        return "#2ecc71"
+    elif code == 429:
+        return "#f39c12"
+    elif code in (502, 503, 504):
+        return "#e74c3c"
+    else:
+        return "#95a5a6"
+
+
+def plot_scenario_1_core_isolation(isolation_matrix: Dict[str, Dict[str, int]], out_path: Path):
+    """Heatmap: rows = stopped service, cols = observed service, color = HTTP status."""
+    services = list(isolation_matrix.keys())
+    all_services = []
+    for statuses in isolation_matrix.values():
+        for svc in statuses.keys():
+            if svc not in all_services:
+                all_services.append(svc)
+    all_services = sorted(all_services)
+
+    data = np.zeros((len(services), len(all_services)), dtype=int)
+    for i, stopped in enumerate(services):
+        for j, observed in enumerate(all_services):
+            val = isolation_matrix.get(stopped, {}).get(observed, -1)
+            data[i, j] = -1 if val is None else val
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    fig.suptitle("Scenario 1: Core Service Isolation Matrix\n(HTTP status of other services when one service is stopped)", 
+                 fontsize=13, fontweight="bold")
+
+    cmap = matplotlib.colors.ListedColormap(["#ffffff", "#2ecc71", "#f39c12", "#e74c3c", "#3498db"])
+    bounds = [-1.5, 0.5, 200.5, 429.5, 502.5, 1000.5]
+    norm = matplotlib.colors.BoundaryNorm(bounds, cmap.N)
+
+    im = ax.imshow(data, cmap=cmap, norm=norm, aspect="auto")
+
+    ax.set_xticks(np.arange(len(all_services)))
+    ax.set_yticks(np.arange(len(services)))
+    ax.set_xticklabels(all_services, rotation=45, ha="right", fontsize=9)
+    ax.set_yticklabels(services, fontsize=9)
+
+    ax.set_xlabel("Observed Service (HTTP Status)")
+    ax.set_ylabel("Stopped Service")
+
+    for i in range(len(services)):
+        for j in range(len(all_services)):
+            val = data[i, j]
+            label = "N/A" if val < 0 else str(val)
+            color = "white" if val in (200, -1) else "black"
+            ax.text(j, i, label, ha="center", va="center", color=color, fontsize=8, fontweight="bold")
+
+    cbar = fig.colorbar(im, ax=ax, shrink=0.8)
+    cbar.set_label("HTTP Status Code")
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(out_path, dpi=300)
+    plt.close()
+    print(f"[*] Scenario 1 chart generated: {out_path}")
+
+
+def plot_scenario_2_db_degradation(db_isolation: Dict[str, Dict[str, Any]], out_path: Path):
+    """Grouped bar: for each DB, show whether affected service degraded AND whether other services leaked."""
+    db_names = list(db_isolation.keys())
+    affected_degraded = []
+    other_leaked = []
+
+    for db_name, info in db_isolation.items():
+        affected_status = info.get("affected_status")
+        degraded = 1 if affected_status in (None, 502, 503, 504) else 0
+        leaked = 0 if info.get("isolated") else 1
+        affected_degraded.append(degraded)
+        other_leaked.append(leaked)
+
+    x = np.arange(len(db_names))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    fig.suptitle("Scenario 2: Database Degradation Isolation\n(Green = good isolation, Red = cross-service leakage)", 
+                 fontsize=13, fontweight="bold")
+
+    bars1 = ax.bar(x - width / 2, affected_degraded, width, label="Affected Service Degraded/Unreachable", color="#e74c3c", alpha=0.8)
+    bars2 = ax.bar(x + width / 2, other_leaked, width, label="Cross-Service Leakage (FAIL)", color="#2ecc71", alpha=0.8)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(db_names, rotation=30, ha="right", fontsize=9)
+    ax.set_ylabel("Isolation Outcome (1 = occurred, 0 = avoided)")
+    ax.set_title("Per-Database Isolation Test: Affected Service Should Degrade, Others Must Stay Healthy")
+    ax.legend()
+    ax.grid(axis="y", linestyle="--", alpha=0.5)
+    ax.set_ylim(0, 1.3)
+
+    for bar in bars1:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width() / 2.0, height + 0.05, "YES" if height else "NO", ha="center", va="bottom", fontsize=8)
+    for bar in bars2:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width() / 2.0, height + 0.05, "LEAK" if height else "OK", ha="center", va="bottom", fontsize=8)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(out_path, dpi=300)
+    plt.close()
+    print(f"[*] Scenario 2 chart generated: {out_path}")
+
+
+def plot_scenario_3_kong_partial(stop_results: Dict[str, int], recovery_results: Dict[str, int], out_path: Path):
+    """Kong gateway health view: healthy services vs stopped/unreachable services."""
+    healthy = {name: code for name, code in stop_results.items() if code in (200, 429)}
+    degraded = {name: code for name, code in stop_results.items() if code not in (200, 429)}
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    fig.suptitle("Scenario 3: Kong Partial Backend Failure\n(Core services must remain operational while auxiliary services are down)", 
+                 fontsize=13, fontweight="bold")
+
+    if healthy:
+        names = list(healthy.keys())
+        codes = list(healthy.values())
+        colors = [_status_color(c) for c in codes]
+        ax1.barh(names, [100] * len(names), color=colors, height=0.5)
+        ax1.set_xlim(0, 120)
+        ax1.set_xlabel("Availability Status")
+        ax1.set_title("Healthy Core Services (During Outage)")
+        for i, (name, code) in enumerate(zip(names, codes)):
+            ax1.text(5, i, f"{name}: {code}", va="center", color="white", fontweight="bold", fontsize=9)
+        ax1.set_yticks(range(len(names)))
+        ax1.set_yticklabels([])
+        ax1.grid(axis="x", linestyle="--", alpha=0.3)
+
+    if degraded:
+        names = list(degraded.keys())
+        codes = list(degraded.values())
+        display_codes = [c if c is not None else "N/A" for c in codes]
+        colors = ["#f39c12" if c == 429 else "#e74c3c" if c is not None else "#95a5a6" for c in codes]
+        ax2.barh(names, [100] * len(names), color=colors, height=0.5)
+        ax2.set_xlim(0, 120)
+        ax2.set_xlabel("Availability Status")
+        ax2.set_title("Stopped Auxiliary Services (Expected 502/503/N/A)")
+        for i, (name, code) in enumerate(zip(names, display_codes)):
+            ax2.text(5, i, f"{name}: {code}", va="center", color="white", fontweight="bold", fontsize=9)
+        ax2.set_yticks(range(len(names)))
+        ax2.set_yticklabels([])
+        ax2.grid(axis="x", linestyle="--", alpha=0.3)
+    else:
+        ax2.text(0.5, 0.5, "No stopped/unreachable services recorded", ha="center", va="center", transform=ax2.transAxes, fontsize=11)
+        ax2.set_title("Stopped Auxiliary Services (Expected 502/503)")
+        ax2.axis("off")
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(out_path, dpi=300)
+    plt.close()
+    print(f"[*] Scenario 3 chart generated: {out_path}")
+
+
+def plot_scenario_4_event_bus(outage_results: Dict[str, int], recovery_results: Dict[str, int], out_path: Path):
+    """Timeline: NATS outage period vs API availability."""
+    fig, ax = plt.subplots(figsize=(12, 6))
+    fig.suptitle("Scenario 4: Event Bus Blackhole & Reconnection\n(REST API must remain operational during NATS outage)", 
+                 fontsize=13, fontweight="bold")
+
+    endpoints = list(outage_results.keys())
+    y_pos = np.arange(len(endpoints))
+
+    outage_colors = [_status_color(outage_results.get(ep, 0)) for ep in endpoints]
+    recovery_colors = [_status_color(recovery_results.get(ep, 0)) for ep in endpoints]
+
+    ax.barh(y_pos - 0.2, [80] * len(endpoints), 0.35, label="During NATS Outage", color=outage_colors, alpha=0.9)
+    ax.barh(y_pos + 0.2, [80] * len(endpoints), 0.35, label="After NATS Recovery", color=recovery_colors, alpha=0.9)
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(endpoints, fontsize=10)
+    ax.set_xlim(0, 120)
+    ax.set_xlabel("Availability Status")
+    ax.set_title("API Status: Outage Phase vs Recovery Phase")
+    ax.legend(loc="lower right")
+    ax.grid(axis="x", linestyle="--", alpha=0.3)
+
+    for i, ep in enumerate(endpoints):
+        outage_code = outage_results.get(ep, 0)
+        recovery_code = recovery_results.get(ep, 0)
+        ax.text(5, i - 0.2, str(outage_code), va="center", color="white", fontweight="bold", fontsize=9)
+        ax.text(5, i + 0.2, str(recovery_code), va="center", color="white", fontweight="bold", fontsize=9)
+
+    ax.axvline(x=0, color="black", linewidth=0.5)
+    ax.set_xticks([])
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(out_path, dpi=300)
+    plt.close()
+    print(f"[*] Scenario 4 chart generated: {out_path}")
+
+
+def plot_scenario_5_cascading(cascade_results: Dict[str, int], out_path: Path):
+    """Bar chart showing HTTP status per service when Module dies."""
+    services = list(cascade_results.keys())
+    statuses = [cascade_results[s] for s in services]
+    colors = [_status_color(s) for s in statuses]
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    fig.suptitle("Scenario 5: Cascading Failure Prevention\n(HTTP status when Module service is stopped — must NOT be 500 cascade)", 
+                 fontsize=13, fontweight="bold")
+
+    bars = ax.bar(services, [100] * len(services), color=colors, width=0.5)
+    ax.set_ylim(0, 120)
+    ax.set_ylabel("Availability Status")
+    ax.set_title("Service Response Codes During Module Outage")
+    ax.grid(axis="y", linestyle="--", alpha=0.5)
+
+    for bar, code in zip(bars, statuses):
+        ax.text(bar.get_x() + bar.get_width() / 2.0, 5, str(code), ha="center", va="bottom", 
+                color="white", fontweight="bold", fontsize=11)
+
+    legend_elements = [
+        matplotlib.patches.Patch(color="#2ecc71", label="200 OK (Isolated)"),
+        matplotlib.patches.Patch(color="#f39c12", label="429 Rate-limited"),
+        matplotlib.patches.Patch(color="#e74c3c", label="502/503/504 Gateway Error"),
+    ]
+    ax.legend(handles=legend_elements, loc="upper right")
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(out_path, dpi=300)
+    plt.close()
+    print(f"[*] Scenario 5 chart generated: {out_path}")
+
+
+def plot_scenario_6_resource(resource_results: Dict[str, Dict[str, Any]], out_path: Path):
+    """Grouped bar: measured latency vs threshold per service during throttling."""
+    services = list(resource_results.keys())
+    measured_latency = []
+    thresholds = []
+
+    for svc, info in resource_results.items():
+        measured_latency.append(info.get("latency", 0))
+        thresholds.append(info.get("threshold", 2.0))
+
+    x = np.arange(len(services))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    fig.suptitle("Scenario 6: Container Resource Exhaustion Isolation\n(Latency of healthy services when another service is CPU-throttled)", 
+                 fontsize=13, fontweight="bold")
+
+    bars = ax.bar(x, measured_latency, width * 1.5, color="#e67e22", alpha=0.8, label="Measured Latency (During Throttling)")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(services, fontsize=10)
+    ax.set_ylabel("Response Latency (seconds)")
+    ax.set_title("Service Latency Must Remain Below Threshold Even When Another Service Is Throttled")
+    ax.legend()
+    ax.grid(axis="y", linestyle="--", alpha=0.5)
+
+    for i, (ml, th) in enumerate(zip(measured_latency, thresholds)):
+        ax.plot([i - width, i + width], [th, th], "r--", linewidth=2)
+        ax.text(i, th + 0.02, f"threshold={th}s", ha="center", color="red", fontsize=8)
+        ax.text(i, ml + 0.02, f"{ml:.2f}s", ha="center", va="bottom", color="black", fontsize=9, fontweight="bold")
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(out_path, dpi=300)
+    plt.close()
+    print(f"[*] Scenario 6 chart generated: {out_path}")
+
+
+
+def plot_chaos_scenario_charts(scenario_data: Dict[str, Dict[str, Any]], results_dir: Path):
+    """Dispatch per-scenario chaos charts based on structured test data."""
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    for scenario_name, data in scenario_data.items():
+        scenario_type = data.get("type")
+        out_path = results_dir / f"chaos_{scenario_name}.png"
+
+        if scenario_type == "core_isolation":
+            isolation = data.get("isolation_matrix", {})
+            if isolation:
+                plot_scenario_1_core_isolation(isolation, out_path)
+        elif scenario_type == "db_degradation":
+            db_isolation = data.get("db_isolation", {})
+            if db_isolation:
+                plot_scenario_2_db_degradation(db_isolation, out_path)
+        elif scenario_type == "kong_partial_failure":
+            stop_results = data.get("stopped_results", {})
+            recovery_results = data.get("recovery_results", {})
+            if stop_results:
+                plot_scenario_3_kong_partial(stop_results, recovery_results, out_path)
+        elif scenario_type == "event_bus_blackhole":
+            outage_results = data.get("outage_results", {})
+            recovery_results = data.get("recovery_results", {})
+            if outage_results:
+                plot_scenario_4_event_bus(outage_results, recovery_results, out_path)
+        elif scenario_type == "cascading_failure":
+            cascade_results = data.get("cascade_results", {})
+            if cascade_results:
+                plot_scenario_5_cascading(cascade_results, out_path)
+        elif scenario_type == "resource_exhaustion":
+            resource_results = data.get("resource_results", {})
+            if resource_results:
+                plot_scenario_6_resource(resource_results, out_path)
+
+
+def plot_scenario_summary_chart(scenario_name: str, status: str, recovery_time: float, details: str, out_path: Path):
+    """Generate a compact per-scenario summary PNG showing status and recovery time."""
+    fig, ax = plt.subplots(figsize=(10, 2.8))
+    score_map = {"PASS": 100, "DEGRADED": 70, "FAIL": 0}
+    score = score_map.get(status, 0)
+    color = "#2ecc71" if status == "PASS" else ("#f39c12" if status == "DEGRADED" else "#e74c3c")
+
+    ax.barh(["Health Score"], [score], color=color, height=0.4)
+    ax.set_xlim(0, 120)
+    ax.set_xlabel("Resilience Health Index (%)")
+    ax.set_title(f"{scenario_name}: {status}", fontsize=12, fontweight="bold")
+    ax.grid(axis="x", linestyle="--", alpha=0.5)
+
+    ax.text(score + 2, 0, f"{status} ({score}%)", va="center", fontweight="bold", fontsize=11)
+    if recovery_time > 0:
+        ax.text(105, 0, f"Recovery: {recovery_time:.1f}s", va="center", fontweight="bold", color="#3498db", fontsize=10)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.92])
+    plt.savefig(out_path, dpi=300)
+    plt.close()
+    print(f"[*] Scenario summary chart generated: {out_path}")
+

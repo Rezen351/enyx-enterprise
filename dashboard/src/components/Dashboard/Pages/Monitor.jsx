@@ -985,7 +985,7 @@ function Monitor() {
                           key={a.source_key}
                           onClick={() => sendActuator(a, on ? 0 : 1)}
                           disabled={!selectedNode}
-                          title={`${a.output_type} · ${a.tag_name || a.source_key}`}
+                           title={`${a.output_type} · ${a.display_name || a.tag_name || a.source_key}`}
                           className={`h-9 flex items-center justify-center gap-1.5 border text-[11px] font-black uppercase tracking-widest disabled:opacity-40 cursor-pointer transition-all duration-200 ${
                             on
                               ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.15)] font-black'

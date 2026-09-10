@@ -82,8 +82,7 @@ func New(cfg Config, svc *service.ModuleService) (*Subscriber, error) {
 
 func (s *Subscriber) subscribe() {
 	// Subscribe to the whole prefix so we can both run onboarding AND stream
-	// every per-node payload (telemetry/actuator/diagnostics/alert/...) to the
-	// live monitor hub. A single handler routes each message.
+	// telemetry to the live monitor hub. A single handler routes each message.
 	allTopic := s.topicPrefix + "/#"
 	if tok := s.client.Subscribe(allTopic, 0, s.onMessage); tok.Wait() && tok.Error() != nil {
 		log.Printf("[mqtt] subscribe %s failed: %v", allTopic, tok.Error())
@@ -92,15 +91,16 @@ func (s *Subscriber) subscribe() {
 	}
 }
 
-// onMessage fans every per-node MQTT payload out to NATS (for the WS-Gateway to
-// stream to the dashboard), then routes the onboarding-relevant ones
-// (discovery, status) to the service.
+// onMessage routes incoming MQTT messages. Telemetry and status are the only
+// topics that mark a node as alive (TouchNode); telemetry is also forwarded
+// to the live monitor hub. Discovery, alert, confirm, and actuator payloads
+// are handled by their own routers without affecting last-seen tracking.
 func (s *Subscriber) onMessage(_ mqtt.Client, m mqtt.Message) {
 	topic := m.Topic()
 	payload := m.Payload()
 
 	nodeID, _ := s.nodeIDFromTopic(topic, payload)
-	if nodeID != "" {
+	if nodeID != "" && (strings.HasSuffix(topic, "/telemetry") || strings.Contains(topic, "/status/")) {
 		s.svc.TouchNode(nodeID)
 		if strings.HasSuffix(topic, "/telemetry") {
 			s.svc.PublishLive(nodeID, topic, payload)
@@ -119,7 +119,7 @@ func (s *Subscriber) onMessage(_ mqtt.Client, m mqtt.Message) {
 
 // nodeIDFromTopic extracts the node id from any per-node firmware topic:
 //
-//	{prefix}/{node_id}/telemetry|diagnostics|alert|confirm
+//	{prefix}/{node_id}/telemetry|alert|confirm
 //	{prefix}/actuator/{node_id}
 //	{prefix}/status/{node_id}
 //	{prefix}/discovery            -> node id comes from the payload

@@ -37,7 +37,7 @@ export default defineConfig([
   },
   {
     // Build/config files run in Node, not the browser.
-    files: ['vite.config.js', '*.config.js', 'eslint.config.js'],
+    files: ['vite.config.js', '*.config.js', 'eslint.config.js', 'ui/screenshot-pages.js'],
     languageOptions: {
       globals: { ...globals.node },
     },

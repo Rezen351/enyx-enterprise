@@ -1,0 +1,3418 @@
+{
+  "phase": "2",
+  "generated": "2026-08-28T21:18:00",
+  "scenarios": [
+    {
+      "scenario": "Isolation-auth",
+      "status": "PASS",
+      "details": "All other services operational when auth is down"
+    },
+    {
+      "scenario": "Isolation-module",
+      "status": "PASS",
+      "details": "All other services operational when module is down"
+    },
+    {
+      "scenario": "Isolation-analytics",
+      "status": "PASS",
+      "details": "All other services operational when analytics is down"
+    },
+    {
+      "scenario": "Isolation-control",
+      "status": "PASS",
+      "details": "All other services operational when control is down"
+    },
+    {
+      "scenario": "Isolation-alert",
+      "status": "PASS",
+      "details": "All other services operational when alert is down"
+    },
+    {
+      "scenario": "Isolation-audit",
+      "status": "PASS",
+      "details": "All other services operational when audit is down"
+    },
+    {
+      "scenario": "Isolation-notification",
+      "status": "PASS",
+      "details": "All other services operational when notification is down"
+    },
+    {
+      "scenario": "Isolation-stream",
+      "status": "PASS",
+      "details": "All other services operational when stream is down"
+    },
+    {
+      "scenario": "Isolation-export-service",
+      "status": "PASS",
+      "details": "All other services operational when export-service is down"
+    },
+    {
+      "scenario": "Isolation-wsgateway",
+      "status": "PASS",
+      "details": "All other services operational when wsgateway is down"
+    },
+    {
+      "scenario": "Isolation-ml",
+      "status": "PASS",
+      "details": "All other services operational when ml is down"
+    },
+    {
+      "scenario": "Isolation-model-controller",
+      "status": "PASS",
+      "details": "All other services operational when model-controller is down"
+    },
+    {
+      "scenario": "Isolation-model-control",
+      "status": "PASS",
+      "details": "All other services operational when model-control is down"
+    },
+    {
+      "scenario": "DB-Degradation-mariadb-module",
+      "status": "PASS",
+      "details": "module isolated (affected_status=None); other services unaffected"
+    },
+    {
+      "scenario": "DB-Degradation-mariadb-alert",
+      "status": "PASS",
+      "details": "alert isolated (affected_status=None); other services unaffected"
+    },
+    {
+      "scenario": "DB-Degradation-mariadb-audit",
+      "status": "PASS",
+      "details": "audit isolated (affected_status=None); other services unaffected"
+    },
+    {
+      "scenario": "DB-Degradation-mariadb-stream",
+      "status": "PASS",
+      "details": "stream isolated (affected_status=None); other services unaffected"
+    },
+    {
+      "scenario": "DB-Degradation-mariadb-notification",
+      "status": "PASS",
+      "details": "notification isolated (affected_status=None); other services unaffected"
+    },
+    {
+      "scenario": "DB-Degradation-redis-shared",
+      "status": "PASS",
+      "details": "alert isolated (affected_status=200); other services unaffected"
+    },
+    {
+      "scenario": "DB-Degradation-mariadb-ml",
+      "status": "PASS",
+      "details": "ml isolated (affected_status=None); other services unaffected"
+    },
+    {
+      "scenario": "DB-Degradation-mariadb-control",
+      "status": "PASS",
+      "details": "control isolated (affected_status=200); other services unaffected"
+    },
+    {
+      "scenario": "Kong-Core-Auth",
+      "status": "PASS",
+      "details": "Auth endpoint operational (200)"
+    },
+    {
+      "scenario": "Kong-Core-Module",
+      "status": "PASS",
+      "details": "Module endpoint operational (200)"
+    },
+    {
+      "scenario": "Kong-Core-Analytics",
+      "status": "PASS",
+      "details": "Analytics endpoint operational (200)"
+    },
+    {
+      "scenario": "Kong-Core-Control",
+      "status": "PASS",
+      "details": "Control endpoint operational (200)"
+    },
+    {
+      "scenario": "Kong-Core-Health",
+      "status": "PASS",
+      "details": "Health endpoint operational (200)"
+    },
+    {
+      "scenario": "Kong-Stopped-Alert",
+      "status": "PASS",
+      "details": "Graceful degradation (None)"
+    },
+    {
+      "scenario": "Kong-Stopped-Stream",
+      "status": "PASS",
+      "details": "Graceful degradation (None)"
+    },
+    {
+      "scenario": "Kong-Stopped-Audit",
+      "status": "PASS",
+      "details": "Graceful degradation (None)"
+    },
+    {
+      "scenario": "Kong-Stopped-Export",
+      "status": "PASS",
+      "details": "Graceful degradation (None)"
+    },
+    {
+      "scenario": "Kong-Stopped-ML",
+      "status": "PASS",
+      "details": "Graceful degradation (None)"
+    },
+    {
+      "scenario": "Kong-Stopped-ModelController",
+      "status": "PASS",
+      "details": "Graceful degradation (None)"
+    },
+    {
+      "scenario": "Kong-Recovery-Alert",
+      "status": "PASS",
+      "details": "Alert recovered to 200 OK"
+    },
+    {
+      "scenario": "Kong-Recovery-Stream",
+      "status": "PASS",
+      "details": "Stream recovered to 200 OK"
+    },
+    {
+      "scenario": "NATS-Outage-Auth",
+      "status": "PASS",
+      "details": "Auth REST API operational during NATS outage"
+    },
+    {
+      "scenario": "NATS-Outage-Module",
+      "status": "PASS",
+      "details": "Module REST API operational during NATS outage"
+    },
+    {
+      "scenario": "NATS-Outage-Analytics",
+      "status": "PASS",
+      "details": "Analytics REST API operational during NATS outage"
+    },
+    {
+      "scenario": "NATS-Outage-Control",
+      "status": "PASS",
+      "details": "Control REST API operational during NATS outage"
+    },
+    {
+      "scenario": "NATS-Outage-Alert",
+      "status": "PASS",
+      "details": "Alert REST API operational during NATS outage"
+    },
+    {
+      "scenario": "NATS-Outage-Health",
+      "status": "PASS",
+      "details": "Health REST API operational during NATS outage"
+    },
+    {
+      "scenario": "NATS-Outage-Core",
+      "status": "PASS",
+      "details": "All core REST APIs operational during NATS blackhole"
+    },
+    {
+      "scenario": "NATS-Reconnection",
+      "status": "PASS",
+      "details": "Services reconnected to NATS after restart"
+    },
+    {
+      "scenario": "Cascade-Auth",
+      "status": "PASS",
+      "details": "Auth degraded gracefully (200)"
+    },
+    {
+      "scenario": "Cascade-Analytics",
+      "status": "PASS",
+      "details": "Analytics degraded gracefully (200)"
+    },
+    {
+      "scenario": "Cascade-Control",
+      "status": "PASS",
+      "details": "Control degraded gracefully (200)"
+    },
+    {
+      "scenario": "Cascade-Alert",
+      "status": "PASS",
+      "details": "Alert degraded gracefully (200)"
+    },
+    {
+      "scenario": "Cascade-Recovery",
+      "status": "PASS",
+      "details": "Module service recovered successfully"
+    },
+    {
+      "scenario": "Resource-Isolation-Auth",
+      "status": "PASS",
+      "details": "Auth latency unaffected (0.00s)"
+    },
+    {
+      "scenario": "Resource-Isolation-Analytics",
+      "status": "PASS",
+      "details": "Analytics latency unaffected (0.47s)"
+    },
+    {
+      "scenario": "Resource-Recovery",
+      "status": "PASS",
+      "details": "Stream service recovered after resource restore"
+    }
+  ],
+  "recovery_times": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    179.73286724090576,
+    179.73286724090576,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    13.76745319366455,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    2.087421178817749,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "scenario_data": {
+    "Isolation-auth": {
+      "status": "PASS",
+      "details": "All other services operational when auth is down",
+      "recovery_time": 0.0,
+      "isolation_matrix": {
+        "auth": {
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": null,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "module": {
+          "auth": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "analytics": {
+          "auth": 200,
+          "module": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "alert": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "audit": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "notification": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "stream": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "export-service": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "wsgateway": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "ml": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "model-controller": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-control": 200
+        },
+        "model-control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200
+        }
+      },
+      "stopped_service": "auth"
+    },
+    "Isolation-module": {
+      "status": "PASS",
+      "details": "All other services operational when module is down",
+      "recovery_time": 0.0,
+      "isolation_matrix": {
+        "auth": {
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": null,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "module": {
+          "auth": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "analytics": {
+          "auth": 200,
+          "module": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "alert": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "audit": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "notification": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "stream": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "export-service": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "wsgateway": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "ml": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "model-controller": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-control": 200
+        },
+        "model-control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200
+        }
+      },
+      "stopped_service": "module"
+    },
+    "Isolation-analytics": {
+      "status": "PASS",
+      "details": "All other services operational when analytics is down",
+      "recovery_time": 0.0,
+      "isolation_matrix": {
+        "auth": {
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": null,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "module": {
+          "auth": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "analytics": {
+          "auth": 200,
+          "module": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "alert": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "audit": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "notification": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "stream": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "export-service": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "wsgateway": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "ml": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "model-controller": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-control": 200
+        },
+        "model-control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200
+        }
+      },
+      "stopped_service": "analytics"
+    },
+    "Isolation-control": {
+      "status": "PASS",
+      "details": "All other services operational when control is down",
+      "recovery_time": 0.0,
+      "isolation_matrix": {
+        "auth": {
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": null,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "module": {
+          "auth": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "analytics": {
+          "auth": 200,
+          "module": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "alert": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "audit": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "notification": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "stream": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "export-service": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "wsgateway": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "ml": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "model-controller": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-control": 200
+        },
+        "model-control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200
+        }
+      },
+      "stopped_service": "control"
+    },
+    "Isolation-alert": {
+      "status": "PASS",
+      "details": "All other services operational when alert is down",
+      "recovery_time": 0.0,
+      "isolation_matrix": {
+        "auth": {
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": null,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "module": {
+          "auth": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "analytics": {
+          "auth": 200,
+          "module": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "alert": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "audit": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "notification": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "stream": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "export-service": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "wsgateway": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "ml": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "model-controller": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-control": 200
+        },
+        "model-control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200
+        }
+      },
+      "stopped_service": "alert"
+    },
+    "Isolation-audit": {
+      "status": "PASS",
+      "details": "All other services operational when audit is down",
+      "recovery_time": 0.0,
+      "isolation_matrix": {
+        "auth": {
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": null,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "module": {
+          "auth": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "analytics": {
+          "auth": 200,
+          "module": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "alert": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "audit": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "notification": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "stream": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "export-service": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "wsgateway": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "ml": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "model-controller": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-control": 200
+        },
+        "model-control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200
+        }
+      },
+      "stopped_service": "audit"
+    },
+    "Isolation-notification": {
+      "status": "PASS",
+      "details": "All other services operational when notification is down",
+      "recovery_time": 0.0,
+      "isolation_matrix": {
+        "auth": {
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": null,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "module": {
+          "auth": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "analytics": {
+          "auth": 200,
+          "module": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "alert": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "audit": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "notification": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "stream": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "export-service": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "wsgateway": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "ml": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "model-controller": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-control": 200
+        },
+        "model-control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200
+        }
+      },
+      "stopped_service": "notification"
+    },
+    "Isolation-stream": {
+      "status": "PASS",
+      "details": "All other services operational when stream is down",
+      "recovery_time": 0.0,
+      "isolation_matrix": {
+        "auth": {
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": null,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "module": {
+          "auth": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "analytics": {
+          "auth": 200,
+          "module": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "alert": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "audit": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "notification": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "stream": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "export-service": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "wsgateway": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "ml": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "model-controller": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-control": 200
+        },
+        "model-control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200
+        }
+      },
+      "stopped_service": "stream"
+    },
+    "Isolation-export-service": {
+      "status": "PASS",
+      "details": "All other services operational when export-service is down",
+      "recovery_time": 0.0,
+      "isolation_matrix": {
+        "auth": {
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": null,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "module": {
+          "auth": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "analytics": {
+          "auth": 200,
+          "module": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "alert": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "audit": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "notification": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "stream": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "export-service": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "wsgateway": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "ml": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "model-controller": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-control": 200
+        },
+        "model-control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200
+        }
+      },
+      "stopped_service": "export-service"
+    },
+    "Isolation-wsgateway": {
+      "status": "PASS",
+      "details": "All other services operational when wsgateway is down",
+      "recovery_time": 0.0,
+      "isolation_matrix": {
+        "auth": {
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": null,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "module": {
+          "auth": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "analytics": {
+          "auth": 200,
+          "module": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "alert": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "audit": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "notification": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "stream": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "export-service": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "wsgateway": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "ml": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "model-controller": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-control": 200
+        },
+        "model-control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200
+        }
+      },
+      "stopped_service": "wsgateway"
+    },
+    "Isolation-ml": {
+      "status": "PASS",
+      "details": "All other services operational when ml is down",
+      "recovery_time": 0.0,
+      "isolation_matrix": {
+        "auth": {
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": null,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "module": {
+          "auth": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "analytics": {
+          "auth": 200,
+          "module": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "alert": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "audit": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "notification": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "stream": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "export-service": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "wsgateway": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "ml": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "model-controller": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-control": 200
+        },
+        "model-control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200
+        }
+      },
+      "stopped_service": "ml"
+    },
+    "Isolation-model-controller": {
+      "status": "PASS",
+      "details": "All other services operational when model-controller is down",
+      "recovery_time": 0.0,
+      "isolation_matrix": {
+        "auth": {
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": null,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "module": {
+          "auth": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "analytics": {
+          "auth": 200,
+          "module": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "alert": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "audit": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "notification": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "stream": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "export-service": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "wsgateway": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "ml": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "model-controller": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-control": 200
+        },
+        "model-control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200
+        }
+      },
+      "stopped_service": "model-controller"
+    },
+    "Isolation-model-control": {
+      "status": "PASS",
+      "details": "All other services operational when model-control is down",
+      "recovery_time": 0.0,
+      "isolation_matrix": {
+        "auth": {
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": null,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "module": {
+          "auth": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "analytics": {
+          "auth": 200,
+          "module": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "alert": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "audit": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "notification": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "stream": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "export-service": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "wsgateway": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "ml": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "model-controller": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-control": 200
+        },
+        "model-control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200
+        }
+      },
+      "stopped_service": "model-control"
+    },
+    "core_isolation": {
+      "type": "core_isolation",
+      "isolation_matrix": {
+        "auth": {
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": null,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "module": {
+          "auth": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "analytics": {
+          "auth": 200,
+          "module": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "alert": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "audit": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "notification": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "stream": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "export-service": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "wsgateway": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "ml": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "ml": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "model-controller": 200,
+          "model-control": 200
+        },
+        "model-controller": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-control": 200
+        },
+        "model-control": {
+          "auth": 200,
+          "module": 200,
+          "analytics": 200,
+          "control": 200,
+          "alert": 200,
+          "audit": 200,
+          "notification": 200,
+          "stream": 200,
+          "export-service": 200,
+          "wsgateway": 200,
+          "ml": 200,
+          "model-controller": 200
+        }
+      }
+    },
+    "DB-Degradation-mariadb-module": {
+      "status": "PASS",
+      "details": "module isolated (affected_status=None); other services unaffected",
+      "recovery_time": 0.0,
+      "db_name": "mariadb-module",
+      "affected_status": null,
+      "isolated": true
+    },
+    "DB-Degradation-mariadb-alert": {
+      "status": "PASS",
+      "details": "alert isolated (affected_status=None); other services unaffected",
+      "recovery_time": 0.0,
+      "db_name": "mariadb-alert",
+      "affected_status": null,
+      "isolated": true
+    },
+    "DB-Degradation-mariadb-audit": {
+      "status": "PASS",
+      "details": "audit isolated (affected_status=None); other services unaffected",
+      "recovery_time": 0.0,
+      "db_name": "mariadb-audit",
+      "affected_status": null,
+      "isolated": true
+    },
+    "DB-Degradation-mariadb-stream": {
+      "status": "PASS",
+      "details": "stream isolated (affected_status=None); other services unaffected",
+      "recovery_time": 0.0,
+      "db_name": "mariadb-stream",
+      "affected_status": null,
+      "isolated": true
+    },
+    "DB-Degradation-mariadb-notification": {
+      "status": "PASS",
+      "details": "notification isolated (affected_status=None); other services unaffected",
+      "recovery_time": 0.0,
+      "db_name": "mariadb-notification",
+      "affected_status": null,
+      "isolated": true
+    },
+    "DB-Degradation-redis-shared": {
+      "status": "PASS",
+      "details": "alert isolated (affected_status=200); other services unaffected",
+      "recovery_time": 0.0,
+      "db_name": "redis-shared",
+      "affected_status": 200,
+      "isolated": true
+    },
+    "DB-Degradation-mariadb-ml": {
+      "status": "PASS",
+      "details": "ml isolated (affected_status=None); other services unaffected",
+      "recovery_time": 0.0,
+      "db_name": "mariadb-ml",
+      "affected_status": null,
+      "isolated": true
+    },
+    "DB-Degradation-mariadb-control": {
+      "status": "PASS",
+      "details": "control isolated (affected_status=200); other services unaffected",
+      "recovery_time": 0.0,
+      "db_name": "mariadb-control",
+      "affected_status": 200,
+      "isolated": true
+    },
+    "db_degradation_isolation": {
+      "type": "db_degradation",
+      "db_isolation": {
+        "mariadb-module": {
+          "affected_service": "module",
+          "affected_status": null,
+          "other_statuses": {
+            "/v1/auth/me": 200,
+            "/v1/analytics/nodes": 200,
+            "/v1/control/modes/node-01": 200,
+            "/v1/alerts": 200
+          },
+          "failures": [],
+          "isolated": true
+        },
+        "mariadb-alert": {
+          "affected_service": "alert",
+          "affected_status": null,
+          "other_statuses": {
+            "/v1/auth/me": 200,
+            "/v1/analytics/nodes": 200,
+            "/v1/control/modes/node-01": 200,
+            "/v1/audit/logs": 200
+          },
+          "failures": [],
+          "isolated": true
+        },
+        "mariadb-audit": {
+          "affected_service": "audit",
+          "affected_status": null,
+          "other_statuses": {
+            "/v1/auth/me": 200,
+            "/v1/analytics/nodes": 200,
+            "/v1/control/modes/node-01": 200,
+            "/v1/alerts": 200
+          },
+          "failures": [],
+          "isolated": true
+        },
+        "mariadb-stream": {
+          "affected_service": "stream",
+          "affected_status": null,
+          "other_statuses": {
+            "/v1/auth/me": 200,
+            "/v1/analytics/nodes": 200,
+            "/v1/control/modes/node-01": 200,
+            "/v1/alerts": 200,
+            "/v1/audit/logs": 200
+          },
+          "failures": [],
+          "isolated": true
+        },
+        "mariadb-notification": {
+          "affected_service": "notification",
+          "affected_status": null,
+          "other_statuses": {
+            "/v1/auth/me": 200,
+            "/v1/analytics/nodes": 200,
+            "/v1/control/modes/node-01": 200,
+            "/v1/alerts": 200,
+            "/v1/audit/logs": 200
+          },
+          "failures": [],
+          "isolated": true
+        },
+        "redis-shared": {
+          "affected_service": "alert",
+          "affected_status": 200,
+          "other_statuses": {
+            "/v1/auth/me": 200,
+            "/v1/analytics/nodes": 200,
+            "/v1/control/modes/node-01": 200,
+            "/v1/audit/logs": 200
+          },
+          "failures": [],
+          "isolated": true
+        },
+        "mariadb-ml": {
+          "affected_service": "ml",
+          "affected_status": null,
+          "other_statuses": {
+            "/v1/auth/me": 200,
+            "/v1/analytics/nodes": 200,
+            "/v1/control/modes/node-01": 200,
+            "/v1/alerts": 200
+          },
+          "failures": [],
+          "isolated": true
+        },
+        "mariadb-control": {
+          "affected_service": "control",
+          "affected_status": 200,
+          "other_statuses": {
+            "/v1/auth/me": 200,
+            "/v1/analytics/nodes": 200,
+            "/v1/alerts": 200,
+            "/v1/audit/logs": 200
+          },
+          "failures": [],
+          "isolated": true
+        }
+      }
+    },
+    "Kong-Core-Auth": {
+      "status": "PASS",
+      "details": "Auth endpoint operational (200)",
+      "recovery_time": 0.0
+    },
+    "Kong-Core-Module": {
+      "status": "PASS",
+      "details": "Module endpoint operational (200)",
+      "recovery_time": 0.0
+    },
+    "Kong-Core-Analytics": {
+      "status": "PASS",
+      "details": "Analytics endpoint operational (200)",
+      "recovery_time": 0.0
+    },
+    "Kong-Core-Control": {
+      "status": "PASS",
+      "details": "Control endpoint operational (200)",
+      "recovery_time": 0.0
+    },
+    "Kong-Core-Health": {
+      "status": "PASS",
+      "details": "Health endpoint operational (200)",
+      "recovery_time": 0.0
+    },
+    "Kong-Stopped-Alert": {
+      "status": "PASS",
+      "details": "Graceful degradation (None)",
+      "recovery_time": 0.0
+    },
+    "Kong-Stopped-Stream": {
+      "status": "PASS",
+      "details": "Graceful degradation (None)",
+      "recovery_time": 0.0
+    },
+    "Kong-Stopped-Audit": {
+      "status": "PASS",
+      "details": "Graceful degradation (None)",
+      "recovery_time": 0.0
+    },
+    "Kong-Stopped-Export": {
+      "status": "PASS",
+      "details": "Graceful degradation (None)",
+      "recovery_time": 0.0
+    },
+    "Kong-Stopped-ML": {
+      "status": "PASS",
+      "details": "Graceful degradation (None)",
+      "recovery_time": 0.0
+    },
+    "Kong-Stopped-ModelController": {
+      "status": "PASS",
+      "details": "Graceful degradation (None)",
+      "recovery_time": 0.0
+    },
+    "Kong-Recovery-Alert": {
+      "status": "PASS",
+      "details": "Alert recovered to 200 OK",
+      "recovery_time": 179.73286724090576
+    },
+    "Kong-Recovery-Stream": {
+      "status": "PASS",
+      "details": "Stream recovered to 200 OK",
+      "recovery_time": 179.73286724090576
+    },
+    "kong_partial_failure": {
+      "type": "kong_partial_failure",
+      "stopped_services": [
+        "alert",
+        "stream",
+        "audit",
+        "export-service",
+        "ml",
+        "model-controller",
+        "model-control"
+      ],
+      "core_results": {
+        "Auth": 200,
+        "Module": 200,
+        "Analytics": 200,
+        "Control": 200,
+        "Health": 200
+      },
+      "stopped_results": {
+        "Alert": null,
+        "Stream": null,
+        "Audit": null,
+        "Export": null,
+        "ML": null,
+        "ModelController": null
+      },
+      "recovery_results": {
+        "Alert": 200,
+        "Stream": 200
+      },
+      "recovery_time": 179.73286724090576
+    },
+    "NATS-Outage-Auth": {
+      "status": "PASS",
+      "details": "Auth REST API operational during NATS outage",
+      "recovery_time": 0.0
+    },
+    "NATS-Outage-Module": {
+      "status": "PASS",
+      "details": "Module REST API operational during NATS outage",
+      "recovery_time": 0.0
+    },
+    "NATS-Outage-Analytics": {
+      "status": "PASS",
+      "details": "Analytics REST API operational during NATS outage",
+      "recovery_time": 0.0
+    },
+    "NATS-Outage-Control": {
+      "status": "PASS",
+      "details": "Control REST API operational during NATS outage",
+      "recovery_time": 0.0
+    },
+    "NATS-Outage-Alert": {
+      "status": "PASS",
+      "details": "Alert REST API operational during NATS outage",
+      "recovery_time": 0.0
+    },
+    "NATS-Outage-Health": {
+      "status": "PASS",
+      "details": "Health REST API operational during NATS outage",
+      "recovery_time": 0.0
+    },
+    "NATS-Outage-Core": {
+      "status": "PASS",
+      "details": "All core REST APIs operational during NATS blackhole",
+      "recovery_time": 0.0
+    },
+    "NATS-Reconnection": {
+      "status": "PASS",
+      "details": "Services reconnected to NATS after restart",
+      "recovery_time": 13.76745319366455
+    },
+    "event_bus_blackhole": {
+      "type": "event_bus_blackhole",
+      "outage_results": {
+        "Auth": 200,
+        "Module": 200,
+        "Analytics": 200,
+        "Control": 200,
+        "Alert": 200,
+        "Health": 200
+      },
+      "recovery_results": {
+        "Health": 200
+      },
+      "outage_timeline": [
+        {
+          "time": 1787926644.7702832,
+          "endpoint": "Auth",
+          "status": 200
+        },
+        {
+          "time": 1787926644.7748716,
+          "endpoint": "Module",
+          "status": 200
+        },
+        {
+          "time": 1787926643.38264,
+          "endpoint": "Analytics",
+          "status": 200
+        },
+        {
+          "time": 1787926643.3898733,
+          "endpoint": "Control",
+          "status": 200
+        },
+        {
+          "time": 1787926643.395568,
+          "endpoint": "Alert",
+          "status": 200
+        },
+        {
+          "time": 1787926643.4001877,
+          "endpoint": "Health",
+          "status": 200
+        }
+      ],
+      "recovery_timeline": [
+        {
+          "time": 1787926657.173427,
+          "endpoint": "Auth",
+          "status": 200
+        },
+        {
+          "time": 1787926657.177098,
+          "endpoint": "Module",
+          "status": 200
+        },
+        {
+          "time": 1787926657.7056684,
+          "endpoint": "Analytics",
+          "status": 200
+        },
+        {
+          "time": 1787926657.7089715,
+          "endpoint": "Control",
+          "status": 200
+        },
+        {
+          "time": 1787926657.712834,
+          "endpoint": "Alert",
+          "status": 200
+        },
+        {
+          "time": 1787926657.7160876,
+          "endpoint": "Health",
+          "status": 200
+        }
+      ],
+      "recovery_time": 13.76745319366455
+    },
+    "Cascade-Auth": {
+      "status": "PASS",
+      "details": "Auth degraded gracefully (200)",
+      "recovery_time": 0.0
+    },
+    "Cascade-Analytics": {
+      "status": "PASS",
+      "details": "Analytics degraded gracefully (200)",
+      "recovery_time": 0.0
+    },
+    "Cascade-Control": {
+      "status": "PASS",
+      "details": "Control degraded gracefully (200)",
+      "recovery_time": 0.0
+    },
+    "Cascade-Alert": {
+      "status": "PASS",
+      "details": "Alert degraded gracefully (200)",
+      "recovery_time": 0.0
+    },
+    "Cascade-Recovery": {
+      "status": "PASS",
+      "details": "Module service recovered successfully",
+      "recovery_time": 2.087421178817749
+    },
+    "cascading_failure": {
+      "type": "cascading_failure",
+      "cascade_results": {
+        "Auth": 200,
+        "Analytics": 200,
+        "Control": 200,
+        "Alert": 200
+      },
+      "recovery_time": 2.087421178817749
+    },
+    "Resource-Isolation-Auth": {
+      "status": "PASS",
+      "details": "Auth latency unaffected (0.00s)",
+      "recovery_time": 0.0
+    },
+    "Resource-Isolation-Analytics": {
+      "status": "PASS",
+      "details": "Analytics latency unaffected (0.47s)",
+      "recovery_time": 0.0
+    },
+    "Resource-Recovery": {
+      "status": "PASS",
+      "details": "Stream service recovered after resource restore",
+      "recovery_time": 0.0
+    },
+    "resource_exhaustion": {
+      "type": "resource_exhaustion",
+      "resource_results": {
+        "Auth": {
+          "latency": 0.004003047943115234,
+          "status": 200,
+          "threshold": 1.0
+        },
+        "Analytics": {
+          "latency": 0.4700157642364502,
+          "status": 200,
+          "threshold": 2.0
+        }
+      }
+    }
+  },
+  "pass_count": 50,
+  "degraded_count": 0,
+  "fail_count": 0
+}

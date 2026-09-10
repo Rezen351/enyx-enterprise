@@ -66,19 +66,16 @@ func (r *Repository) CreateModule(ctx context.Context, m *model.Module) error {
 	m.ID = uuid.New().String()
 	now := time.Now()
 	m.CreatedAt, m.UpdatedAt = now, now
-	if m.Config == "" {
-		m.Config = "{}"
-	}
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO modules (id, name, description, config, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		m.ID, m.Name, m.Description, m.Config, m.CreatedAt, m.UpdatedAt)
+		`INSERT INTO modules (id, name, description, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?)`,
+		m.ID, m.Name, m.Description, m.CreatedAt, m.UpdatedAt)
 	return err
 }
 
 func (r *Repository) ListModules(ctx context.Context) ([]model.Module, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, name, description, config, created_at, updated_at
+		`SELECT id, name, description, created_at, updated_at
 		 FROM modules ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
@@ -88,7 +85,7 @@ func (r *Repository) ListModules(ctx context.Context) ([]model.Module, error) {
 	var out []model.Module
 	for rows.Next() {
 		var m model.Module
-		if err := rows.Scan(&m.ID, &m.Name, &m.Description, &m.Config, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.Name, &m.Description, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -99,9 +96,9 @@ func (r *Repository) ListModules(ctx context.Context) ([]model.Module, error) {
 func (r *Repository) GetModule(ctx context.Context, id string) (*model.Module, error) {
 	var m model.Module
 	err := r.db.QueryRowContext(ctx,
-		`SELECT id, name, description, config, created_at, updated_at
+		`SELECT id, name, description, created_at, updated_at
 		 FROM modules WHERE id = ?`, id).
-		Scan(&m.ID, &m.Name, &m.Description, &m.Config, &m.CreatedAt, &m.UpdatedAt)
+		Scan(&m.ID, &m.Name, &m.Description, &m.CreatedAt, &m.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -127,13 +124,10 @@ func (r *Repository) UpdateModule(ctx context.Context, id string, req model.Upda
 	if req.Description != nil {
 		m.Description = *req.Description
 	}
-	if req.Config != nil {
-		m.Config = *req.Config
-	}
 	m.UpdatedAt = time.Now()
 	_, err = r.db.ExecContext(ctx,
-		`UPDATE modules SET name = ?, description = ?, config = ?, updated_at = ? WHERE id = ?`,
-		m.Name, m.Description, m.Config, m.UpdatedAt, id)
+		`UPDATE modules SET name = ?, description = ?, updated_at = ? WHERE id = ?`,
+		m.Name, m.Description, m.UpdatedAt, id)
 	if err != nil {
 		return nil, err
 	}
@@ -227,6 +221,29 @@ func (r *Repository) TouchNode(ctx context.Context, nodeID string) error {
 		`UPDATE nodes SET last_seen_at = ?, status = ?, updated_at = ? WHERE node_id = ?`,
 		now, model.StatusOnline, now, nodeID)
 	return err
+}
+
+// MarkStaleNodesOffline flips any node that is NOT already offline and whose
+// last_seen_at has not been refreshed within the staleness window back to
+// "offline". This is the source-of-truth mechanism that keeps the persisted
+// node status accurate: a node that simply stops sending telemetry (no clean
+// LWT disconnect) would otherwise stay "online" forever. A NULL last_seen_at
+// (never seen, e.g. registered only via an offline status message) is also
+// treated as stale. Returns the number of nodes marked offline.
+func (r *Repository) MarkStaleNodesOffline(ctx context.Context, threshold time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-threshold)
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE nodes SET status = ?, updated_at = ?
+		 WHERE status <> ? AND (last_seen_at IS NULL OR last_seen_at < ?)`,
+		model.StatusOffline, time.Now(), model.StatusOffline, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 func (r *Repository) GetNodeByNodeID(ctx context.Context, nodeID string) (*model.Node, error) {

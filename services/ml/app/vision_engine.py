@@ -8,6 +8,7 @@ its id; the engine lazily loads the corresponding weights (e.g. your trained
 from __future__ import annotations
 
 import io
+import base64
 import logging
 import os
 import threading
@@ -462,31 +463,37 @@ def run_inference(
     tuber_size_cm = max(tuber_sizes_cm) if tuber_sizes_cm else None
 
     original_url = annotated_url = None
-    try:
-        original_key = storage.safe_object_key(
-            settings.minio_original_prefix, source_ref or "image.jpg"
-        )
-        original_url = storage.upload_image(
-            settings.minio_ml_bucket, original_key, image_bytes
-        )
-        annotated_key = storage.safe_object_key(
-            settings.minio_annotated_prefix, source_ref or "image.jpg"
-        )
-        annotated_metadata = {
-            "root_length_cm": str(root_length_cm) if root_length_cm is not None else "",
-            "tuber_size_cm": str(tuber_size_cm) if tuber_size_cm is not None else "",
-            "condition": str(round(conf_avg, 4)) if conf_avg is not None else "",
-            "confidence": str(round(conf_avg, 4)) if conf_avg is not None else "",
-            "num_detections": str(len(detections)),
-        }
-        annotated_url = storage.upload_image_with_metadata(
-            settings.minio_ml_bucket,
-            annotated_key,
-            annotated_bytes,
-            annotated_metadata,
-        )
-    except Exception as exc:  # pragma: no cover - depends on live MinIO
-        logger.warning("MinIO upload failed: %s", exc)
+    annotated_base64 = None
+    if settings.minio_enabled:
+        try:
+            original_key = storage.safe_object_key(
+                settings.minio_original_prefix, source_ref or "image.jpg"
+            )
+            original_url = storage.upload_image(
+                settings.minio_ml_bucket, original_key, image_bytes
+            )
+            annotated_key = storage.safe_object_key(
+                settings.minio_annotated_prefix, source_ref or "image.jpg"
+            )
+            annotated_metadata = {
+                "root_length_cm": str(root_length_cm) if root_length_cm is not None else "",
+                "tuber_size_cm": str(tuber_size_cm) if tuber_size_cm is not None else "",
+                "condition": str(round(conf_avg, 4)) if conf_avg is not None else "",
+                "confidence": str(round(conf_avg, 4)) if conf_avg is not None else "",
+                "num_detections": str(len(detections)),
+            }
+            annotated_url = storage.upload_image_with_metadata(
+                settings.minio_ml_bucket,
+                annotated_key,
+                annotated_bytes,
+                annotated_metadata,
+            )
+        except Exception as exc:  # pragma: no cover - depends on live MinIO
+            logger.warning("MinIO upload failed: %s", exc)
+    else:
+        # External mode: no shared object store. Inline the annotated image so
+        # the API caller can persist it (and the detection metadata) itself.
+        annotated_base64 = base64.b64encode(annotated_bytes).decode("utf-8")
 
     result = DetectResult(
         detection_uid=str(uuid.uuid4()),
@@ -496,6 +503,7 @@ def run_inference(
         source_ref=source_ref,
         original_url=original_url,
         annotated_url=annotated_url,
+        annotated_base64=annotated_base64,
         num_detections=len(detections),
         classes=classes,
         detections=detections,
@@ -541,9 +549,8 @@ def _persist_and_publish(result: DetectResult, source_type: str, source_ref: Opt
     except Exception as exc:  # pragma: no cover - depends on live DB
         logger.warning("Failed to persist detection: %s", exc)
 
-    try:
-        from app import messaging
+    # NOTE: ML Service is a pure REST/HTTP service — it does NOT publish to the
+    # NATS event bus. Downstream consumers (Dashboard, model-control, Alert)
+    # obtain detection results via the REST response or by reading the
+    # detection metadata persisted to the MinIO `mlbucket` (see storage layer).
 
-        messaging.publish_detection_sync(result.model_dump())
-    except Exception as exc:  # pragma: no cover
-        logger.warning("Failed to publish detection event: %s", exc)

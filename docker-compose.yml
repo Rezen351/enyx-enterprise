@@ -246,30 +246,6 @@ services:
       - iot-net
 
   # ──────────────────────────────
-  # MariaDB Webhook — webhook dispatch and retry state
-  # ──────────────────────────────
-  mariadb-webhook:
-    image: mariadb:10.11
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: webhook_db
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - ./volumes/mariadb-webhook:/var/lib/mysql
-      - ./infra/mariadb/webhook/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-      - ./infra/mariadb/my.cnf:/etc/mysql/conf.d/disable-aio.cnf:ro
-    healthcheck:
-      test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 600s
-    networks:
-      - iot-net
-
-  # ──────────────────────────────
   # Redis Shared — single consolidated Redis for module/alert/notification/export
   # (ADR-004). Logical DB isolation: module=0, alert=1, notification=2, export=3.
   # ──────────────────────────────
@@ -515,46 +491,6 @@ services:
       - iot-net
 
   # ──────────────────────────────────────
-  # Webhook Service — webhook receiver and dispatcher metrics
-  # ──────────────────────────────────────
-  webhook:
-    build:
-      context: ./services/webhook
-      dockerfile: Dockerfile
-    image: ghcr.io/rezen351/enyx-enterprise/webhook:${IMAGE_TAG:-latest}
-    restart: unless-stopped
-    environment:
-      PORT: "8080"
-      DB_DSN: "${DB_USER}:${DB_PASSWORD}@tcp(mariadb-webhook:3306)/webhook_db?parseTime=true&charset=utf8mb4"
-      REDIS_ADDR: "redis-shared:6379"
-      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
-      REDIS_DB: "4"
-      NATS_URL: "nats://nats:4222"
-      JWT_SECRET: "${JWT_SECRET}"
-      WEBHOOK_SECRET: "${WEBHOOK_SECRET}"
-      SMTP_HOST: "${SMTP_HOST}"
-      SMTP_PORT: "${SMTP_PORT}"
-      SMTP_USER: "${SMTP_USER}"
-      SMTP_PASS: "${SMTP_PASS}"
-      SMTP_FROM: "${SMTP_FROM}"
-      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
-      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
-    depends_on:
-      mariadb-webhook:
-        condition: service_healthy
-      redis-shared:
-        condition: service_healthy
-      nats:
-        condition: service_started
-    healthcheck:
-      test: [ "CMD", "wget", "-qO-", "http://localhost:8080/health" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - iot-net
-
-  # ──────────────────────────────────────
   # KONG — API Gateway (satu-satunya pintu masuk)
   # ──────────────────────────────────────
   kong:
@@ -683,7 +619,7 @@ services:
   # MariaDB consolidated exporter (ADR-005, OPTION 1) — one container running
   # one mysqld_exporter process per target DB on a dedicated port.
   # Port mapping: 9104 auth, 9105 control, 9106 module, 9107 stream,
-  # 9108 audit, 9109 alert, 9110 notification, 9111 ml, 9112 webhook.
+  # 9108 audit, 9109 alert, 9110 notification, 9111 ml.
   mysqld-exporter-all:
     build:
       context: ./infra/mysqld-exporter-all
@@ -699,7 +635,6 @@ services:
       MYSQL_DSN_6: "${DB_USER}:${DB_PASSWORD}@tcp(mariadb-alert:3306)/"
       MYSQL_DSN_7: "${DB_USER}:${DB_PASSWORD}@tcp(mariadb-notification:3306)/"
       MYSQL_DSN_8: "${DB_USER}:${DB_PASSWORD}@tcp(mariadb-ml:3306)/"
-      MYSQL_DSN_9: "${DB_USER}:${DB_PASSWORD}@tcp(mariadb-webhook:3306)/"
     depends_on:
       mariadb-auth:
         condition: service_healthy
@@ -716,8 +651,6 @@ services:
       mariadb-notification:
         condition: service_healthy
       mariadb-ml:
-        condition: service_healthy
-      mariadb-webhook:
         condition: service_healthy
     networks:
       - iot-net
@@ -999,6 +932,9 @@ services:
   # results to the `ml` bucket on the shared MinIO instance.
   # ──────────────────────────────────────
   ml:
+    # Pure REST/HTTP vision service (no NATS dependency). Invoked via Kong
+    # (/v1/ml/...). In external deployments set MINIO_ENABLED=false and the
+    # annotated image is returned inline as base64 for the caller to persist.
     build:
       context: ./services/ml
       dockerfile: Dockerfile
@@ -1015,9 +951,9 @@ services:
       MINIO_ML_BUCKET: mlbucket
       MINIO_STREAM_BUCKET: stream
       MINIO_PUBLIC_URL: http://localhost:8000/minio
+      MINIO_ENABLED: "true"
+      INFERENCE_TIMEOUT_SECONDS: "180"
       PIXELS_PER_CM: "10.0"
-      NATS_URL: "nats://nats:4222"
-      NATS_SUBJECT_DETECTION: "detection.result"
     volumes:
       # Persisted, pre-seeded with best.pt (your trained YOLO weights).
       - ./volumes/ml-models:/app/models
@@ -1030,8 +966,6 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-      nats:
-        condition: service_started
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health').status==200 else 1)" ]
       interval: 15s
@@ -1122,11 +1056,11 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8081"
-      NODE_ID: "node-00"
+      NODE_ID: "ECE334219870"
       OUTPUT_NAME: "load1"
-      VALVE_OUTPUT_NAME: "load2"
-      MODULE_ID: "ee8831ff-c2dd-45c9-abb6-fb3def8fd513"
-      PUMP_SCHEDULE_ID: "48b7ca43-d165-4d5c-a8c9-51139ba08fce"
+      VALVE_OUTPUT_NAME: "load3"
+      MODULE_ID: "90874dcd-7f69-4908-8006-c0dd38a977f0"
+      PUMP_SCHEDULE_ID: "f168da66-0c33-41fa-807f-eedd5b97527f"
       PREDICTION_INTERVAL_SEC: "5"
       CONTROL_URL: "http://control:8080"
       MODEL_CONTROLLER_URL: "http://model-controller:8080"

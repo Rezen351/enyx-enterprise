@@ -110,6 +110,19 @@ func SendPush(cfg *config.Config, target, body, secret string) SenderResult {
 	return httpPost(cfg.PushURL, payload, secret, 10*time.Second)
 }
 
+// SendWebhookHTTP delivers a delivery event to a generic outbound webhook URL.
+// secret = optional signature/token echoed back to the receiver.
+func SendWebhookHTTP(cfg *config.Config, url, subject, body, secret string) SenderResult {
+	if url == "" {
+		return SenderResult{Err: "webhook url not configured"}
+	}
+	payload := map[string]string{"subject": subject, "body": body}
+	if secret != "" {
+		payload["signature"] = secret
+	}
+	return httpPost(url, payload, "", 10*time.Second)
+}
+
 func httpPost(url string, payload map[string]string, bearer string, timeout time.Duration) SenderResult {
 	data, err := json.Marshal(payload)
 	if err != nil {

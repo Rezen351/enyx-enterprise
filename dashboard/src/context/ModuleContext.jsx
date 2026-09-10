@@ -37,7 +37,6 @@ export function ModuleProvider({ children }) {
         id: m.id,
         name: m.name,
         description: m.description || '',
-        config: m.config || '{}',
         createdAt: m.created_at,
         updatedAt: m.updated_at,
       }));

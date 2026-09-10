@@ -7,7 +7,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app.config import settings
 from app.telemetry_cache import NATSTelemetrySubscriber, get_cache
-from app.ppo_loop import PPOLoop
+from app.control_loop import ControlLoop
 
 app = FastAPI(title=settings.APP_NAME)
 
@@ -49,7 +49,7 @@ def health():
 
 @app.post("/trigger-predict")
 def trigger_predict():
-    loop: PPOLoop = app.state.loop
+    loop: ControlLoop = app.state.loop
     if not loop:
         return _error_response(503, "SERVICE_UNAVAILABLE", "prediction loop is not running; please wait for initialization or restart the service")
     try:
@@ -81,16 +81,16 @@ def startup_event():
     app.state.nats_thread = t
     app.state.async_loop = async_loop
 
-    ppo = PPOLoop()
-    ppo.start()
-    app.state.loop = ppo
+    loop = ControlLoop()
+    loop.start()
+    app.state.loop = loop
 
 
 @app.on_event("shutdown")
 def shutdown_event():
-    ppo = getattr(app.state, "loop", None)
-    if ppo:
-        ppo.stop()
+    loop = getattr(app.state, "loop", None)
+    if loop:
+        loop.stop()
     sub = getattr(app.state, "nats_sub", None)
     if sub:
         import asyncio

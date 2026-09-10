@@ -147,12 +147,12 @@ ENDPOINTS = [
         "body": None,
     },
     {
-        "name": "webhook-logs",
-        "method": "GET",
-        "path": "/v1/webhook/logs?limit=10",
+        "name": "notification-receive",
+        "method": "POST",
+        "path": "/v1/notifications/receive/telegram",
         "auth": True,
         "weight": 3,
-        "body": None,
+        "body": {"message": {"text": "probe"}},
     },
     {
         "name": "snapshots-list",
@@ -205,8 +205,34 @@ ENDPOINTS = [
 ]
 
 
-def weighted_endpoint_pool():
+def _is_fase1_endpoint(ep: dict) -> bool:
+    path = ep.get("path", "").lower()
+    name = ep.get("name", "").lower()
+    if "ml/models" in path or "ml/detections" in path or "/ml/" in path:
+        return False
+    if "model_controller" in path or "model_control" in path:
+        return False
+    if "ml-" in name or "model-" in name:
+        return False
+    return True
+
+
+def _is_out_of_scope(ep: dict) -> bool:
+    path = ep.get("path", "").lower()
+    name = ep.get("name", "").lower()
+    # DLQ service is not in the active test scope (no running dlq container) -> exclude from all phases
+    if "/dlq/" in path or "dlq-" in name or name == "dlq-messages":
+        return True
+    return False
+
+
+def weighted_endpoint_pool(phase: str = "all"):
     pool = []
+    core_only = str(phase).strip().lower() == "1"
     for ep in ENDPOINTS:
+        if _is_out_of_scope(ep):
+            continue
+        if core_only and not _is_fase1_endpoint(ep):
+            continue
         pool.extend([ep] * ep["weight"])
     return pool

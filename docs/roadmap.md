@@ -41,7 +41,7 @@ Tidak ada item eksplisit yang belum dikerjakan. Ketiga item berikut **sudah sele
 - Spray Automation Service — fungsionalitasnya terintegrasi pada `model-control` (TD3 Control Scheduler, Fase 6f) ✅
 - Prometheus Metrics — monitoring aktif via scrape jobs (Fase 1/11) ✅
 - Cloudflare Tunnel — service `cloudflared` terdaftar di `docker-compose.yml` (Fase 12) ✅
-- Webhook Service — delivery dispatcher Telegram/Email/generic HTTP + AES-GCM + NATS (selesai) ✅
+- Notification Service (termasuk Webhook) — unified delivery dispatcher Telegram/Email/Push/Webhook HTTP + AES-GCM + NATS (selesai) ✅
 
 > **Catatan:** Sisa potensial yang belum adalah open-item keamanan **O1** — konfigurasi file Mosquitto (`allow_anonymous false` + `password_file` + `acl.conf`) sudah ada di repo; tinggalenergizing ke container dengan restart container Mosquitto agar enforcement aktif.
 
@@ -67,7 +67,7 @@ Tidak ada item eksplisit yang belum dikerjakan. Ketiga item berikut **sudah sele
 | Resource | Owner | Fungsi |
 |---|---|---|
 | Redis DB0 (shared) | Module Service | Cache nilai telemetry terbaru (`node:latest:{id}`) — dibaca oleh `model-control` |
-| Redis DB4 (shared) | Webhook Service | Queue retry (`webhook:queue`) |
+| Redis DB0 (shared) | Notification Service (incl. Webhook) | Queue (`notification:queue`) |
 | MinIO `stream` bucket | Stream Service | Frame sumber untuk ML detection |
 | MinIO `ml-vision` bucket | ML Service | Hasil deteksi teranotasi |
 
@@ -848,7 +848,7 @@ df = pd.read_parquet("data.parquet")
 | `[x]` | Scrape Alert Service | Job `alert-service` → `alert:8080/metrics` |
 | `[x]` | Scrape Notification Service | Job `notification-service` → `notification:8080/metrics` |
 | `[x]` | Scrape Audit Service | Job `audit-service` → `audit:8080/metrics` |
-| `[x]` | Scrape Webhook Service | Job `webhook-service` → `webhook:8080/metrics` |
+| `[x]` | Scrape Notification Service (incl. Webhook) | Job `notification-service` → `notification:8080/metrics` |
 | `[x]` | Scrape Export Service | Job `export-service` → `export:8080/metrics` |
 | `[x]` | DB Exporters | `mysqld-exporter-all` (8 port), `postgres-exporter-all` (2 port), `redis-exporter` (4 series) |
 | `[x]` | Host Metrics | `node-exporter` + `cadvisor` |
@@ -890,7 +890,7 @@ df = pd.read_parquet("data.parquet")
 | 11 | Audit | Go | MariaDB | ✅ Selesai | P1 | Fase 8 (Audit) |
 | 12 | Export / Data API | Go/Python | TimescaleDB (read) + Redis (shared DB3) | ✅ Selesai | P3 | Fase 9b |
 | 14 | Prometheus Monitoring | — | Active scrape jobs di `docker-compose.yml` + `infra/prometheus/prometheus.yml` | ✅ Selesai | P3/P4 | Fase 1/11 |
-| 15 | Webhook | Go | MariaDB | ✅ Selesai | P4 | — |
+| 15 | Notification (incl. Webhook) | Go | MariaDB | ✅ Selesai | P4 | — |
 | — | Spray Automation Logic | — | Disediakan oleh `model-control`/TD3 (Fase 6f) | ✅ Selesai | 🟡 P2 | Fase 13 |
 | — | **DLQ Saga (NATS Advisory)** | Go | mariadb-audit | ✅ Selesai | **P1** | Cross-cutting (TA) |
 | — | **CI/CD (GitHub Actions)** | YAML | - | ✅ Selesai | 🟡 P2 | Cross-cutting (TA) |
@@ -914,7 +914,7 @@ df = pd.read_parquet("data.parquet")
 
 ### Rekomendasi Eksekusi TA-Scale (selaras `planning.md` TA-Scale Roadmap)
 
-> **Catatan:** DLQ Saga, CI/CD, Unit Test 80%, Transactional Outbox, MinIO Scoped Keys (O2), Prometheus Monitoring, Cloudflare Tunnel, Spray Automation Logic, Webhook Service, dan O1 (Mosquitto enforcement) **sudah selesai** (2026-07-16/22/24/30). Berikut sisa prioritas:
+> **Catatan:** DLQ Saga, CI/CD, Unit Test 80%, Transactional Outbox, MinIO Scoped Keys (O2), Prometheus Monitoring, Cloudflare Tunnel, Spray Automation Logic, Notification Service (termasuk Webhook), dan O1 (Mosquitto enforcement) **sudah selesai** (2026-07-16/22/24/30). Berikut sisa prioritas:
 
 | Urutan | Item | Kategori | Alasan |
 |---|---|---|---|
@@ -956,7 +956,7 @@ df = pd.read_parquet("data.parquet")
 | 2026-07-14 | 2.13.0 | **Fase 9 — Audit Service SELESAI.** Service Go baru `services/audit`: subscribe `audit.log` (Core NATS, queue group `audit-workers`) → insert append-only ke `mariadb-audit` (`audit_logs`), endpoint `GET /audit/logs` (filter `event`/`search` + paginasi). Wire: `mariadb-audit` + `audit` + `mysqld-exporter-audit` (compose), upstream+route `/audit` (Kong, JWT), scrape job `audit-service`+`mariadb-audit` (Prometheus). Lolos `go build` + `go vet` + `docker compose config`. Dashboard Audit/History (Fase 10) menyusul. |
 | 2026-07-14 | 2.14.0 | **Fase 10 — Dashboard Audit Log page SELESAI.** Halaman `AUDIT` (sidebar, ikon `ScrollText`) di `dashboard/src/components/Dashboard/Pages/Audit.jsx`: tabel audit trail immutable dari `GET /audit/logs` via Kong, filter `event` (prefix) + `search` (payload), paginasi (25/50/100) + quick-filter chip (Auth/Module/Node/Control), tombol Live (auto-refresh 10s). Penyempurnaan backend: filter `event` di Audit Service diubah jadi prefix `LIKE` agar dashboard bisa filter `auth`/`control`/dll. Lolos `npm run build` (vite) + ESLint (sesuai baseline repo). Sidebar & DashboardLayout di-wire. |
 | 2026-07-16 | 2.16.0 | **Sinkronisasi penuh dengan `planning.md` (v2.16.0).** (1) Versi & tanggal → 2.16.0 / 2026-07-16; (2) Tambah link *Dokumen Terkait* (planning/logs/testing/AGENTS); (3) **Seragamkan penomoran fase ke skema planning (1–12)**: Notification → Fase 5 (P1), Export → Fase 9b, Prometheus Metrics → Fase 10, Cloudflare → Fase 11; (4) Prioritas Notification → **P1** (blocker fungsional, alert "mati di ujung"); (5) Tambah item cross-cutting TA-Scale ke tabel "Yang belum dikerjakan" & Ringkasan Service: **DLQ Saga (P1), CI/CD (P2), Unit Test 80% (P2), Transactional Outbox (P2), Webhook (#15)**; (6) Tambah sub-bab "Rekomendasi Eksekusi TA-Scale" di Timeline; (7) Perbarui Risk table: backup→sudah ada DR strategy, CI/CD & unit test → 🟡 dikerjakan di TA, tambah risiko SPOF NATS/Kong & DLQ saga. |
-| 2026-07-30 | 2.18.0 | **Semua item eksplisit selesai.** Spray Automation Logic terintegrasi di `model-control` (TD3); Prometheus Metrics aktif via scrape jobs; Cloudflare Tunnel (`cloudflared`) terdaftar di compose; Webhook Service selesai. Tabel ringkasan, section "Yang belum", timeline, dan rekomendasi eksekusi disesuaikan. |
+| 2026-07-30 | 2.18.0 | **Semua item eksplisit selesai.** Spray Automation Logic terintegrasi di `model-control` (TD3); Prometheus Metrics aktif via scrape jobs; Cloudflare Tunnel (`cloudflared`) terdaftar di compose; Notification Service (termasuk Webhook) selesai. Tabel ringkasan, section "Yang belum", timeline, dan rekomendasi eksekusi disesuaikan. |
 
 ---
 

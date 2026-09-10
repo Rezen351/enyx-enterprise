@@ -1,7 +1,11 @@
 # =============================================================================
 # ML / Vision API — runtime dependencies
-# YOLOv8 (ultralytics) + FastAPI + MariaDB + MinIO + NATS
+# YOLOv8 (ultralytics) + FastAPI + MariaDB + MinIO
 # CPU build of PyTorch is intentionally used for the TA development target.
+# This service is a PURE REST/HTTP service: it is invoked via the API Gateway
+# (Kong) and does NOT depend on the internal NATS event bus. MinIO access is
+# optional (see MINIO_ENABLED); in external mode the annotated image is returned
+# inline as base64 so the API caller can persist it.
 # =============================================================================
 
 # ─── Web framework ───────────────────────────────────────────────────────────
@@ -21,11 +25,8 @@ Pillow==11.0.0
 SQLAlchemy==2.0.36
 PyMySQL==1.1.1
 
-# ─── Object storage ─────────────────────────────────────────────────────────
+# ─── Object storage (optional; disabled when MINIO_ENABLED=false) ───────────
 minio==7.2.10
-
-# ─── Messaging (NATS JetStream) ─────────────────────────────────────────────
-nats-py==2.9.0
 
 # ─── Observability ──────────────────────────────────────────────────────────
 prometheus-client==0.21.1

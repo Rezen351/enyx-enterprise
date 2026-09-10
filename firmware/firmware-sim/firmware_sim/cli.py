@@ -47,6 +47,9 @@ def cmd_list(_):
 
 def cmd_clone(args):
     cfg = config.create_instance(node_id=args.node_id, mqtt_override=_mqtt_args(args))
+    if args.rate:
+        cfg.publish_rate_hz = args.rate
+        config.save_instance(cfg)
     print(f"Cloned instance '{cfg.node_id}' (mac={cfg.mac}, fw={cfg.fw_version})")
     print(f"  config: {config.instance_path(cfg.node_id)}")
     print(f"  run it: python -m firmware_sim run --node-id {cfg.node_id}")
@@ -69,6 +72,9 @@ def cmd_spawn(args):
     threads = []
     for _ in range(args.count):
         cfg = config.create_instance(mqtt_override=mqtt_override)
+        if args.rate:
+            cfg.publish_rate_hz = args.rate
+            config.save_instance(cfg)
         sim = FirmwareSimulator(cfg)
         sims.append(sim)
         t = threading.Thread(target=sim.run, daemon=True)
@@ -172,6 +178,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--mqtt-port", type=int, default=None)
     sp.add_argument("--mqtt-user", default=None)
     sp.add_argument("--mqtt-pass", default=None)
+    sp.add_argument("--rate", type=float, default=None,
+                    help="telemetry publish rate in Hz (sub-second); overrides publish_interval")
     sp.set_defaults(func=cmd_clone)
 
     sp = sub.add_parser("run", help="run a cloned instance (connect + telemetry loop)")
@@ -188,6 +196,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--mqtt-port", type=int, default=None)
     sp.add_argument("--mqtt-user", default=None)
     sp.add_argument("--mqtt-pass", default=None)
+    sp.add_argument("--rate", type=float, default=None,
+                    help="telemetry publish rate in Hz (sub-second); overrides publish_interval")
     sp.set_defaults(func=cmd_spawn)
 
     sp = sub.add_parser("delete", help="remove a cloned instance")

@@ -33,6 +33,11 @@ type Config struct {
 	MQTTPass        string
 	MQTTClientID    string
 	MQTTTopicPrefix string
+
+	// Offline detection — a node is marked "offline" when its last_seen_at has
+	// not been refreshed within this many seconds (it stopped sending telemetry
+	// without a clean LWT disconnect, so it must not stay "online" forever).
+	OfflineAfterSec int
 }
 
 // Load reads configuration from environment variables with dev-friendly defaults.
@@ -51,6 +56,7 @@ func Load() (*Config, error) {
 		MQTTPass:        getEnv("MQTT_PASS", ""),
 		MQTTClientID:    getEnv("MQTT_CLIENT_ID", "module-svc"),
 		MQTTTopicPrefix: getEnv("MQTT_TOPIC_PREFIX", "smartfarm"),
+		OfflineAfterSec: getEnvInt("NODE_OFFLINE_AFTER_SEC", 180),
 	}
 	return cfg, nil
 }

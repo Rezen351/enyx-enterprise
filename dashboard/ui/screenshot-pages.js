@@ -69,9 +69,9 @@ const TAB_LABELS = {
 
 const ADMIN_TABS = new Set(['audit', 'dlq', 'webhook', 'users']);
 
-async function ensureDarkMode(page) {
+  async function ensureDarkMode(page) {
   await page.addInitScript(() => {
-    try { localStorage.setItem('theme', 'dark'); } catch {}
+    try { localStorage.setItem('theme', 'dark'); } catch { /* ignore */ }
   });
 }
 
@@ -260,7 +260,7 @@ async function captureScreenshots() {
         const failPath = path.join(OUTPUT_DIR, `${p.name}-error.png`);
         await page.screenshot({ path: failPath, fullPage: false });
         console.log(`  Error screenshot: ${failPath}`);
-      } catch {}
+      } catch { /* ignore */ }
     }
   }
 

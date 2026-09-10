@@ -3,7 +3,7 @@
 > **Versi:** 1.3  
 > **Tanggal:** 2026-07-31  
 > **Tujuan:** Panduan pengujian backend terotomatisasi (via folder `test/`) dan checklist pengujian visual UI/UX manual (via Dashboard React).  
-> **Sumber Acuan:** `roadmap.md`, `planning.md`, `test/unit_test.py`, `test/run_all_tests.py`.  
+> **Sumber Acuan:** `roadmap.md`, `planning.md`, `test/unit_test.py`, `test/stress_test.py`, `test/resilience_test.py`.  
 > **Bahasa:** UI & API Response = **English**, Dokumentasi & Panduan = **Bahasa Indonesia**.
 
 ---
@@ -44,7 +44,9 @@ Seluruh logika backend, koneksi API, autentikasi, validasi data, event streaming
 
 | Tujuan Pengujian | Perintah Terminal | Deskripsi Output |
 |------------------|-------------------|------------------|
-| **Jalankan Seluruh Suite (Master)** | `python3 test/run_all_tests.py` | Mengeksekusi Unit Test (102 cases), Stress Test, Chaos Test, serta membuat chart visual di `test/results/`. |
+| **Jalankan Unit & Feature Test** | `python3 test/unit_test.py` | Mengeksekusi unit & feature test per service. |
+| **Jalankan Stress Test** | `python3 test/stress_test.py` | Menghitung throughput, latency, dan breakpoint. |
+| **Jalankan Chaos/Resilience Test** | `python3 test/resilience_test.py` | Menguji isolasi kegagalan dan self-healing. |
 | **Backend Unit & Feature Test Only** | `python3 test/unit_test.py` | Menguji seluruh REST endpoint & WebSocket handshake (102 test cases). |
 | **Stress & Throughput Test** | `python3 test/stress_test.py` | Menguji throughput API Gateway & titik balik beban. |
 | **Resilience & Chaos Test** | `python3 test/resilience_test.py` | Menguji pemulihan otomatis service saat terjadi kegagalan container/koneksi. |
@@ -283,7 +285,7 @@ Logika backend dan koneksi API untuk seluruh domain di bawah ini telah diuji sec
 
 ## 🔄 12. End-to-End (E2E) Verification
 
-> **Backend Automated Test Command:** `python3 test/run_all_tests.py`  
+> **Backend Automated Test Command:** Jalankan masing-masing: `python3 test/unit_test.py`, `python3 test/stress_test.py`, `python3 test/resilience_test.py`  
 > **Status Logika Backend:** ✅ Integrasi terverifikasi otomatis via NATS & MQTT Mock Runner
 
 ### Checklist Pengujian Visual UI/UX (Manual oleh User)
@@ -301,8 +303,8 @@ Logika backend dan koneksi API untuk seluruh domain di bawah ini telah diuji sec
 Pengujian performa throughput dan ketahanan sistem (chaos resilience) dapat dieksekusi secara otomatis dari terminal. Hasil pengujian akan menghasilkan grafik analisis beresolusi tinggi di folder `test/results/`.
 
 ```bash
-# 1. Jalankan pengujian master test suite (Unit & Feature Test Suite)
-python3 test/run_all_tests.py
+# 1. Jalankan pengujian unit & feature test
+python3 test/unit_test.py
 
 # 2. Jalankan pengujian batas beban throughput (Breakpoint Stress Test)
 python3 test/stress_test.py
@@ -313,7 +315,7 @@ python3 test/resilience_test.py
 
 ### 📋 Checklist Eksekusi Program Pengujian
 
-- [ ] [ ] [ ] **Pengujian 1 — Master Test Suite & Feature Verification:** Eksekusi `python3 test/run_all_tests.py` untuk menguji seluruh unit & feature test backend (107 test cases) serta menghasilkan ringkasan visual `01_unit_test_summary.png` & `04_overall_system_dashboard.png`.
+- [ ] [ ] [ ] **Pengujian 1 — Unit & Feature Test Suite:** Eksekusi `python3 test/unit_test.py` untuk menguji seluruh unit & feature test backend serta menghasilkan ringkasan visual.
 - [ ] [ ] [ ] **Pengujian 2 — Breakpoint Stress & Throughput Capacity Test:** Eksekusi `python3 test/stress_test.py` untuk mengukur batas throughput RPS & latensi sistem serta menghasilkan grafik `02_stress_test_throughput.png`.
 - [ ] [ ] [ ] **Pengujian 3 — Chaos Resilience & Self-Healing Audit:** Eksekusi `python3 test/resilience_test.py` untuk menguji pemulihan otomatis service saat terjadi keruntuhan container/NATS serta menghasilkan grafik `03_resilience_chaos_audit.png`.
 
@@ -331,7 +333,7 @@ Untuk memastikan seluruh sistem siap dirilis ke lingkungan produksi, pengujian d
 
 | Siklus | Nama Siklus | Fokus Utama | Target Ketercapaian |
 |--------|-------------|-------------|---------------------|
-| **Pass 1** | Automated & Functional | Eksekusi `run_all_tests.py` + Verifikasi visual UI pertama | Seluruh test backend LULUS (100% PASS) |
+| **Pass 1** | Automated & Functional | Eksekusi `unit_test.py` + Verifikasi visual UI pertama | Seluruh test backend LULUS (100% PASS) |
 | **Pass 2** | Fix & Re-test | Memperbaiki kecacatan tampilan UI / bug yang ditemukan | Tidak ada item checklist UI yang gagal |
 | **Pass 3** | Stress & Stability | Menjalankan stress test & soak test durasi panjang | Sistem tidak mengalami memory leak atau crash |
 | **Pass 4** | Production Gate | Pengujian akhir sebelum rilis resmi | Lulus seluruh kriteria Production Gate di bawah |

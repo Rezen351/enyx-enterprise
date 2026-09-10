@@ -135,17 +135,6 @@ scrape_configs:
         target_label: instance
         replacement: "export-service"
 
-  # Webhook Service — webhook receiver and dispatcher metrics
-  - job_name: "webhook-service"
-    metrics_path: /metrics
-    scrape_interval: 10s
-    static_configs:
-      - targets: ["webhook:8080"]
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
-        replacement: "webhook-service"
-
   # ML SERVICE — YOLO model registry + inference metrics
   - job_name: "ml-service"
     metrics_path: /metrics
@@ -280,21 +269,10 @@ scrape_configs:
         target_label: instance
         replacement: "mariadb-ml"
 
-  # MariaDB Webhook — via mysqld-exporter-all (ADR-005)
-  - job_name: "mariadb-webhook"
-    metrics_path: /metrics
-    scrape_interval: 15s
-    static_configs:
-      - targets: ["mysqld-exporter-all:9112"]
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
-        replacement: "mariadb-webhook"
-
   # Redis (Shared instance, multi-DB) — via single redis-exporter (ADR-004)
-  # 1 instance redis-shared menggantikan redis-module/alert/notification/webhook/export.
+  # 1 instance redis-shared menggantikan redis-module/alert/notification/export.
   # Instance label membedakan DB per service (module=DB0, alert=DB1,
-  # notification=DB2, webhook=DB4, export=DB3) agar metrik tetap terpisah di Grafana.
+  # notification=DB2, export=DB3) agar metrik tetap terpisah di Grafana.
   - job_name: "redis-shared"
     metrics_path: /metrics
     scrape_interval: 15s

@@ -30,9 +30,10 @@ def create_app() -> FastAPI:
         title="ML Service",
         description=(
             "YOLO-based computer vision service. Manages a registry of models "
-            "(each with a stable model_id), accepts images, runs inference, and "
-            "returns detections with annotated images stored in MinIO + events "
-            "published to NATS."
+            "(each with a stable model_id), accepts images via REST, runs "
+            "inference, and returns detections with annotated images. This is a "
+            "pure REST/HTTP service (no NATS dependency); detection metadata is "
+            "persisted to the MinIO `mlbucket` for downstream consumers."
         ),
         version="1.0.0",
         default_response_class=EnvelopeJSONResponse,

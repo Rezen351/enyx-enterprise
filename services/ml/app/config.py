@@ -60,9 +60,9 @@ class Settings(BaseSettings):
     allowed_image_extensions: list[str] = ["jpg", "jpeg", "png", "bmp", "webp"]
     # Hard wall-clock cap on a single inference call so a malicious/heavy
     # payload cannot hang the worker indefinitely (security checklist).
-    inference_timeout_seconds: int = 30
+    inference_timeout_seconds: int = 180
 
-    # ─── MinIO (shared instance, bucket ml) ───────────────────────────────
+    # ─── MinIO (shared instance, bucket mlbucket) ─────────────────────────
     minio_endpoint: str = "minio:9000"
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin123"
@@ -75,17 +75,16 @@ class Settings(BaseSettings):
     minio_annotated_prefix: str = "detected"
     # Public base URL used to build shareable links (Kong / MinIO console).
     minio_public_url: str = "http://localhost:9000"
+    # When True (default, internal deployment) ML reads frames from the
+    # `stream` bucket and writes original/annotated images + detection metadata
+    # to the `mlbucket` bucket. When False (fully external deployment) ML never
+    # touches MinIO: it accepts image bytes and returns the annotated image as
+    # base64 inside the response, leaving any persistence to the API caller.
+    minio_enabled: bool = True
 
     # ─── Vision calibration ────────────────────────────────────────────────
     # Simple pixels-to-centimetres factor. 1.0 means 1 px == 1 cm.
     pixels_per_cm: float = 10.0
-
-    # ─── NATS (events) ────────────────────────────────────────────────────
-    nats_url: str = "nats://nats:4222"
-    nats_user: Optional[str] = None
-    nats_password: Optional[str] = None
-    nats_subject_detection: str = "detection.result"
-    nats_enabled: bool = True
 
     @property
     def max_upload_bytes(self) -> int:

@@ -5,29 +5,28 @@
 > **Port:** 8080 (internal); routed via Kong at `/ml`  
 > **Language / Framework:** Python 3.11 · FastAPI · Ultralytics YOLOv8  
 > **Database:** `mariadb-ml` (schema `ml_db`)  
-> **Object Storage:** MinIO shared instance (buckets `ml`, `stream`)  
-> **Messaging:** NATS (subject `detection.result`)  
+> **Object Storage:** MinIO shared instance (buckets `mlbucket`, `stream`)  
+> **Messaging:** none — pure REST/HTTP service (no NATS dependency)  
 > **Status:** Production-ready (Fase 5+)
 
 ---
 
 ## 1. Overview
 
-The ML Service is a YOLOv8-based computer vision microservice. It owns a model registry (persisted in MariaDB), runs inference on images, and returns detections with bounding boxes. Results are stored in MinIO and published as events to NATS for downstream consumers (e.g., Alert Service, Dashboard).
+The ML Service is a YOLOv8-based computer vision microservice. It owns a model registry (persisted in MariaDB), runs inference on images, and returns detections with bounding boxes. Per the system architecture (Bab I §1.4(7)), ML is integrated **purely via REST/HTTP through the API Gateway (Kong)** and has **no dependency on the internal NATS event bus**. Results are returned in the HTTP response and (when `MINIO_ENABLED=true`) also persisted to MinIO `mlbucket` for downstream consumers such as `model-control` (which reads detection metadata to build the TD3 state).
 
 ### 1.1 Key Responsibilities
 - **Model Registry** — register, list, update, activate, and delete YOLO weight files (`.pt`).
 - **Inference** — accept images (multipart upload, base64 JSON, or MinIO object key from the `stream` bucket), run YOLO prediction, and return structured detections.
-- **Artifact Storage** — persist original and annotated images to MinIO (`ml` bucket).
-- **Event Publishing** — publish detection results to NATS (`detection.result`) so other services can react in real time.
+- **Artifact Storage** — persist original and annotated images to MinIO (`mlbucket`); in external mode (`MINIO_ENABLED=false`) the annotated image is returned inline as base64 instead.
+- **REST Response** — detection results are delivered synchronously in the API response (no event publishing).
 - **History & Metrics** — store every inference run in MariaDB and expose Prometheus metrics.
 
 ### 1.2 Dependencies
 | Dependency | Purpose | Notes |
 |---|---|---|
 | `mariadb-ml` | Persistent model registry + detection history | Schema auto-migrates on startup (`CREATE TABLE IF NOT EXISTS`) |
-| `minio` | Object storage | Read from `stream` bucket; write to `ml` bucket |
-| `nats` | Event bus | Publish-only (`detection.result`); failures are swallowed (best-effort) |
+| `minio` | Object storage (optional) | Read from `stream` bucket; write to `mlbucket`. Disabled when `MINIO_ENABLED=false` |
 | `kong` | API Gateway | External traffic routed through Kong → `/ml` prefix |
 
 ---
@@ -256,15 +255,14 @@ At startup, the service attempts to register a bundled weights file (`vision-aer
 
 ## 4. Output Contracts
 
-### 4.1 Detection Results (NATS Event)
+### 4.1 Detection Results (REST Response + MinIO Metadata)
 
-After every successful inference, the service publishes a `detect.result` event to NATS:
+The ML Service is **pure REST** — it does **not** publish to NATS. After every successful inference the `DetectResult` is returned directly in the HTTP response. When `MINIO_ENABLED=true`, the annotated image and detection metadata are also persisted to MinIO `mlbucket`; when `MINIO_ENABLED=false`, the annotated image is returned inline as `annotated_base64`.
 
-- **Subject:** `detection.result` (configurable via `NATS_SUBJECT_DETECTION`)
-- **Payload:** Full `DetectResult` dict serialized as JSON
-- **Delivery:** Best-effort / fire-and-forget. If NATS is unavailable, the inference response still succeeds; the event is simply skipped and logged as a warning.
+- **Delivery:** Synchronous, in the API response (no event bus).
+- **External-mode field:** `annotated_base64` (string|null) — present only when MinIO is disabled.
 
-**Event payload shape:**
+**Response payload shape (`DetectResult`):**
 ```jsonc
 {
   "detection_uid": "uuid-string",
@@ -272,8 +270,9 @@ After every successful inference, the service publishes a `detect.result` event 
   "model_name": "Vision Aeroponik",
   "source_type": "upload",
   "source_ref": "photo.jpg",
-  "original_url": "http://localhost:9000/ml/original/20260721_120000_abc123_photo.jpg",
-  "annotated_url": "http://localhost:9000/ml/detected/20260721_120000_abc123_photo.jpg",
+  "original_url": "http://localhost:9000/mlbucket/original/20260721_120000_abc123_photo.jpg",
+  "annotated_url": "http://localhost:9000/mlbucket/detected/20260721_120000_abc123_photo.jpg",
+  "annotated_base64": null,
   "num_detections": 3,
   "classes": ["plant", "fruit"],
   "detections": [
@@ -284,6 +283,9 @@ After every successful inference, the service publishes a `detect.result` event 
       "bbox": { "x1": 120, "y1": 45, "x2": 340, "y2": 210 }
     }
   ],
+  "root_length_cm": 8.3,
+  "tuber_size_cm": null,
+  "condition": 0.89,
   "confidence_min": 0.65,
   "confidence_max": 0.89,
   "confidence_avg": 0.77,
@@ -292,7 +294,7 @@ After every successful inference, the service publishes a `detect.result` event 
 }
 ```
 
-Downstream consumers (e.g., Alert Service, WS-Gateway) should subscribe to `detection.result` to react in real time.
+Downstream consumers obtain results either from the REST response (Dashboard) or by reading the detection metadata stored in MinIO `mlbucket` (e.g., `model-control` reads `root_length_cm`/`condition` to build the TD3 state).
 
 ### 4.2 MinIO Storage
 
@@ -346,21 +348,25 @@ resp.raise_for_status()
 result = resp.json()["data"]
 ```
 
-### 5.2 Consuming Detection Events (NATS)
+### 5.2 Consuming Detection Results (REST / MinIO — no NATS)
 
-Subscribe to `detection.result` to receive real-time inference outputs:
+The ML Service does not emit events. Consume results in one of two ways:
+
+1. **Synchronous REST** — call `/ml/detect*` and read the `DetectResult` from the response (used by Dashboard and Stream Service).
+2. **MinIO metadata polling** — when `MINIO_ENABLED=true`, read the annotated object's S3 metadata (`root_length_cm`, `tuber_size_cm`, `condition`, `confidence`, `num_detections`) from `mlbucket` (prefix `detected/`). This is how `model-control` obtains plant condition for the TD3 state without any event bus.
 
 ```python
-import asyncio
-import nats
+# Example: Stream Service calling ML over REST (via Kong)
+import requests
 
-async def main():
-    nc = await nats.connect("nats://nats:4222")
-    sub = await nc.subscribe("detection.result")
-    async for msg in sub.messages:
-        print(f"Detection: {msg.data.decode()}")
-
-asyncio.run(main())
+resp = requests.post(
+    "http://kong/v1/ml/detect/from-stream",
+    headers={"Authorization": f"Bearer {JWT}"},
+    json={"object_key": "snapshots/cam-01-2026-07-21.jpg"},
+    timeout=30.0,
+)
+result = resp.json()["data"]
+print(result["root_length_cm"], result["condition"])
 ```
 
 ### 5.3 Writing Frames for ML Processing
@@ -405,16 +411,12 @@ If your service produces frames that should be analyzed by ML:
 | `MINIO_ACCESS_KEY` | `${MINIO_ML_ACCESS_KEY}` | MinIO access key (scoped for ML service) |
 | `MINIO_SECRET_KEY` | `${MINIO_ML_SECRET_KEY}` | MinIO secret key (scoped for ML service) |
 | `MINIO_USE_SSL` | `false` | Use TLS for MinIO connection |
-| `MINIO_ML_BUCKET` | `ml` | Bucket for ML-originated images and external capture results |
+| `MINIO_ML_BUCKET` | `mlbucket` | Bucket for ML-originated images and external capture results |
 | `MINIO_STREAM_BUCKET` | `stream` | Bucket for stream source frames (read) |
-| `MINIO_ORIGINAL_PREFIX` | `original` | Prefix for original images in `ml` bucket |
-| `MINIO_ANNOTATED_PREFIX` | `detected` | Prefix for annotated images in `ml` bucket |
+| `MINIO_ORIGINAL_PREFIX` | `original` | Prefix for original images in `mlbucket` |
+| `MINIO_ANNOTATED_PREFIX` | `detected` | Prefix for annotated images in `mlbucket` |
 | `MINIO_PUBLIC_URL` | `http://localhost:9000` | Public base URL for MinIO object links |
-| `NATS_URL` | `nats://nats:4222` | NATS broker address |
-| `NATS_USER` | `null` | Optional NATS username |
-| `NATS_PASSWORD` | `null` | Optional NATS password |
-| `NATS_SUBJECT_DETECTION` | `detection.result` | NATS subject for publishing detection events |
-| `NATS_ENABLED` | `true` | Set to `false` to disable NATS publishing |
+| `MINIO_ENABLED` | `true` | Set to `false` for fully external deployments (no MinIO I/O; annotated image returned inline as `annotated_base64`) |
 
 ---
 
@@ -592,7 +594,7 @@ Exposed at `/metrics` and `/metrics-internal`:
 
 ## 11. Observability & Resilience Notes
 
-- **Graceful NATS failure:** If NATS is unreachable, inference responses are **not** blocked. Events are silently skipped and logged as warnings. Set `NATS_ENABLED=false` to fully disable publishing.
+- **No event bus dependency:** The ML Service is a pure REST/HTTP service. It never contacts NATS, so NATS availability has zero impact on inference. Results are returned in the response and (optionally) persisted to MinIO.
 - **Inference timeout:** A hard wall-clock timeout (`INFERENCE_TIMEOUT_SECONDS`, default 30s) prevents a single request from hanging the worker thread. Exceeding the timeout returns `504 Gateway Timeout`.
 - **Model warm-up:** The default model is loaded into memory at startup. Additional models are loaded lazily on first inference request and cached in memory.
 - **Concurrency:** Inference runs in a dedicated thread pool (`max_workers=2`) so long-running predictions do not block the async event loop.
@@ -626,6 +628,5 @@ services/ml/
     ├── routes_results.py     # /ml/results (list/delete from ml bucket)
     ├── vision_engine.py      # ModelRegistry + YOLO inference engine
     ├── storage.py            # MinIO client wrapper
-    ├── messaging.py          # NATS publisher (detection.result)
     └── metrics.py            # Prometheus counters, histograms, gauges
 ```

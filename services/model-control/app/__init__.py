@@ -1,4 +1,4 @@
-"""ppo-control service package."""
+"""model-control service package."""
 
 from .config import settings
 from .main import app

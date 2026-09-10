@@ -83,12 +83,9 @@ All routes are mounted under `/v1` (the prefix is stripped by Kong before reachi
 ```json
 {
   "name": "Greenhouse A",
-  "description": "Main aeroponic greenhouse",
-  "config": "{\"target_ph\": 6.5}"
+  "description": "Main aeroponic greenhouse"
 }
 ```
-
-`config` is an arbitrary JSON settings blob (stored as `longtext`).
 
 **Response (201 Created):**
 
@@ -99,7 +96,6 @@ All routes are mounted under `/v1` (the prefix is stripped by Kong before reachi
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "name": "Greenhouse A",
     "description": "Main aeroponic greenhouse",
-    "config": "{\"target_ph\": 6.5}",
     "created_at": "2026-07-21T12:00:00Z",
     "updated_at": "2026-07-21T12:00:00Z",
     "nodes": []
@@ -132,8 +128,7 @@ All routes are mounted under `/v1` (the prefix is stripped by Kong before reachi
 ```json
 {
   "name": "Updated Name",
-  "description": "Updated description",
-  "config": "{}"
+  "description": "Updated description"
 }
 ```
 
@@ -378,17 +373,16 @@ The Module Service subscribes to `{prefix}/#` (default prefix: `smartfarm`). Thi
 | Topic Pattern | Direction | Payload | Handler |
 |--------------|-----------|---------|---------|
 | `{prefix}/discovery` | Inbound | `DiscoveryMessage` (see §3.1.1) | `HandleDiscovery` → upsert node |
-| `{prefix}/status/{node_id}` | Inbound | `StatusMessage` (see §3.1.2) | `HandleStatus` → update status + cache |
-| `{prefix}/{node_id}/telemetry` | Inbound | Raw JSON telemetry (arbitrary structure) | `IngestTelemetry` → tag-resolve → TimescaleDB + NATS |
-| `{prefix}/{node_id}/diagnostics` | Inbound | Raw JSON | TouchNode + PublishLive only |
-| `{prefix}/{node_id}/alert` | Inbound | Raw JSON | TouchNode + PublishLive only |
-| `{prefix}/{node_id}/confirm` | Inbound | Raw JSON | TouchNode + PublishLive only |
-| `{prefix}/actuator/{node_id}` | Inbound | Raw JSON | TouchNode + PublishLive only |
+| `{prefix}/status/{node_id}` | Inbound | `StatusMessage` (see §3.1.2) | `HandleStatus` → update status + cache; also marks node alive via `TouchNode` |
+| `{prefix}/{node_id}/telemetry` | Inbound | Raw JSON telemetry (arbitrary structure) | `IngestTelemetry` → tag-resolve → TimescaleDB + NATS; also marks node alive via `TouchNode` and forwards to live monitor via `PublishLive` |
+| `{prefix}/{node_id}/alert` | Inbound | Raw JSON | No active handler |
+| `{prefix}/{node_id}/confirm` | Inbound | Raw JSON | No active handler |
+| `{prefix}/actuator/{node_id}` | Inbound | Raw JSON | No active handler |
 
 For all topics except `discovery` and `status/{node_id}`, the service:
 1. Extracts `node_id` from the topic path.
-2. Calls `TouchNode(node_id)` — marks the node as alive (batched to MariaDB).
-3. Calls `PublishLive(node_id, topic, payload)` — forwards the raw payload to NATS for Dashboard live streaming.
+2. For `telemetry` only: calls `TouchNode(node_id)` (batched `last_seen_at` update) and `PublishLive` to NATS for Dashboard live streaming.
+3. For `alert`, `confirm`, and `actuator`: no handler is currently registered; these topics are subscribed via wildcard but ignored by the service layer.
 
 #### 3.1.1 DiscoveryMessage
 
@@ -613,7 +607,6 @@ Schema is managed via GORM AutoMigrate at startup ([migrate.go](file:///home/alm
 | `id` | `char(36)` | Primary key (UUID) |
 | `name` | `varchar(100)` | Unique, not null |
 | `description` | `varchar(255)` | — |
-| `config` | `longtext` | Arbitrary JSON settings blob |
 | `created_at` | `datetime` | Auto-created |
 | `updated_at` | `datetime` | Auto-updated |
 
@@ -698,8 +691,7 @@ curl -s -X POST http://localhost:8080/v1/modules \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Greenhouse A",
-    "description": "Main aeroponic greenhouse",
-    "config": "{\"target_ph\": 6.5}"
+    "description": "Main aeroponic greenhouse"
   }'
 ```
 

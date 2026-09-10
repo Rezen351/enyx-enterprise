@@ -124,6 +124,22 @@ func (f *fakeRepo) UpdateStatus(ctx context.Context, nodeID, status, ip string) 
 	return nil
 }
 func (f *fakeRepo) TouchNode(ctx context.Context, nodeID string) error { return f.err }
+func (f *fakeRepo) MarkStaleNodesOffline(ctx context.Context, threshold time.Duration) (int64, error) {
+	if f.err != nil {
+		return 0, f.err
+	}
+	var n int64
+	for _, nd := range f.nodes {
+		if nd.Status == model.StatusOffline {
+			continue
+		}
+		if nd.LastSeenAt == nil || time.Since(*nd.LastSeenAt) > threshold {
+			nd.Status = model.StatusOffline
+			n++
+		}
+	}
+	return n, nil
+}
 func (f *fakeRepo) GetNodeByNodeID(ctx context.Context, nodeID string) (*model.Node, error) {
 	if f.err != nil {
 		return nil, f.err
@@ -720,4 +736,50 @@ func TestStartBatchPublisherFlushOnCancel(t *testing.T) {
 	if nats.count == 0 {
 		t.Error("expected a publish on cancel flush")
 	}
+}
+
+// staleTime returns a timestamp that is `d` before now.
+func staleTime(d time.Duration) time.Time {
+	return time.Now().Add(-d)
+}
+
+// ptrTime returns a pointer to the given time (for the *time.Time node field).
+func ptrTime(t time.Time) *time.Time {
+	return &t
+}
+
+func TestMarkStaleNodesOffline(t *testing.T) {
+	repo := newFakeRepo()
+	// n1: online but last seen 10 min ago -> should flip offline.
+	repo.nodes["n1"] = &model.Node{NodeID: "n1", Status: model.StatusOnline, LastSeenAt: ptrTime(staleTime(10 * time.Minute))}
+	// n2: online and recently seen -> stays online.
+	repo.nodes["n2"] = &model.Node{NodeID: "n2", Status: model.StatusOnline, LastSeenAt: ptrTime(time.Now())}
+	// n3: already offline -> untouched.
+	repo.nodes["n3"] = &model.Node{NodeID: "n3", Status: model.StatusOffline, LastSeenAt: ptrTime(staleTime(time.Hour))}
+	// n4: online, never seen (NULL last_seen_at) -> flips offline.
+	repo.nodes["n4"] = &model.Node{NodeID: "n4", Status: model.StatusOnline}
+
+	svc := newSvc(repo, &fakeStatusCache{}, &fakeTSDB{})
+	svc.sweepOffline(3 * time.Minute)
+
+	if repo.nodes["n1"].Status != model.StatusOffline {
+		t.Errorf("n1 (stale online) expected offline, got %s", repo.nodes["n1"].Status)
+	}
+	if repo.nodes["n2"].Status != model.StatusOnline {
+		t.Errorf("n2 (recent online) expected online, got %s", repo.nodes["n2"].Status)
+	}
+	if repo.nodes["n3"].Status != model.StatusOffline {
+		t.Errorf("n3 (already offline) expected offline, got %s", repo.nodes["n3"].Status)
+	}
+	if repo.nodes["n4"].Status != model.StatusOffline {
+		t.Errorf("n4 (never seen) expected offline, got %s", repo.nodes["n4"].Status)
+	}
+}
+
+func TestSweepOfflineNeverBlocks(t *testing.T) {
+	repo := newFakeRepo()
+	repo.err = errors.New("db down")
+	svc := newSvc(repo, &fakeStatusCache{}, &fakeTSDB{})
+	// Must return without panicking even when the repo errors.
+	svc.sweepOffline(time.Minute)
 }

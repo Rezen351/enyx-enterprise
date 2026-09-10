@@ -8,7 +8,7 @@ function ModuleManagement({ onOpenNodeConfig }) {
   const { modules, fetchModules } = useModule();
   const [isEditing, setIsEditing] = useState(false);
   const [, setEditingModule] = useState(null);
-  const [formData, setFormData] = useState({ id: null, name: '', description: '', config: '' });
+  const [formData, setFormData] = useState({ id: null, name: '', description: '' });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [selectedModuleForNodes, setSelectedModuleForNodes] = useState(null);
@@ -19,15 +19,6 @@ function ModuleManagement({ onOpenNodeConfig }) {
       setError('Name is required.');
       return;
     }
-    // Validate optional JSON config
-    if (formData.config && formData.config.trim()) {
-      try {
-        JSON.parse(formData.config);
-      } catch {
-        setError('Config must be valid JSON (or leave it empty).');
-        return;
-      }
-    }
 
     setIsSaving(true);
     setError('');
@@ -35,7 +26,6 @@ function ModuleManagement({ onOpenNodeConfig }) {
       const payload = {
         name: formData.name.trim(),
         description: formData.description.trim(),
-        config: formData.config?.trim() || '{}',
       };
       if (formData.id) {
         await moduleApi.updateModule(formData.id, payload);
@@ -58,7 +48,6 @@ function ModuleManagement({ onOpenNodeConfig }) {
       id: mod.id,
       name: mod.name || '',
       description: mod.description || '',
-      config: mod.config && mod.config !== '{}' ? mod.config : '',
     });
     setIsEditing(true);
     setError('');
@@ -66,7 +55,7 @@ function ModuleManagement({ onOpenNodeConfig }) {
 
   const handleAddNew = () => {
     setEditingModule(null);
-    setFormData({ id: null, name: '', description: '', config: '' });
+    setFormData({ id: null, name: '', description: '' });
     setIsEditing(true);
     setError('');
   };
@@ -142,17 +131,8 @@ function ModuleManagement({ onOpenNodeConfig }) {
                     placeholder="e.g. Rooftop aeroponic zone"
                   />
                 </div>
-                <div>
-                  <label className="block text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1.5">Config (JSON, optional)</label>
-                  <textarea
-                    value={formData.config}
-                    onChange={e => setFormData({ ...formData, config: e.target.value })}
-                    className="w-full bg-slate-900/50 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono h-24 resize-none"
-                    placeholder='{"ph_target": 6.0}'
-                  />
-                  <p className="text-[9px] text-slate-500 mt-1 uppercase">Module settings in JSON format</p>
-                </div>
               </div>
+
 
               {error && (
                 <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2">

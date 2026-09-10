@@ -218,7 +218,7 @@ docker compose ps`} />
           {/* Core Concepts */}
           <H2 id="concepts">Core Concepts</H2>
           <H3>Module</H3>
-          <P>A logical grouping of nodes — typically one physical farm zone. Modules carry a name, description, and optional JSON configuration.</P>
+          <P>A logical grouping of nodes — typically one physical farm zone. Modules carry a name and description.</P>
           <H3>Node</H3>
           <P>An individual ESP32 device. Nodes report telemetry, respond to live commands, and are paired to exactly one module.</P>
           <H3>Tag</H3>

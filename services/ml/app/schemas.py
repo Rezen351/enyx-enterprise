@@ -104,6 +104,7 @@ class DetectResult(BaseModel):
     source_ref: Optional[str] = None
     original_url: Optional[str] = None
     annotated_url: Optional[str] = None
+    annotated_base64: Optional[str] = None
     num_detections: int
     classes: list[str] = []
     detections: list[Detection] = []

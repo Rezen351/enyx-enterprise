@@ -1,4 +1,4 @@
-# Testing Plan — Seluruh Service (IoT Modular Microservices)
+# Testing Plan — Dua Tahap (IoT Modular Microservices)
 
 > **Cara pakai doc ini:** Baca sekali **KONTEKS WAJIB** di bawah, lalu langsung ke
 > section service yang mau diuji. Tiap service punya 3 blok: **Checklist Fitur**,
@@ -75,7 +75,54 @@ lain), `cors` (origins localhost:3000/5173 + `FRONTEND_URL`), `prometheus`.
 
 ---
 
-## 1. Auth Service (`auth:8080`, Go, MariaDB)
+## METODE PENGETESAN DUA TAHAP
+
+Pengujian sistem dilakukan dalam **dua tahap** untuk memastikan kelayakan konfigurasi standar sebelum menambahkan layanan kostumisasi:
+
+### Fase 1 — Konfigurasi Minimal (Standar)
+**Scope:** Service inti untuk monitoring dan control tanpa kostumisasi ML.
+**Tujuan:** Memastikan pipeline monitoring & control standar berjalan stabil sebelum menambahkan layanan tambahan.
+
+**Services tercover:**
+- Auth Service (§1)
+- Module Service (§2)
+- Analytics Service (§3)
+- Control Service (§4)
+- Alert Service (§5)
+- Notification Service (§7) — meliputi fungsi webhook (channel Telegram/Email/generic HTTP)
+- Stream Service (§9)
+- Audit Service (§6)
+- Export Service (§11)
+- WS Gateway (§12)
+- Firmware / Simulator (§13)
+- Infrastruktur & Integration (§15)
+- Dashboard UI & E2E Integration (§16)
+- Cross-Cutting TA-Scale Regression (§17)
+- Automated Unit Test Coverage (§18)
+
+**Diluar scope Fase 1:**
+- ML Service (§10)
+- model-controller service
+- model-control service
+- DLQ Service — tidak termasuk dalam 10 core services
+- Webhook Service — sudah digabung dengan Notification Service
+
+### Fase 2 — Konfigurasi Lengkap (Kustom)
+**Scope:** 10 Core Services (Fase 1) + layanan kostumisasi ML dan kontrol model.
+**Tujuan:** Validasi端-to-end dengan kontrol adaptif berbasis machine learning.
+
+**Services tambahan dari Fase 1:**
+- ML Service (§10)
+- model-controller service (§19)
+- model-control service (§20)
+
+> **Catatan:** DLQ Service dan Webhook Service tetap di luar scope pengujian fase-fase ini (DLQ adalah service supporting, Webhook sudah digabung dengan Notification).
+
+> **Aturan:** Fase 2 HANYA dijalankan setelah Fase 1 dinyatakan **SELESAI & LULUS** seluruh checklist. Jangan mencampurkan pengujian Fase 1 dan Fase 2 dalam satu sesi.
+
+---
+
+## 1. Auth Service (`auth:8080`, Go, MariaDB) [FASE 1]
 **Fitur:** register, login, refresh, me/update/password, sessions, logout, account delete,
 admin CRUD user, list roles, token retention cron.
 
@@ -113,7 +160,7 @@ dipakai sebagai fixture di tes RBAC service lain. Catat token tiap role ke file 
 
 ---
 
-## 2. Module Service (`module:8080`, Go, MariaDB + TimescaleDB)
+## 2. Module Service (`module:8080`, Go, MariaDB + TimescaleDB) [FASE 1]
 **Fitur:** CRUD module, list node (paired/status/tags), discovered node, node detail/delete,
 node tags, actuators, pair/unpair, ingest telemetry via MQTT→TimescaleDB.
 
@@ -167,7 +214,7 @@ agar Control/Analytics punya node hidup. Lanjut ke service berikutnya (Analytics
 
 ---
 
-## 3. Analytics Service (`analytics:8080`, Go, TimescaleDB + NATS)
+## 3. Analytics Service (`analytics:8080`, Go, TimescaleDB + NATS) [FASE 1]
 **Fitur:** `GET /analytics/nodes`, `/analytics/metrics` (series), `/analytics/summary`,
 `/analytics/export` (CSV, belum dipakai UI).
 
@@ -230,7 +277,7 @@ melainkan desain RBAC). Step "comma-separated" (F5) tertutup oleh F2b.
 
 ---
 
-## 4. Control Service (`control:8080`, Go, MariaDB + MQTT + NATS)
+## 4. Control Service (`control:8080`, Go, MariaDB + MQTT + NATS) [FASE 1]
 **Fitur:** manual command, command log, targets/outputs, schedule CRUD + enable/disable,
 node mode (MANUAL/AUTO/EMERGENCY) + resume, per-output mode, scheduler eksekusi.
 
@@ -312,7 +359,7 @@ Stack dinyalakan TERBATAS sesuai scope: `control mariadb-control kong nats mosqu
 
 ---
 
-## 5. Alert Service (`alert:8080`, Go, MariaDB + cache)
+## 5. Alert Service (`alert:8080`, Go, MariaDB + cache) [FASE 1]
 **Fitur:** list alerts (filter), ack alert, threshold CRUD, evaluasi threshold → alert.
 
 ### Checklist Fitur
@@ -369,7 +416,7 @@ mengonsumsi wrapper ini (unwrap `res.data` di layer API); `vite build` lolos. Ev
 
 ---
 
-## 6. Audit Service (`audit:8080`, Go, MariaDB)
+## 6. Audit Service (`audit:8080`, Go, MariaDB) [FASE 1]
 **Fitur:** `GET /audit/logs` (list action user), ingest event dari NATS.
 
 ### Checklist Fitur
@@ -399,7 +446,7 @@ mengonsumsi wrapper ini (unwrap `res.data` di layer API); `vite build` lolos. Ev
 
 ---
 
-## 7. Notification Service (`notification:8080`, Go, MariaDB + queue)
+## 7. Notification Service (`notification:8080`, Go, MariaDB + queue) [FASE 1]
 **Fitur:** settings get/put, logs, test send, channel telegram/email/push, queue retry.
 
 > ✅ **(2026-07-15, QA Agent):** Service diimplementasikan penuh (`services/notification`, chi + jwt/v5 + gorm + go-redis + nats.go + prometheus; channel telegram/email/push via stdlib HTTP/SMTP — tanpa SDK eksternal baru). Diuji langsung via Kong `:8000` — **SELURUH checklist fitur + keamanan LULUS** (lihat detail di bawah & [logs.md](file:///home/almuzky/TA/Microservices/logs.md)). Catatan: pengiriman ke channel eksternal (Telegram/SMTP/Push) **disimulasikan sukses di DevMode** bila transport tidak terkonfigurasi; kegagalan nyata (mis. token salah → HTTP 404) tetap diproses & di-retry. Pengiriman riil butuh kredensial env (`SMTP_HOST/USER`, bot token Telegram, `PUSH_URL`) — di luar sandbox QA.
@@ -417,7 +464,7 @@ mengonsumsi wrapper ini (unwrap `res.data` di layer API); `vite build` lolos. Ev
 
 ### Catatan & Next Step
 **Kenapa:** Beririsan **GAP-1** (doc e2e): dashboard `NotificationBell` menunggu WS
-`/ws/system-status` yang **sudah ada** di wsgateway (§11) → bell jalan. **Next:** Verifikasi push sampai ke klien setelah WS tersedia (sudah tervalidasi E2E, lihat §16 D9).
+`/ws/system-status` yang **sudah ada** di wsgateway (§12) → bell jalan. **Next:** Verifikasi push sampai ke klien setelah WS tersedia (sudah tervalidasi E2E, lihat §16 D9).
 **Open note (bukan blocker):** response shape Notification Service SUDAH pakai wrapper
 standar AGENTS.md §4.4 (`{success,data}` / `{success,false,error:{code,message}}`) —
 karena belum ada konsumen REST di dashboard (NotificationBell pakai WS), tidak ada
@@ -426,29 +473,29 @@ breaking change. Pengiriman riil ke Telegram/SMTP/Push butuh kredensial env (lih
 
 ---
 
-## 8. Webhook Service (`webhook:8080`, Go, MariaDB + Redis queue + NATS)
-**Fitur:** webhook receiver + dispatcher Telegram/Email/generic HTTP; settings, logs, test dispatch; JetStream durable consumer untuk `webhook.retry`.
+## 8. Notification Service (`notification:8080`, Go, MariaDB + Redis queue + NATS) — termasuk fitur Webhook [FASE 1]
+**Fitur:** unified notification + webhook sink. Channel: Telegram (Bot API), Email (SMTP), Push (HTTP gateway), Webhook (outbound HTTP POST). Settings, logs, test dispatch, inbound receiver (`/notifications/receive/*`), dan subscription NATS `alert.*` + `webhook.delivery`/`webhook.retry` (JetStream durable).
 
 ### Checklist Fitur
-- [x] `GET/PUT /webhook/settings` (admin-only write). GET: 200 all roles; PUT: 200 admin, 403 non-admin. ✅ *(2026-07-22)*.
-- [x] `GET /webhook/logs` (pagination, filter channel/status). ✅ *(2026-07-22)*.
-- [x] `POST /webhook/test` enqueue dummy notification per enabled channel → 202. ✅ *(2026-07-22)*.
-- [x] `POST /webhook/receive/{telegram,email,generic}` inbound webhook endpoints → 202 + enqueue ke `webhook:queue`. ✅ *(2026-07-22)*.
-- [x] Channel delivery: Telegram (`sendMessage`), Email (SMTP), Generic HTTP POST. DevMode simulate sukses bila transport belum terkonfigurasi. ✅ *(2026-07-22)*.
-- [x] Retry + backoff via Redis queue (`webhook:queue`) + `WEBHOOK_RETRY_DELAY_MS`. ✅ *(2026-07-22)*.
-- [x] NATS `webhook.delivery` (core) + `webhook.retry` (JetStream durable consumer `webhook-retry-processor`, queue group `webhook-retry-workers`). ✅ *(2026-07-22)*.
+- [x] `GET/PUT /notifications/settings` (admin-only write). GET: 200 all roles; PUT: 200 admin, 403 non-admin. ✅ *(2026-07-22, merged 2026-08-26)*.
+- [x] `GET /notifications/logs` (pagination, filter channel/status). ✅ *(2026-07-22, merged 2026-08-26)*.
+- [x] `POST /notifications/test` enqueue dummy notification per enabled channel (telegram/email/push/webhook) → 202. ✅ *(2026-07-22, merged 2026-08-26)*.
+- [x] `POST /notifications/receive/{telegram,email,generic,delivery}` inbound webhook endpoints → 202 + enqueue ke `notification:queue`. ✅ *(2026-08-26)*.
+- [x] Channel delivery: Telegram (`sendMessage`), Email (SMTP), Push (HTTP Bearer), Webhook (HTTP POST). DevMode simulate sukses bila transport belum terkonfigurasi. ✅ *(2026-07-22, merged 2026-08-26)*.
+- [x] Retry + backoff via Redis queue (`notification:queue`) + `NOTIFICATION_RETRY_DELAY_MS`. ✅ *(2026-07-22, merged 2026-08-26)*.
+- [x] NATS `alert.*` (queue group `notification-workers`) + `webhook.delivery` (core, `notification-delivery-workers`) + `webhook.retry` (JetStream durable consumer `notification-retry-processor`). ✅ *(2026-08-26)*.
 
 ### Checklist Keamanan
-- [x] JWT admin-only pada `settings`/`logs`/`test`/`receive/*`. ✅ *(2026-07-22)*.
-- [x] AES-GCM secret encryption (`WEBHOOK_SECRET`/fallback `JWT_SECRET`) — never logged or returned by API. ✅ *(2026-07-22)*.
-- [x] Validasi `target` format per channel (email regex, telegram chat id numeric). ✅ *(2026-07-22)*.
+- [x] JWT admin-only pada `settings`/`logs`/`test`/`receive/*`. ✅ *(2026-07-22, merged 2026-08-26)*.
+- [x] AES-GCM secret encryption (`NOTIFICATION_SECRET_KEY`/fallback `JWT_SECRET`) — never logged or returned by API. ✅ *(2026-07-22, merged 2026-08-26)*.
+- [x] Validasi `target` format per channel (email regex, telegram chat id numeric). ✅ *(2026-07-22, merged 2026-08-26)*.
 
 ### Catatan & Next Step
-Delivery riil butuh kredensial eksternal (`SMTP_HOST/USER`, Telegram bot token). Unit tests Go: `repository_test.go` (6 tests) + `service_test.go` (2 tests) via `testdriver` fake DB. Integration tests Python: `TestWebhookService` (3 tests) via Kong :8000.
+Delivery riil butuh kredensial eksternal (`SMTP_HOST/USER`, Telegram bot token, `PUSH_URL`). Standalone `webhook` service telah dihapus dan digabung ke sini. Integration tests Python: `TestWebhookService` (5 tests, label `Notification+Webhook`) via Kong :8000.
 
 ---
 
-## 9. Stream Service (`stream:8080`, Go, MinIO + MediaMTX + ML client)
+## 9. Stream Service (`stream:8080`, Go, MinIO + MediaMTX + ML client) [FASE 1]
 **Fitur:** streams CRUD, snapshot capture (+detect), record start/stop, snapshots list/get/delete,
 HLS playback proxy ke MediaMTX.
 
@@ -500,7 +547,7 @@ file di MinIO & snapshot tersimpan. Cek batas ukuran/retensi snapshot.
 
 ---
 
-## 9. ML Service (`ml:8080`, FastAPI/Python, MinIO)
+## 10. ML Service (`ml:8080`, FastAPI/Python, MinIO) [FASE 2]
 **Fitur:** list/delete results (`/ml/results`), models (`/ml/models`), detect (`/ml/detect`),
 vision engine.
 
@@ -569,7 +616,7 @@ volume runtime mount ke `/app/models` & seeding + warmup sukses. Perlu dipertaha
 antar sesi (atau tambah COPY di Dockerfile). `from-stream` butuh frame di bucket
 `stream` (lihat item `[~]` di atas).
 
-## 10. Export Service (`export:8080`, Go, TimescaleDB + cache)
+## 11. Export Service (`export:8080`, Go, TimescaleDB + cache) [FASE 1]
 **Fitur:** export data `/export/v1/...` (CSV) dengan cursor pagination.
 
 ### Checklist Fitur
@@ -614,7 +661,7 @@ Diperbaiki saat sesi ini: `CREATE DATABASE module_ts` + jalankan `init.sql` + ta
 (`main.go` 25 baris: hanya `/health` + `/metrics`, tidak ada endpoint export, tidak ada
 JWT/auth, tidak ada koneksi TimescaleDB). Diimplementasikan penuh dari nol mengikuti pola
 service Go lainnya (config / model / tsdb / service / handler / middleware), lalu ditemukan &
-di-fix **2 bug** (lihat bawah). Sekarang **SELURUH checklist §10 (Fitur + Keamanan) LULUS via
+di-fix **2 bug** (lihat bawah). Sekarang **SELURUH checklist §11 (Fitur + Keamanan) LULUS via
 Kong `:8000`** dengan respons ter-standardisasi ke wrapper `{success,data}` /
 `{success:false,error:{code,message}}` (AGENTS.md §4.4) — konsisten dgn service Go lainnya.
 Respons terbukti: 200→`{success:true,data:...}`, 400→`BAD_REQUEST`, 401→`UNAUTHORIZED`,
@@ -651,7 +698,7 @@ File-size limit di-cap di `maxFileRows=5_000_000` per response, page berikutnya 
 
 ---
 
-## 11. WS Gateway (`wsgateway:8090`, Go)
+## 12. WS Gateway (`wsgateway:8090`, Go) [FASE 1]
 **Fitur:** Bridge NATS → WebSocket (`GET /ws/nodes/{node_id}/live` & `/ws/system-status`).
 
 ### Checklist Fitur
@@ -753,7 +800,7 @@ Verifikasi riil via container python di `microservices_iot-net`:
 
 ---
 
-## 12. Firmware — Aeroponic Node (`firmware/aeroponic-node`, ESP32)
+## 13. Firmware — Aeroponic Node (`firmware/aeroponic-node`, ESP32) [FASE 1]
 **Fitur:** konek MQTT (Mosquitto), publish telemetry, terima command, pairing.
 
 ### Checklist Fitur
@@ -782,12 +829,12 @@ Verifikasi riil via container python di `microservices_iot-net`:
 
 ---
 
-## 13. Monitor Service — REMOVED
+## 14. Monitor Service — REMOVED
 Service `monitor` (CLI `docker stats`) **sudah di-remove secara sengaja** (commit `b444390`, 2026-07-15). `planning.md` menandai Monitor sebagai dihapus dan memindahkan visibility resource container ke `cadvisor` + `node-exporter` (Prometheus, ter-scrape ke Grafana). Section ini dihapus dari testing plan agar tidak merujuk service yang tidak ada. Resource container kini dipantau via exporter tersebut, bukan CLI `monitor`.
 
 ---
 
-## 14. Infrastruktur & Integration (Kong, DB, NATS, MQTT, MinIO, MediaMTX, Prometheus)
+## 15. Infrastruktur & Integration (Kong, DB, NATS, MQTT, MinIO, MediaMTX, Prometheus) [FASE 1]
 ### Checklist
 - [x] **Kong:** semua prefix terroute; plugin jwt/rate-limit/cors aktif (tes 429 & preflight CORS).
 - [x] **Kong jwt:** token salah → 401 sebelum sampai service; token benar tembus.
@@ -896,7 +943,7 @@ services dari workspace saat ini):**
 
 ---
 
-## 16. Dashboard UI & E2E Integration (React + Browser Subagent)
+## 16. Dashboard UI & E2E Integration (React + Browser Subagent) [FASE 1]
 **Fitur:** Autentikasi (login/register/profile), User Management, Module Management, Analytics, Control Panel, Live View, Snapshot, Telemetri Real-time, dan Notifikasi Sistem.
 
 ### Panduan Pengujian E2E Otomatis oleh Agent:
@@ -938,7 +985,7 @@ services dari workspace saat ini):**
 
 ---
 
-## 17. Cross-Cutting TA-Scale Regression (DLQ Saga, CI/CD, Unit Test, Outbox, CCTV→ML)
+## 17. Cross-Cutting TA-Scale Regression (DLQ Saga, CI/CD, Unit Test, Outbox, CCTV→ML) [FASE 1]
 Sinkron dengan `roadmap.md` § "Yang belum dikerjakan" & "Rekomendasi Eksekusi TA-Scale". Semua item ini **belum** dikerjakan (⬜) dan menjadi target regression setelah diimplementasikan.
 
 ### 17a. DLQ Saga via NATS Advisory (P1)
@@ -979,18 +1026,22 @@ Sinkron dengan `roadmap.md` § "Yang belum dikerjakan" & "Rekomendasi Eksekusi T
 | P2 | Unit Test 80% | §17d | ✅ Selesai (auth/module/control/alert/audit/analytics + ML pytest) |
 | P3 | CCTV→ML full path | §17e | ✅ Validasi env (synthetic frame 200; live camera manual) |
 | P3 | Jalankan checklist tiap service & E2E sebagai regression | seluruh § | berjalan |
+| P1 | Metode pengetesan dua tahap (Fase 1 + Fase 2) | METODE PENGETESAN DUA TAHAP | ✅ Diterapkan |
+| P2 | model-controller inference service | §19 | 🟡 Menunggu Fase 1 selesai |
+| P2 | model-control scheduler service | §20 | 🟡 Menunggu Fase 1 selesai |
 
 ## Catatan Lintas-Service
-- GAP-1 (WS `system-status`), GAP-2 (`?token=` WS), GAP-3 (Export di-UI) **SUDAH SELESAI** — lihat §11/§10/§16.
+- GAP-1 (WS `system-status`), GAP-2 (`?token=` WS), GAP-3 (Export di-UI) **SUDAH SELESAI** — lihat §12/§11/§16.
 - Open remediation keamanan: O1 (Mosquitto `allow_anonymous`) **sudah closed** — config file sudah diterapkan, tinggal restart container untuk aktifkan enforcement. O2 (MinIO scoped key) **sudah selesai**.
 - Semua route dashboard harus punya pasangan Kong + service valid (cek `vite build`).
 - Cross-cutting TA-Scale (DLQ/Outbox/CI/Test) **sudah selesai** — lihat `logs.md` 2026-07-16/21.
+- **Pengujian dua tahap:** Fase 1 menutupi seluruh service inti (monitoring & control standar). Fase 2 menambahkan ML Service + model-controller + model-control untuk validasi kontrol adaptif端-to-end. Lihat bagian `METODE PENGETESAN DUA TAHAP` di atas.
 
-> **Penutup:** Setelah tiap service & E2E lulus checklist fitur + keamanan, jalankan pengujian regresi E2E penuh sesuai dengan skenario integrasi di Section 16, dan regression cross-cutting di Section 17.
+> **Penutup:** Setelah tiap service & E2E lulus checklist fitur + keamanan, jalankan pengujian regresi E2E penuh sesuai dengan skenario integrasi di Section 16, dan regression cross-cutting di Section 17. Pengujian dilakukan secara berurutan: **Fase 1 (service inti)** terlebih dahulu, kemudian **Fase 2 (ML + model control)** setelah Fase 1 dinyatakan selesai.
 
 ---
 
-## 18. 🤖 Automated Unit Test Coverage Expansion (2026-07-23)
+## 18. 🤖 Automated Unit Test Coverage Expansion (2026-07-23) [FASE 1]
 
 **Status:** ✅ Implemented — `test/unit_test.py` diperluas menjadi **102 test cases** across **14 service classes**.
 
@@ -1033,3 +1084,59 @@ Checklist manual di `docs/testing-implementasi-manual.md` yang sekarang sudah te
 - Test dengan hardcoded IDs (mis. `node-1`, `yolov8n`) mengakomodasi environment yang belum memiliki data test khusus.
 - **Ketahanan test:** 5 failures di test run awal berasal dari test original (bukan test baru) karena state sistem — node tidak ditemukan, username konflik, dsrt. Semua test baru berjalan tanpa error.
 
+---
+
+## 19. model-controller Service (`model-controller:8080`, FastAPI/Python, MinIO + Stable-Baselines3) [FASE 2]
+
+**Fitur:** Inference service untuk kontrol aeroponik berbasis TD3. Memuat model `aeroponic_td3.zip` + `VecNormalize` parameters, expose `POST /predict` untuk mapping 10D state vector ke 3D action vector (`D_mist`, `interval_sec`, `A_valve`).
+
+### Checklist Fitur
+- [ ] `GET /health` → 200 (model loaded status + uptime).
+- [ ] `POST /predict` dengan state 10D valid → 200 dengan action 3D (`D_mist`, `interval_sec`, `A_valve`).
+- [ ] State di-clamp ke range yang diharapkan (`L_root` [0,300], `U_status` [0,1], `T_in` [15,30], `H_in` [20,100], `T_out` [15,30], `H_out` [20,100], `EC` [0.5,3.5], `pH` [4,9], `T_nut` [18,25], `I_day` [0,1]).
+- [ ] Action output di-clamp (`D_mist` [10,240], `interval_sec` [60,540], `A_valve` 0/1).
+- [ ] Model warmup pada startup — `/health` menunjukkan `model_loaded: true` setelah startup selesai.
+- [ ] VecNormalize parameters (`vec_normalize_td3.pkl`) dimuat dan diterapkan saat inference.
+- [ ] Fallback graceful jika model belum terdaftar — return `503 SERVICE_UNAVAILABLE` dengan envelope standar.
+
+### Checklist Keamanan
+- [ ] JWT + RBAC (admin/operator) pada endpoint inference. Viewer → 403.
+- [ ] Validasi input state array (10 elements, numeric, no NaN/Inf) → 400 `BAD_REQUEST` bila invalid.
+- [ ] Rate-limit inference untuk mencegah abuse (mis. 60 req/menit per user).
+- [ ] Model file hanya dibaca dari `/app/models` — path traversal (`../../etc/passwd`) ditolak.
+- [ ] Tidak ada leak model weights atau VecNormalize params via API response.
+- [ ] Audit trail: setiap inference request dicatat (event `model.predict.called` via NATS `audit.log`).
+
+### Catatan & Next Step
+**Kenapa:** model-controller adalah otak dari kontrol adaptif — inference yang salah = aksi aktuator yang salah.
+**Next:** Verifikasi model TD3 ter-load dengan benar; bandingkan output action dengan expected range. Catat model version di response header untuk debugging.
+
+---
+
+## 20. model-control Service (`model-control:8081`, FastAPI/Python, NATS + MinIO + HTTP Client) [FASE 2]
+
+**Fitur:** Scheduler loop dan telemetry consumer. Subscribes ke NATS `telemetry.ingest` + `telemetry.batch`, assembles 10D state vector, queries `model-controller` untuk inference, dan applies actuation parameters ke Control Service di cycle boundaries.
+
+### Checklist Fitur
+- [ ] `GET /health` → 200 (scheduler status + prediction loop running + last prediction timestamp).
+- [ ] `POST /v1/model_control/trigger-predict` → 202 (trigger immediate loop tick) atau 503 jika loop belum running.
+- [ ] Telemetry consumer subscribe ke `telemetry.ingest` + `telemetry.batch` — masuk ke `TelemetryCache`.
+- [ ] State assembly dari: telemetry cache + MinIO vision metadata (`root_length_cm`, `condition`) + computed `I_day` (diurnal index).
+- [ ] Query `model-controller` `POST /predict` dengan state 10D → dapat action 3D.
+- [ ] Cycle-boundary schedule update: schedule params hanya di-apply ke Control Service pada akhir cycle ON+OFF (bukan di tengah cycle).
+- [ ] `PUT /control/schedules/{id}` untuk update pump interval dari prediction result.
+- [ ] Valve direct command ke Control Service untuk `A_valve` on/off.
+- [ ] Fallback ke rule-based schedule jika `model-controller` unavailable (graceful degradation).
+- [ ] Correlation ID (`X-Correlation-ID`) di-propagasi ke semua downstream calls (Control Service + model-controller).
+
+### Checklist Keamanan
+- [ ] JWT + RBAC (admin/operator) pada admin endpoints. Viewer read-only untuk health/status.
+- [ ] Validasi `NODE_ID` dan `MODULE_ID` — harus terdaftar di Module Service (cek via API call) sebelum digunakan untuk telemetry lookup.
+- [ ] Rate-limit pada `trigger-predict` untuk mencegah abuse.
+- [ ] Circuit breaker pada panggilan ke `model-controller` — jika inference service down, fallback ke rule-based.
+- [ ] Timeout pada semua outbound calls (model-controller, Control Service, MinIO, Module Service).
+- [ ] Audit trail: tiap prediction cycle + schedule update dicatat via NATS `audit.log`.
+
+### Catatan & Next Step
+**Kenapa:** model-control menghubungkan data sensor → inference → aktuator — gagal di sini = kontrol adaptif tidak bekerja.
+**Next:** Verifikasi end-to-end prediction loop: telemetry masuk → state assembled → inference dijalankan → schedule updated → Control Service menerima perintah. Test dengan simulated telemetry (tanpa hardware).

@@ -23,6 +23,9 @@ def _fake_settings():
     s.minio_original_prefix = "original"
     s.minio_annotated_prefix = "detected"
     s.minio_ml_bucket = "mlbucket"
+    s.minio_public_url = "http://minio"
+    s.pixels_per_cm = 10.0
+    s.minio_enabled = True
     return s
 
 
@@ -74,12 +77,12 @@ def fresh(monkeypatch):
         "input_size": 640,
     }
     monkeypatch.setattr(_ve.registry, "resolve", lambda model_id: (fake_meta, _FakeModel()))
-    # Stub MinIO upload + messaging so run_inference completes offline.
+    # Stub the two MinIO writers so run_inference completes offline. ML Service
+    # is REST-only (no NATS/messaging dependency); in default (minio_enabled)
+    # mode the annotated image is uploaded, not inlined, so annotated_base64
+    # stays None and the URLs are populated by these stubs.
     monkeypatch.setattr(_storage, "upload_image", lambda *a, **k: "http://minio/fake")
-    import app
-    fake_messaging = types.ModuleType("app.messaging")
-    fake_messaging.publish_detection_sync = lambda *a, **k: None
-    monkeypatch.setitem(sys.modules, "app.messaging", fake_messaging)
+    monkeypatch.setattr(_storage, "upload_image_with_metadata", lambda *a, **k: "http://minio/fake")
     yield
     reset_store()
 
@@ -104,6 +107,23 @@ def test_run_inference_shape():
     # URLs populated by the stubbed upload_image.
     assert result.original_url == "http://minio/fake"
     assert result.annotated_url == "http://minio/fake"
+    # Default (minio_enabled=True) mode uploads the annotated image, so it is
+    # NOT inlined as base64.
+    assert result.annotated_base64 is None
+
+
+def test_run_inference_external_mode_inlines_base64(monkeypatch):
+    """When MINIO_ENABLED=false the annotated image is returned inline."""
+    import app.vision_engine as _ve
+
+    monkeypatch.setattr(_ve.registry, "resolve", lambda model_id: ({"id": "m", "name": "M", "confidence_threshold": 0.25, "iou_threshold": 0.45, "input_size": 640}, _FakeModel()))
+    monkeypatch.setattr(_storage, "upload_image", lambda *a, **k: "http://minio/fake")
+    monkeypatch.setattr(_storage, "upload_image_with_metadata", lambda *a, **k: "http://minio/fake")
+    monkeypatch.setattr(_ve.settings, "minio_enabled", False)
+    result = run_inference(_valid_jpeg(), None, source_type="upload", source_ref="x.jpg")
+    assert result.original_url is None
+    assert result.annotated_url is None
+    assert isinstance(result.annotated_base64, str) and result.annotated_base64
     # Confidence stats derived from the two fake boxes.
     assert result.confidence_min == 0.5
     assert result.confidence_max == 0.9

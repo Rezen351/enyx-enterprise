@@ -33,7 +33,3 @@ class ModelControllerClient:
         except Exception as exc:
             logger.error("model-controller predict failed: %s", exc)
             return None
-
-
-# Backwards compatibility alias
-PPOControllerClient = ModelControllerClient

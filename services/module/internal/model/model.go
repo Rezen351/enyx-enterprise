@@ -10,12 +10,10 @@ const (
 )
 
 // Module is a logical configuration container. One module owns many nodes.
-// It holds settings (config) shared by / applied to its nodes.
 type Module struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
-	Config      string    `json:"config"` // arbitrary JSON settings blob
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 
@@ -46,13 +44,11 @@ type Node struct {
 type CreateModuleRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Config      string `json:"config"`
 }
 
 type UpdateModuleRequest struct {
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
-	Config      *string `json:"config"`
 }
 
 type PairRequest struct {

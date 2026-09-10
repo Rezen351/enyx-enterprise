@@ -127,6 +127,11 @@ func main() {
 	r.With(authMw).Get("/notifications/logs", h.GetLogs)
 	r.With(authMw, adminMw).Post("/notifications/test", h.TestSend)
 
+	r.With(authMw, adminMw).Post("/notifications/receive/telegram", h.ReceiveTelegram)
+	r.With(authMw, adminMw).Post("/notifications/receive/email", h.ReceiveEmail)
+	r.With(authMw, adminMw).Post("/notifications/receive/generic", h.ReceiveGeneric)
+	r.With(authMw, adminMw).Post("/notifications/receive/delivery", h.ReceiveDelivery)
+
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      r,

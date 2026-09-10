@@ -14,7 +14,7 @@ from nats.errors import ConnectionClosedError, TimeoutError
 
 from .config import settings
 
-logger = logging.getLogger("ppo-control")
+logger = logging.getLogger("model-control")
 
 TELEMETRY_SUBJECTS = ["telemetry.ingest", "telemetry.batch"]
 

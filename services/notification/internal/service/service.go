@@ -20,6 +20,8 @@ import (
 )
 
 const alertSubject = "alert.*"
+const webhookDeliverySubject = "webhook.delivery"
+const webhookRetrySubject = "webhook.retry"
 
 // Service orchestrates settings, the delivery queue/worker, and the NATS
 // alert.* subscription that triggers notifications.
@@ -73,6 +75,7 @@ func (s *Service) GetSettingsDTO() model.SettingsDTO {
 		Telegram: model.ChannelSettings{Enabled: st.TelegramEnabled, Target: st.TelegramTarget},
 		Email:    model.ChannelSettings{Enabled: st.EmailEnabled, Target: st.EmailTarget},
 		Push:     model.ChannelSettings{Enabled: st.PushEnabled, Target: st.PushTarget},
+		Webhook:  model.ChannelSettings{Enabled: st.WebhookEnabled, Target: st.WebhookTarget},
 	}
 }
 
@@ -142,6 +145,16 @@ func (s *Service) UpdateSettings(ctx context.Context, patch model.SettingsPatch,
 		st.PushSecret = enc
 	}
 
+	st.WebhookEnabled = patch.Webhook.Enabled
+	st.WebhookTarget = patch.Webhook.Target
+	if patch.Webhook.Secret != "" {
+		enc, err := crypto.Encrypt(s.key, patch.Webhook.Secret)
+		if err != nil {
+			return nil, fmt.Errorf("encrypt webhook secret: %w", err)
+		}
+		st.WebhookSecret = enc
+	}
+
 	st.UpdatedBy = userID
 	if err := s.store.UpsertSettings(ctx, st); err != nil {
 		return nil, err
@@ -207,6 +220,12 @@ func (s *Service) SendTest(ctx context.Context, channel, userID string) (int, er
 		}
 		count++
 	}
+	if want("webhook") && st.WebhookEnabled && st.WebhookTarget != "" {
+		if err := s.enqueueChannel(ctx, "webhook", st.WebhookTarget, "SmartFarm Test Notification", "This is a test notification from the SmartFarm IoT platform.", "", userID); err != nil {
+			return count, err
+		}
+		count++
+	}
 	return count, nil
 }
 
@@ -215,17 +234,40 @@ func (s *Service) ListLogs(ctx context.Context, channel, status string, limit, o
 	return s.store.ListLogs(ctx, repository.LogFilter{Channel: channel, Status: status}, limit, offset)
 }
 
-// RunSubscriber subscribes to alert.* on a queue group so multiple replicas
-// share the load. Each alert event fans out to every enabled channel.
+// RunSubscriber subscribes to alert.* AND webhook.delivery/webhook.retry on
+// queue groups so multiple replicas share the load. alert.* events fan out to
+// every enabled channel; webhook.delivery carries explicit delivery jobs
+// (e.g. inbound webhook receivers or external producers), with webhook.retry
+// re-publishing failed jobs back onto webhook.delivery via JetStream.
 func (s *Service) RunSubscriber(nc *nats.Conn) error {
-	_, err := nc.QueueSubscribe(alertSubject, "notification-workers", func(m *nats.Msg) {
+	if _, err := nc.QueueSubscribe(alertSubject, "notification-workers", func(m *nats.Msg) {
 		s.handleAlert(m.Data)
-	})
-	if err != nil {
-		log.Printf("WARN: notification: subscriber failed: %v", err)
+	}); err != nil {
+		log.Printf("WARN: notification: alert subscriber failed: %v", err)
 		return err
 	}
 	log.Printf("notification subscriber listening on %q", alertSubject)
+
+	if _, err := nc.QueueSubscribe(webhookDeliverySubject, "notification-delivery-workers", func(m *nats.Msg) {
+		s.handleDelivery(m.Data)
+	}); err != nil {
+		log.Printf("WARN: notification: webhook.delivery subscriber failed: %v", err)
+		return err
+	}
+	log.Printf("notification subscriber listening on %q", webhookDeliverySubject)
+
+	js, err := nc.JetStream()
+	if err != nil {
+		return fmt.Errorf("jetstream context: %w", err)
+	}
+	if _, err := js.QueueSubscribe(webhookRetrySubject, "notification-retry-workers", func(m *nats.Msg) {
+		_ = nc.Publish(webhookDeliverySubject, m.Data)
+		_ = m.Ack()
+	}, nats.Durable("notification-retry-processor")); err != nil {
+		log.Printf("WARN: notification: webhook.retry subscriber failed: %v", err)
+		return err
+	}
+	log.Printf("notification JetStream subscriber listening on %q", webhookRetrySubject)
 	return nil
 }
 
@@ -262,6 +304,39 @@ func (s *Service) handleAlert(body []byte) {
 	if st.PushEnabled && st.PushTarget != "" {
 		_ = s.enqueueChannel(ctx, "push", st.PushTarget, subject, bodyText, "", "")
 	}
+	if st.WebhookEnabled && st.WebhookTarget != "" {
+		_ = s.enqueueChannel(ctx, "webhook", st.WebhookTarget, subject, bodyText, "", "")
+	}
+}
+
+// DeliveryEvent is the payload published on webhook.delivery / posted to the
+// inbound receive endpoints. Channel selects the delivery transport.
+type DeliveryEvent struct {
+	Channel string `json:"channel"`
+	Target  string `json:"target"`
+	Subject string `json:"subject"`
+	Body    string `json:"body"`
+	AlertID string `json:"alert_id"`
+	UserID  string `json:"user_id"`
+}
+
+// HandleIncoming enqueues a delivery job from an inbound webhook receiver
+// (telegram/email/generic) or an explicit delivery event.
+func (s *Service) HandleIncoming(ctx context.Context, channel, target, subject, body, alertID, userID string) error {
+	return s.enqueueChannel(ctx, channel, target, subject, body, alertID, userID)
+}
+
+// handleDelivery processes a webhook.delivery NATS message.
+func (s *Service) handleDelivery(body []byte) {
+	var ev DeliveryEvent
+	if err := json.Unmarshal(body, &ev); err != nil {
+		log.Printf("WARN: notification: bad delivery payload: %v", err)
+		return
+	}
+	if ev.Channel == "" {
+		return
+	}
+	_ = s.enqueueChannel(context.Background(), ev.Channel, ev.Target, ev.Subject, ev.Body, ev.AlertID, ev.UserID)
 }
 
 // StartWorker launches the background delivery worker. It blocks on the queue,
@@ -301,6 +376,8 @@ func (s *Service) process(ctx context.Context, job *queue.Job) {
 		secret, target = st.EmailSecret, st.EmailTarget
 	case "push":
 		secret, target = st.PushSecret, st.PushTarget
+	case "webhook":
+		secret, target = st.WebhookSecret, st.WebhookTarget
 	default:
 		_ = s.store.UpdateLog(ctx, job.LogID, job.Attempts, "failed", "unknown channel")
 		return
@@ -324,6 +401,8 @@ func (s *Service) process(ctx context.Context, job *queue.Job) {
 			res = channels.SendEmail(s.cfg, target, job.Subject, job.Body, dec)
 		case "push":
 			res = channels.SendPush(s.cfg, target, job.Body, dec)
+		case "webhook":
+			res = channels.SendWebhookHTTP(s.cfg, target, job.Subject, job.Body, dec)
 		}
 		// DevMode: when a transport is unconfigured/unreachable, simulate a
 		// successful delivery to the log sink so the full path is exercisable

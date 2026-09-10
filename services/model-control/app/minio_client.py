@@ -11,7 +11,7 @@ from minio.error import S3Error
 
 from .config import settings
 
-logger = logging.getLogger("ppo-control")
+logger = logging.getLogger("model-control")
 
 
 class MinIOClient:

@@ -8,11 +8,12 @@
 
 ## 1. Overview
 
-The Notification Service is the multi-channel delivery sink for the IoT platform. It consumes alert events from the NATS event bus and dispatches notifications through three channels:
+The Notification Service is the unified multi-channel delivery sink for the IoT platform (the former standalone Webhook Service has been merged into it). It consumes alert events from the NATS event bus and dispatches notifications through four channels:
 
 - **Telegram** — Bot API (`sendMessage`)
 - **Email** — SMTP (plain-text RFC 822)
 - **Push** — Generic HTTP push gateway (Bearer token)
+- **Webhook** — Outbound HTTP POST to a configurable callback URL
 
 The service is designed to be resilient: jobs are persisted in Redis before delivery, retried up to a configurable maximum, and throttled to avoid spamming downstream channels. Channel secrets (bot tokens, SMTP passwords, push server keys) are encrypted at rest using AES-GCM and are never exposed through the API or logs.
 
@@ -78,12 +79,13 @@ Authentication uses shared JWT HMAC (`Authorization: Bearer <token>`). When `JWT
   "data": {
     "telegram": { "enabled": true, "target": "123456789" },
     "email": { "enabled": false, "target": "" },
-    "push": { "enabled": true, "target": "device-token-abc" }
+    "push": { "enabled": true, "target": "device-token-abc" },
+    "webhook": { "enabled": false, "target": "" }
   }
 }
 ```
 
-> **Note:** Secrets (bot token, SMTP password, push server key) are **never** returned by this endpoint.
+> **Note:** Secrets (bot token, SMTP password, push server key, webhook signature) are **never** returned by this endpoint.
 
 ---
 
@@ -99,7 +101,8 @@ Authentication uses shared JWT HMAC (`Authorization: Bearer <token>`). When `JWT
 {
   "telegram": { "enabled": true, "target": "123456789", "secret": "bot-token-here" },
   "email": { "enabled": true, "target": "admin@example.com", "secret": "smtp-password" },
-  "push": { "enabled": false, "target": "", "secret": "" }
+  "push": { "enabled": false, "target": "", "secret": "" },
+  "webhook": { "enabled": false, "target": "", "secret": "" }
 }
 ```
 
@@ -110,6 +113,7 @@ Authentication uses shared JWT HMAC (`Authorization: Bearer <token>`). When `JWT
 | `telegram.target` | Must match `^-?\d+$` (numeric chat ID) |
 | `email.target` | Must match email regex |
 | `push.target` | Non-empty when `push.enabled` is true |
+| `webhook.target` | Non-empty URL when `webhook.enabled` is true |
 
 ---
 
@@ -153,7 +157,7 @@ Authentication uses shared JWT HMAC (`Authorization: Bearer <token>`). When `JWT
 | Attribute | Value |
 |---|---|
 | **Auth** | Admin role required |
-| **Request body** | `{ "channel": "telegram" \| "email" \| "push" \| "" }` — omit channel to test all enabled channels |
+| **Request body** | `{ "channel": "telegram" \| "email" \| "push" \| "webhook" \| "" }` — omit channel to test all enabled channels |
 | **Response** | `202 Accepted` |
 
 ```json
@@ -165,11 +169,37 @@ Authentication uses shared JWT HMAC (`Authorization: Bearer <token>`). When `JWT
 
 ---
 
-## 3. Input Contracts
+### 2.6 `POST /notifications/receive/*` (Inbound Webhook Receivers)
+
+| Attribute | Value |
+|---|---|
+| **Auth** | Admin role required |
+| **Endpoints** | `/notifications/receive/telegram`, `/notifications/receive/email`, `/notifications/receive/generic`, `/notifications/receive/delivery` |
+| **Response** | `202 Accepted` |
+
+These endpoints let external systems (or other services) push a payload that is enqueued as a delivery job:
+
+- `/receive/telegram` and `/receive/email` accept an arbitrary JSON body and store it as a `telegram` / `email` delivery (useful for bridging inbound chat/email into the platform).
+- `/receive/generic` stores the body as a `webhook` delivery.
+- `/receive/delivery` accepts a full `DeliveryEvent` JSON (`{ "channel", "target", "subject", "body", "alert_id", "user_id" }`) for explicit fan-out control.
+
+```json
+// POST /notifications/receive/delivery
+{
+  "channel": "webhook",
+  "target": "https://example.com/hook",
+  "subject": "External Event",
+  "body": "payload",
+  "alert_id": "",
+  "user_id": "admin"
+}
+```
+
+---
 
 ### 3.1 NATS — Alert Event Ingestion
 
-The service subscribes to **`alert.*`** using a NATS JetStream queue group (`notification-workers`). Any service can publish to this subject to trigger notifications.
+The service subscribes to **`alert.*`** using a NATS queue group (`notification-workers`). Any service can publish to this subject to trigger notifications. It also subscribes to **`webhook.delivery`** (core queue group `notification-delivery-workers`) for explicit delivery jobs and **`webhook.retry`** (JetStream durable `notification-retry-processor`) which republishes failed jobs back onto `webhook.delivery`. External producers (or the inbound receive endpoints) publish a `DeliveryEvent` JSON to these subjects.
 
 **Subject pattern:** `alert.*`
 
@@ -193,7 +223,7 @@ The service subscribes to **`alert.*`** using a NATS JetStream queue group (`not
 | `severity` | string | Yes | Alert severity (e.g. `info`, `warning`, `critical`) |
 | `message` | string | No | Human-readable description. Falls back to `"Alert on node {node_id} metric {metric}"` if empty |
 
-**Fan-out behavior:** On receipt, the service creates one delivery job per **enabled** channel. If all three channels (telegram, email, push) are enabled, three jobs are enqueued.
+**Fan-out behavior:** On receipt of an `alert.*` event, the service creates one delivery job per **enabled** channel (telegram, email, push, webhook). A `webhook.delivery` event already specifies its own channel and target, so it produces a single job.
 
 ---
 
@@ -206,6 +236,7 @@ The service subscribes to **`alert.*`** using a NATS JetStream queue group (`not
 | **Telegram** | HTTPS POST to `https://api.telegram.org/bot<token>/sendMessage` | `telegram_secret` (bot token), `telegram_target` (chat ID) |
 | **Email** | SMTP (plain-text) | `smtp_host`, `smtp_port`, `smtp_user`, `smtp_from`, `email_secret` (SMTP password), `email_target` (recipient) |
 | **Push** | HTTPS POST to `PUSH_URL` with `Authorization: Bearer <secret>` | `push_url`, `push_secret` (server key), `push_target` (device token) |
+| **Webhook** | HTTPS POST to the configured callback URL with `subject`/`body` (and optional `signature`) | `webhook_target` (callback URL), `webhook_secret` (signature token) |
 
 ### 4.2 Delivery Log (`notification_logs`)
 
@@ -320,6 +351,9 @@ The service uses GORM auto-migration on boot (`migrate.go`).
 | `push_enabled` | `bool` | Default `false` |
 | `push_target` | `varchar(512)` | Device token |
 | `push_secret` | `varchar(512)` | AES-GCM encrypted push server key |
+| `webhook_enabled` | `bool` | Default `false` |
+| `webhook_target` | `varchar(1024)` | Callback URL |
+| `webhook_secret` | `varchar(512)` | AES-GCM encrypted signature token |
 | `updated_at` | `datetime` | Auto-updated |
 | `updated_by` | `varchar(64)` | User ID of last updater |
 
@@ -328,7 +362,7 @@ The service uses GORM auto-migration on boot (`migrate.go`).
 | Column | Type | Constraints |
 |---|---|---|
 | `id` | `char(36)` | Primary key, UUID |
-| `channel` | `varchar(16)` | Indexed, `telegram` / `email` / `push` |
+| `channel` | `varchar(16)` | Indexed, `telegram` / `email` / `push` / `webhook` |
 | `target` | `varchar(512)` | Destination address |
 | `subject` | `varchar(255)` | Message subject / title |
 | `body` | `text` | Full message body |
@@ -369,7 +403,8 @@ curl -s -X PUT \
   -d '{
     "telegram": { "enabled": true, "target": "123456789", "secret": "123456:ABC-DEF..." },
     "email":    { "enabled": true, "target": "admin@example.com", "secret": "smtp-pass" },
-    "push":     { "enabled": false, "target": "", "secret": "" }
+    "push":     { "enabled": false, "target": "", "secret": "" },
+    "webhook":  { "enabled": false, "target": "", "secret": "" }
   }' \
   $BASE/notifications/settings
 ```
@@ -402,15 +437,22 @@ curl -s -X POST \
   $BASE/notifications/test
 ```
 
-### 8.6 Publish an Alert Event (NATS)
+### 8.7 Post an Inbound Webhook (admin)
 
 ```bash
-nats pub alert.node-1 '{
-  "node_id": "node-1",
-  "metric": "temperature",
-  "severity": "critical",
-  "message": "Temperature exceeded 35°C threshold"
-}'
+# Generic inbound webhook (stored as a webhook delivery)
+curl -s -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"event": "something happened"}' \
+  $BASE/notifications/receive/generic
+
+# Explicit delivery event with channel + target
+curl -s -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"channel": "webhook", "target": "https://example.com/hook", "subject": "External", "body": "payload"}' \
+  $BASE/notifications/receive/delivery
 ```
 
 ---

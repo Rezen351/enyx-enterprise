@@ -12,7 +12,7 @@ from typing import Any
 from .config import settings
 from .control_client import ControlClient
 from .minio_client import MinIOClient
-from .ppo_client import PPOControllerClient
+from .inference_client import ModelControllerClient
 from .telemetry_cache import get_cache
 
 logger = logging.getLogger("model-control")
@@ -93,11 +93,11 @@ def assemble_state() -> list[float]:
     ]
 
 
-class PPOLoop:
+class ControlLoop:
     def __init__(self) -> None:
         self.running = False
         self._thread: threading.Thread | None = None
-        self.ppo = PPOControllerClient()
+        self.rl = ModelControllerClient()
         self.ctrl = ControlClient()
         self.last_schedule_update: float = 0.0
         self.current_D_mist: int = 60
@@ -127,7 +127,7 @@ class PPOLoop:
         state = assemble_state()
         logger.info("state=%s", json.dumps(state, default=str))
 
-        action = self.ppo.predict(state)
+        action = self.rl.predict(state)
         if action:
             self.pending_action = action
 

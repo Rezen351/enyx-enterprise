@@ -121,6 +121,16 @@ func (s *Store) QuerySeriesMulti(ctx context.Context, nodeIDs, metrics []string,
 					}
 				}
 			}
+			// Final fallback: even if no data falls inside any widened window
+			// (the node went inactive long ago), return the most recent available
+			// buckets so the dashboard always renders the last known telemetry
+			// instead of a blank chart — inactive nodes must keep showing their
+			// last data, not disappear.
+			if len(pts) == 0 {
+				if latest, lErr := s.queryLatest(ctx, n, m, discrete, 120); lErr == nil {
+					pts = latest
+				}
+			}
 			perNode[m] = pts
 		}
 		out[n] = perNode
@@ -162,6 +172,48 @@ func (s *Store) queryRange(ctx context.Context, nodeID, metric string, from, to 
 	      WHERE node_id = $1 AND metric = $2 AND ` + timeCol + ` BETWEEN $3 AND $4
 	      ORDER BY ` + timeCol
 	rows, err := s.pool.Query(ctx, q, nodeID, metric, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanSeriesRange(rows)
+}
+
+// queryLatest returns the most recent `limit` buckets for a node/metric
+// regardless of how old they are. It is the last-resort fallback used by
+// QuerySeriesMulti so an inactive node (no data in any widened window) still
+// shows its last known telemetry instead of a blank chart.
+func (s *Store) queryLatest(ctx context.Context, nodeID, metric string, discrete bool, limit int) ([]model.SeriesPoint, error) {
+	if limit <= 0 {
+		limit = 120
+	}
+	if discrete {
+		q := `SELECT t, v FROM (
+		          SELECT time_bucket('1 minute', time) AS t, last(last, time) AS v, time
+		          FROM metrics_rollup
+		          WHERE node_id = $1 AND metric = $2
+		          ORDER BY time DESC
+		          LIMIT $3
+		      ) sub
+		      GROUP BY t, v
+		      ORDER BY t`
+		rows, err := s.pool.Query(ctx, q, nodeID, metric, limit)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		return scanSeries(rows)
+	}
+
+	q := `SELECT ` + "time" + `, last, COALESCE(sum / NULLIF(count, 0), 0), COALESCE(min, 0), COALESCE(max, 0)
+	      FROM (
+	        SELECT * FROM metrics_rollup
+	        WHERE node_id = $1 AND metric = $2
+	        ORDER BY time DESC
+	        LIMIT $3
+	      ) sub
+	      ORDER BY time`
+	rows, err := s.pool.Query(ctx, q, nodeID, metric, limit)
 	if err != nil {
 		return nil, err
 	}

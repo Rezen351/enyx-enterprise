@@ -119,6 +119,69 @@ func (h *Handler) TestSend(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusAccepted, map[string]any{"enqueued": count, "message": "test notification(s) queued for delivery"})
 }
 
+// ReceiveTelegram handles an inbound Telegram update posted to the receive endpoint.
+func (h *Handler) ReceiveTelegram(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "POST required")
+		return
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON")
+		return
+	}
+	b, _ := json.Marshal(payload)
+	_ = h.svc.HandleIncoming(r.Context(), "telegram", "", "Telegram Update", string(b), "", "")
+	respond(w, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
+// ReceiveEmail handles an inbound email webhook posted to the receive endpoint.
+func (h *Handler) ReceiveEmail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "POST required")
+		return
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON")
+		return
+	}
+	b, _ := json.Marshal(payload)
+	_ = h.svc.HandleIncoming(r.Context(), "email", "", "Email Webhook", string(b), "", "")
+	respond(w, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
+// ReceiveGeneric handles an inbound generic webhook posted to the receive endpoint.
+func (h *Handler) ReceiveGeneric(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "POST required")
+		return
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON")
+		return
+	}
+	b, _ := json.Marshal(payload)
+	_ = h.svc.HandleIncoming(r.Context(), "webhook", "", "Incoming Webhook", string(b), "", "")
+	respond(w, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
+// ReceiveDelivery handles an explicit delivery event (webhook.delivery shape).
+func (h *Handler) ReceiveDelivery(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "POST required")
+		return
+	}
+	var ev service.DeliveryEvent
+	if err := json.NewDecoder(r.Body).Decode(&ev); err != nil {
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON")
+		return
+	}
+	_ = h.svc.HandleIncoming(r.Context(), ev.Channel, ev.Target, ev.Subject, ev.Body, ev.AlertID, ev.UserID)
+	respond(w, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
 // ─── Validation ──────────────────────────────────────────────────────────
 
 var (

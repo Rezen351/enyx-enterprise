@@ -18,7 +18,6 @@ type gormModule struct {
 	ID          string    `gorm:"column:id;type:char(36);primaryKey"`
 	Name        string    `gorm:"column:name;type:varchar(100);uniqueIndex;not null"`
 	Description string    `gorm:"column:description;type:varchar(255)"`
-	Config      string    `gorm:"column:config;type:longtext"`
 	CreatedAt   time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt   time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }

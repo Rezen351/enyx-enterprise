@@ -24,6 +24,7 @@ type Repository interface {
 	UpsertDiscovered(ctx context.Context, n *model.Node) (bool, error)
 	UpdateStatus(ctx context.Context, nodeID, status, ip string) error
 	TouchNode(ctx context.Context, nodeID string) error
+	MarkStaleNodesOffline(ctx context.Context, threshold time.Duration) (int64, error)
 	GetNodeByNodeID(ctx context.Context, nodeID string) (*model.Node, error)
 	GetModuleIDByNode(ctx context.Context, nodeID string) (*string, error)
 	ListNodeTags(ctx context.Context, nodeID string) ([]model.NodeTag, error)

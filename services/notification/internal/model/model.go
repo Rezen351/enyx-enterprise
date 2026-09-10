@@ -19,6 +19,9 @@ type NotificationSetting struct {
 	PushEnabled     bool      `gorm:"column:push_enabled;not null;default:false"`
 	PushTarget      string    `gorm:"column:push_target;type:varchar(512)"`
 	PushSecret      string    `gorm:"column:push_secret;type:varchar(512)"`
+	WebhookEnabled  bool      `gorm:"column:webhook_enabled;not null;default:false"`
+	WebhookTarget   string    `gorm:"column:webhook_target;type:varchar(1024)"`
+	WebhookSecret   string    `gorm:"column:webhook_secret;type:varchar(512)"`
 	UpdatedAt       time.Time `gorm:"column:updated_at;autoUpdateTime"`
 	UpdatedBy       string    `gorm:"column:updated_by;type:varchar(64)"`
 }
@@ -43,6 +46,7 @@ type SettingsPatch struct {
 	Telegram ChannelInput `json:"telegram"`
 	Email    ChannelInput `json:"email"`
 	Push     ChannelInput `json:"push"`
+	Webhook  ChannelInput `json:"webhook"`
 }
 
 // SettingsDTO is the API representation of notification settings (no secrets).
@@ -50,6 +54,7 @@ type SettingsDTO struct {
 	Telegram ChannelSettings `json:"telegram"`
 	Email    ChannelSettings `json:"email"`
 	Push     ChannelSettings `json:"push"`
+	Webhook  ChannelSettings `json:"webhook"`
 }
 
 // NotificationLog records every delivery attempt. It never stores secrets; the

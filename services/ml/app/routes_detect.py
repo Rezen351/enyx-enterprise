@@ -120,6 +120,13 @@ def detect_from_stream(payload: DetectFromStream):
     """Run detection on a frame already stored in the ``stream`` MinIO bucket."""
     from app import storage
 
+    if not get_settings().minio_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MinIO is disabled (external mode); upload the image via "
+            "/ml/detect or /ml/detect/base64 instead of referencing a stream key.",
+        )
+
     try:
         raw = storage.download_object(storage_settings_stream_bucket(), payload.object_key)
     except Exception as exc:
