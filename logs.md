@@ -2,6 +2,50 @@
 
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 
+### Perbaikan WiFi Captive Portal AP Mati-Nyala di Firmware Aeroponic Node (2026-09-12)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Analisis akar masalah AP mati-nyala di [`firmware/aeroponic-node/src/protocols/NetworkManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/protocols/NetworkManager.cpp):** ditemukan dua bug utama yang menyebabkan hotspot ESP32 tidak stabil: (a) loop `while(true)` mencoba reconnect tanpa jeda setelah 20× `WiFi.begin()` gagal, sehingga radio WiFi terus di-reset dan mengganggu softAP; (b) penggunaan `WiFi.disconnect(true)` yang berlebihan di mode `WIFI_AP_STA` berpotensi menurunkan AP. |
+| 2 | ✅ | **Perbaikan reconnect delay — [`NetworkManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/protocols/NetworkManager.cpp:~60):** menambahkan `vTaskDelay(5000 / portTICK_PERIOD_MS)` setelah log "WiFi Connect Failed! Retrying in 5 seconds..." agar loop reconnect tidak menabrak radio WiFi berulang kali tanpa henti. |
+| 3 | ✅ | **Perbaikan disconnect sebelum reconnect — [`NetworkManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/protocols/NetworkManager.cpp:~38):** mengganti `WiFi.disconnect(true)` menjadi `WiFi.disconnect(false)` di kedua jalur (WPA2-Enterprise dan WPA2-Personal) agar softAP tidak di-tear-down secara berlebihan saat mode AP_STA. |
+| 4 | ✅ | **Peningkatan observabilitas low-heap restart — [`SystemMonitor.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/SystemMonitor.cpp:~31):** menambahkan logging `Free Heap`, `Min Heap`, dan `Max Alloc` sebelum `ESP.restart()` sehingga kalau hot spot tetap tidak stabil karena kehabisan memori, pengguna bisa mengidentifikasi dari Serial monitor. |
+| 5 | 🟡 | **Verifikasi manual oleh user** — user akan melakukan pengujian manual untuk memastikan AP stabil tidak mati-nyala lagi. |
+
+**Keputusan Teknis:**
+- Root cause "AP mati-nyala" bukanlah error watchdog/brownout, melainkan tight-reconnect loop tanpa backoff yang memaksa WiFi.stack memuat ulang berulang kali sementara softAP harus tetap hidup di `WIFI_AP_STA`.
+- Solusi menerapkan exponential-style backoff minimal (tetap 5s untuk sekarang) + disconnect graceful (`false`) untuk menjaga AP tetap menyala.
+- Jika setelah perbaikan AP masih turun, langkah selanjutnya adalah memindahkan non-WiFi task ke Core 1 dan menambahkan task registration ke TaskWatchdog untuk deteksi watchdog-initiated restart.
+
+---
+
+### Perbaikan UI/UX Loading & Feedback di Firmware Captive Portal (2026-09-12)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Standarisasi loading feedback — [`style.css`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/data/style.css:~223):** menambahkan 2 kelas spinner reusable (`spinner-sm` untuk tombol, `spinner-inline` untuk status) agar semua indikator loading menggunakan animasi spin yang konsisten. |
+| 2 | ✅ | **Helper `setButtonLoading()` — [`script.js`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/data/script.js:~24):** menambahkan fungsi utility untuk mengatur disabled + spinner + teks tombol secara atomik, dipakai oleh login, form submit, scan, discovery, dan import. |
+| 3 | ✅ | **Login loading state — [`script.js`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/data/script.js:~108):** tombol Sign In kini menampilkan spinner + `Loading…` selama autentikasi, dan kembali ke teks asli jika gagal. |
+| 4 | ✅ | **Form submit loading — [`script.js`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/data/script.js:~639-714):** semua `save*()` kini menyetel loading state pada tombol submit sebelum request dan mengembalikannya setelah response, termasuk WiFi, MQTT, Device, RS485, Hardware, dan Account. |
+| 5 | ✅ | **Modbus scanner loading — [`script.js`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/data/script.js:~549-637):** `startScanId()` dan `startScanReg()` menampilkan spinner pada tombol scan selama operasi berlangsung, dengan reset otomatis via `finally`. |
+| 6 | ✅ | **Discovery button loading — [`script.js`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/data/script.js:~217):** mengganti `disabled + innerText` menjadi `setButtonLoading()` agar konsisten dengan pattern umum. |
+| 7 | ✅ | **Status refresh loading — [`script.js`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/data/script.js:~151):** tombol Refresh pada halaman Status sekarang menunjukkan spinner selama `loadStatus()` mengambil data. |
+| 8 | ✅ | **Password field security — [`script.js`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/data/script.js:~238-275):** password fields kini dikosongkan saat load config dan hanya menampilkan placeholder `•••••••• (leave empty to keep current)` untuk mencegah kebocoran kata sandi di UI. |
+| 9 | ✅ | **Konfirmasi destructive actions — [`script.js`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/data/script.js:~322-540):** semua tombol Remove (Input, Output, Modbus sensor/register, I2C sensor) kini memunculkan `confirm()` sebelum menghapus, mencegah kehilangan data secara tidak sengaja. |
+| 10 | ✅ | **Empty states — [`script.js`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/data/script.js:~277-295):** menambahkan `renderEmptyStates()` yang menampilkan pesan ramah jika belum ada Input/Output/Modbus/I2C yang dikonfigurasi, menggantikan area kosong yang tidak jelas. |
+
+**Keputusan Teknis:**
+- Semua loading state menggunakan spinner CSS inline + kelas utility, tidak ada library eksternal, sehingga tidak menambah ukuran binary firmware.
+- Pattern `setButtonLoading()` menyimpan teks asli tombol di `dataset.originalText`, sehingga restore otomatis tanpa hardcode string di setiap caller.
+- Password tidak lagi di-prefill dari API untuk menghindari bocor ke UI; backend tetap menyimpan hash yang benar.
+- Empty state messages disamakan secara UX: jelas, singkat, dan mengarahkan user ke aksi selanjutnya.
+
+**Dampak UX:**
+- User sekarang mendapatkan feedback visual pada setiap aksi yang memakan waktu: login, refresh status, scan Modbus, upload config, dan semua form submit.
+- Tidak ada lagi tombol yang "mengunci" UI tanpa indikasiProgress, sehingga perceived performance meningkat.
+
+---
+
 ### Pembuatan Firmware Simulator Instance 20 (Modbus, AC, SunnyBoy, SunnyIsland) (2026-09-10)
 
 | # | Status | Aktivitas |

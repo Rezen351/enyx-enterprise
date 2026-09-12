@@ -21,6 +21,17 @@ function showMsg(msg, isErr = false) {
     alertTimer = setTimeout(() => box.style.display = 'none', 3000);
 }
 
+function setButtonLoading(btn, loading, text) {
+    if (!btn) return;
+    btn.disabled = loading;
+    if (loading) {
+        btn.dataset.originalText = btn.innerText;
+        btn.innerHTML = '<span class="spinner-sm"></span> Loading…';
+    } else {
+        btn.innerText = text || btn.dataset.originalText || 'Submit';
+    }
+}
+
 async function api(path, method = 'GET', body = null) {
     // Local testing bypass for UI preview without backend
     if (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' || window.location.protocol === 'file:') {
@@ -97,11 +108,15 @@ function checkAuth() {
 async function doLogin() {
     let u = document.getElementById('login_user').value;
     let p = document.getElementById('login_pass').value;
+    let btn = document.querySelector('#login-container button[type="submit"]');
+    setButtonLoading(btn, true, 'Sign In');
     let d = await api('/api/login', 'POST', `user=${u}&pass=${p}`);
     if (d && d.token) {
         token = d.token;
         localStorage.setItem('token', token);
         checkAuth();
+    } else {
+        setButtonLoading(btn, false, 'Sign In');
     }
 }
 
@@ -134,7 +149,10 @@ function formatTime(sec) {
 }
 
 async function loadStatus() {
+    let refreshBtn = document.querySelector('#view-status .card .outline');
+    setButtonLoading(refreshBtn, true, 'Refresh');
     let d = await api('/api/status');
+    setButtonLoading(refreshBtn, false, 'Refresh');
     if (d) {
         let connEl = document.getElementById('stat_conn');
         if (connEl) {
@@ -174,25 +192,23 @@ async function loadStatus() {
             hEl.className = p < 15 ? 'metric-value warn' : 'metric-value';
         }
 
-        // Render MQTT Logs
         let logsContainer = document.getElementById('mqtt_logs_container');
         if (logsContainer && d.mqtt_logs) {
             let validLogs = d.mqtt_logs.filter(log => log !== null && log !== undefined);
             if (validLogs.length === 0) {
-                logsContainer.innerHTML = `<div style="color:var(--text-light); font-style:italic;">No logs captured yet. Send telemetry or toggle outputs to see activity here.</div>`;
+                logsContainer.innerHTML = '<div style="color:var(--text-light); font-style:italic;">No logs captured yet. Send telemetry or toggle outputs to see activity here.</div>';
             } else {
                 logsContainer.innerHTML = validLogs.map(log => {
-                    let color = "#10b981"; // default green
+                    let color = "#10b981";
                     if (log.includes("Pub FAILED") || log.includes("FAILED") || log.includes("failed")) {
-                        color = "#ef4444"; // red
+                        color = "#ef4444";
                     } else if (log.includes("Attempting") || log.includes("rc=")) {
-                        color = "#f59e0b"; // yellow
+                        color = "#f59e0b";
                     } else if (log.includes("Sub Recv:")) {
-                        color = "#3b82f6"; // blue
+                        color = "#3b82f6";
                     }
                     return `<div style="color:${color}; margin-bottom:4px;">${log}</div>`;
                 }).join('');
-                // Auto scroll to bottom
                 logsContainer.scrollTop = logsContainer.scrollHeight;
             }
         }
@@ -201,8 +217,7 @@ async function loadStatus() {
 
 async function sendDiscovery() {
     let btn = document.getElementById('btn_discovery');
-    btn.disabled = true;
-    btn.innerText = "Sending...";
+    setButtonLoading(btn, true, 'Send Discovery Signal');
 
     let d = await api('/api/publish_discovery', 'POST');
     if (d) {
@@ -211,13 +226,9 @@ async function sendDiscovery() {
         } else {
             showMsg(d.message || "Failed to send discovery", true);
         }
-    } else {
-        // Jika d bernilai null, helper api() sudah menampilkan pesan error aslinya (misal "Unauthorized")
-        // Jadi kita tidak perlu menimpanya dengan pesan palsu "MQTT not connected".
     }
 
-    btn.disabled = false;
-    btn.innerText = "Send Discovery Signal";
+    setButtonLoading(btn, false, 'Send Discovery Signal');
 }
 
 async function loadFullConfig() {
@@ -237,16 +248,16 @@ async function loadFullConfig() {
         }
         document.getElementById('cfg_admin_u').value = d.security.admin_user || '';
         document.getElementById('cfg_ssid').value = wifi.ssid || '';
-        document.getElementById('cfg_pass').value = wifi.password || '';
+        document.getElementById('cfg_pass').value = '';
         document.getElementById('cfg_pass').placeholder = wifi.password ? PW_PLACEHOLDER : '';
         document.getElementById('cfg_eap_id').value = wifi.eap_identity || '';
-        document.getElementById('cfg_eap_pass').value = wifi.eap_password || '';
+        document.getElementById('cfg_eap_pass').value = '';
         document.getElementById('cfg_eap_pass').placeholder = wifi.eap_password ? PW_PLACEHOLDER : '';
         document.getElementById('cfg_mqtt_srv').value = mqtt.server || '';
         document.getElementById('cfg_mqtt_port').value = mqtt.port || '';
         document.getElementById('cfg_mqtt_pre').value = mqtt.topic_prefix || '';
         document.getElementById('cfg_mqtt_u').value = mqtt.user || '';
-        document.getElementById('cfg_mqtt_p').value = mqtt.pass || '';
+        document.getElementById('cfg_mqtt_p').value = '';
         document.getElementById('cfg_mqtt_p').placeholder = mqtt.pass ? PW_PLACEHOLDER : '';
         document.getElementById('cfg_mqtt_int').value = mqtt.telemetry_interval_ms || '';
 
@@ -254,8 +265,28 @@ async function loadFullConfig() {
         pwDirty.cfg_eap_pass = false;
         pwDirty.cfg_mqtt_p = false;
 
-        // Render GPIO (inputs/outputs/modbus) + I2C sensors
         renderGpioRows(d.hardware || { inputs: [], outputs: [] });
+        renderEmptyStates();
+    }
+}
+
+function renderEmptyStates() {
+    let inputRows = document.getElementById('input-rows');
+    let outputRows = document.getElementById('output-rows');
+    let modbusRows = document.getElementById('modbus-rows');
+    let i2cRows = document.getElementById('i2c-rows');
+
+    if (inputRows && hwInputs.length === 0 && editInputIdx === -1) {
+        inputRows.innerHTML = '<div style="color:var(--text-light); font-size:13px; padding:12px 0;">No inputs configured. Click "+ Add Input" to add one.</div>';
+    }
+    if (outputRows && hwOutputs.length === 0 && editOutputIdx === -1) {
+        outputRows.innerHTML = '<div style="color:var(--text-light); font-size:13px; padding:12px 0;">No outputs configured. Click "+ Add Output" to add one.</div>';
+    }
+    if (modbusRows && hwModbus.length === 0 && editModbusIdx === -1) {
+        modbusRows.innerHTML = '<div style="color:var(--text-light); font-size:13px; padding:12px 0;">No Modbus sensors configured. Click "+ Add Modbus Sensor" to add one.</div>';
+    }
+    if (i2cRows && hwI2C.length === 0 && editI2CIdx === -1) {
+        i2cRows.innerHTML = '<div style="color:var(--text-light); font-size:13px; padding:12px 0;">No I2C sensors configured. Click "+ Add I2C Sensor" to add one.</div>';
     }
 }
 
@@ -345,7 +376,7 @@ function drawInputs() {
                 </div>
                 <div class="hw-actions">
                     <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editInputIdx=${idx}; drawInputs();">Edit</button>
-                    <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="hwInputs.splice(${idx}, 1); if(editInputIdx==${idx}) editInputIdx=-1; else if(editInputIdx > ${idx}) editInputIdx--; drawInputs();">Remove</button>
+                    <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="if(confirm('Remove this input permanently?')){hwInputs.splice(${idx}, 1); if(editInputIdx==${idx}) editInputIdx=-1; else if(editInputIdx > ${idx}) editInputIdx--; drawInputs();}">Remove</button>
                 </div>
             </div>
             `;
@@ -387,7 +418,7 @@ function drawOutputs() {
                 </div>
                 <div class="hw-actions">
                     <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editOutputIdx=${idx}; drawOutputs();">Edit</button>
-                    <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="hwOutputs.splice(${idx}, 1); if(editOutputIdx==${idx}) editOutputIdx=-1; else if(editOutputIdx > ${idx}) editOutputIdx--; drawOutputs();">Remove</button>
+                    <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="if(confirm('Remove this output permanently?')){hwOutputs.splice(${idx}, 1); if(editOutputIdx==${idx}) editOutputIdx=-1; else if(editOutputIdx > ${idx}) editOutputIdx--; drawOutputs();}">Remove</button>
                 </div>
             </div>
             `;
@@ -427,7 +458,7 @@ function drawModbus() {
                     <select onchange="hwModbus[${idx}].registers[${ridx}].type=this.value" style="flex:1.5; min-width:85px; font-size:12px; padding:6px; margin:0;"><option value="HOLDING" ${r.type === 'HOLDING' ? 'selected' : ''}>HOLDING</option><option value="INPUT" ${r.type === 'INPUT' ? 'selected' : ''}>INPUT</option></select>
                     <input type="text" placeholder="Name" value="${r.name}" onchange="hwModbus[${idx}].registers[${ridx}].name=this.value" style="flex:2; min-width:90px; font-size:12px; padding:6px; margin:0;">
                     <input type="number" step="0.01" placeholder="Mult." value="${r.multiplier}" onchange="hwModbus[${idx}].registers[${ridx}].multiplier=parseFloat(this.value)" style="flex:1; min-width:55px; font-size:12px; padding:6px; margin:0;">
-                    <button class="danger" style="padding:6px 12px; font-size:12px; min-width:40px; text-align:center;" onclick="hwModbus[${idx}].registers.splice(${ridx}, 1); drawModbus();">X</button>
+                    <button class="danger" style="padding:6px 12px; font-size:12px; min-width:40px; text-align:center;" onclick="if(confirm('Remove this register?')){hwModbus[${idx}].registers.splice(${ridx}, 1); drawModbus();}">X</button>
                 </div>`;
             });
 
@@ -443,7 +474,7 @@ function drawModbus() {
                 </div>
                 <div class="hw-actions">
                     <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editModbusIdx=${idx}; drawModbus();">Edit</button>
-                    <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="hwModbus.splice(${idx}, 1); if(editModbusIdx==${idx}) editModbusIdx=-1; else if(editModbusIdx > ${idx}) editModbusIdx--; drawModbus();">Remove</button>
+                    <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="if(confirm('Remove this Modbus sensor permanently?')){hwModbus.splice(${idx}, 1); if(editModbusIdx==${idx}) editModbusIdx=-1; else if(editModbusIdx > ${idx}) editModbusIdx--; drawModbus();}">Remove</button>
                 </div>
             </div>`;
         }
@@ -497,7 +528,7 @@ function drawI2C() {
                 <span class="hw-name">${s.name || 'Unnamed'} (${s.type || '?'}) @ ${s.address || '?'}</span>
                 <div style="display:flex; gap:6px;">
                     <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editI2CIdx=${idx}; drawI2C();">Edit</button>
-                    <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="hwI2C.splice(${idx},1); if(editI2CIdx===${idx}) editI2CIdx=-1; else if(editI2CIdx>${idx}) editI2CIdx--; drawI2C();">Remove</button>
+                    <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="if(confirm('Remove this I2C sensor permanently?')){hwI2C.splice(${idx},1); if(editI2CIdx===${idx}) editI2CIdx=-1; else if(editI2CIdx>${idx}) editI2CIdx--; drawI2C();}">Remove</button>
                 </div>
             </div>`;
         }
@@ -515,8 +546,9 @@ function addI2CSensor() {
 async function startScanId() {
     let baud = document.getElementById('scan_baud').value;
     let resDiv = document.getElementById('scan_results');
-    resDiv.innerHTML = `<div style="color:var(--primary);">Scanning ID 1-247 on ${baud} baud... Please wait (this may take a few minutes).</div>
-                        <button id="cancel_scan_btn" onclick="cancelScanId()" style="margin-top:10px;">Cancel Scan</button>`;
+    let scanBtn = document.getElementById('scan_baud').nextElementSibling;
+    setButtonLoading(scanBtn, true, 'Scan All IDs');
+    resDiv.innerHTML = '<div style="color:var(--primary);">Scanning ID 1-247 on ' + baud + ' baud... Please wait (this may take a few minutes).</div>';
 
     try {
         let res = await fetch('/api/modbus/start_scan', {
@@ -530,6 +562,7 @@ async function startScanId() {
 
         if (!res.ok) {
             resDiv.innerHTML = "<div style='color:var(--danger);'>Failed to start scan or timeout occurred.</div>";
+            setButtonLoading(scanBtn, false, 'Scan All IDs');
             return;
         }
 
@@ -548,6 +581,8 @@ async function startScanId() {
         }
     } catch (e) {
         resDiv.innerHTML = `<div style='color:var(--danger);'>Network error or timeout. Error: ${e.message}</div>`;
+    } finally {
+        setButtonLoading(scanBtn, false, 'Scan All IDs');
     }
 }
 
@@ -556,6 +591,7 @@ async function cancelScanId() {
         let res = await fetch('/api/modbus/cancel_scan', {
             method: 'POST',
             headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
                 'Authorization': 'Bearer ' + token
             }
         });
@@ -577,6 +613,8 @@ async function startScanReg() {
     let end = parseInt(document.getElementById('scan_reg_end').value);
     let type = document.getElementById('scan_type').value;
     let resDiv = document.getElementById('scan_results');
+    let scanRegBtn = document.getElementById('scan_reg_start').nextElementSibling;
+    setButtonLoading(scanRegBtn, true, 'Scan Regs');
     resDiv.innerHTML = `Scanning ${type} registers ${start} to ${end} on ID ${id}...<br>`;
 
     let foundAny = false;
@@ -591,45 +629,60 @@ async function startScanReg() {
         }
     }
     if (!foundAny) resDiv.innerHTML += "<div style='color:var(--danger);'>No valid registers found in range.</div>";
+    setButtonLoading(scanRegBtn, false, 'Scan Regs');
 }
 
 async function saveHardware() {
     if (!confirm('Save hardware config and reboot?')) return;
+    let btn = document.querySelector('#view-gpio button[type="submit"]');
+    setButtonLoading(btn, true, 'Save & Reboot');
     let payload = encodeURIComponent(JSON.stringify({ inputs: hwInputs, outputs: hwOutputs, modbus: hwModbus, sensors: hwI2C }));
     let d = await api('/api/hardware', 'POST', `payload=${payload}`);
+    setButtonLoading(btn, false, 'Save & Reboot');
     if (d) triggerRebootSequence();
 }
 
 async function saveDevice() {
     if (!confirm('Save device config and reboot?')) return;
+    let btn = document.querySelector('#view-device button[type="submit"]');
+    setButtonLoading(btn, true, 'Save & Reboot');
     let v = document.getElementById('cfg_node_id').value;
     let d = await api('/api/device', 'POST', `node_id=${v}`);
+    setButtonLoading(btn, false, 'Save & Reboot');
     if (d) triggerRebootSequence();
 }
 
 async function saveRS485() {
     if (!confirm('Save RS485 config and reboot?')) return;
+    let btn = document.querySelector('#view-modbus button[type="submit"]');
+    setButtonLoading(btn, true, 'Save & Reboot');
     let rx = document.getElementById('cfg_rs485_rx').value;
     let tx = document.getElementById('cfg_rs485_tx').value;
     let de = document.getElementById('cfg_rs485_de').value;
     let body = `rs485_rx=${encodeURIComponent(rx)}&rs485_tx=${encodeURIComponent(tx)}&rs485_de=${encodeURIComponent(de)}`;
     let d = await api('/api/device', 'POST', body);
+    setButtonLoading(btn, false, 'Save & Reboot');
     if (d) triggerRebootSequence();
 }
 
 async function saveWifi() {
     if (!confirm('Save WiFi config and reboot?')) return;
+    let btn = document.querySelector('#view-wifi button[type="submit"]');
+    setButtonLoading(btn, true, 'Save & Reboot');
     let s = document.getElementById('cfg_ssid').value;
     let ei = document.getElementById('cfg_eap_id').value;
     let body = `ssid=${encodeURIComponent(s)}&eap_identity=${encodeURIComponent(ei)}`;
     if (pwDirty.cfg_pass) body += `&pass=${encodeURIComponent(document.getElementById('cfg_pass').value)}`;
     if (pwDirty.cfg_eap_pass) body += `&eap_password=${encodeURIComponent(document.getElementById('cfg_eap_pass').value)}`;
     let d = await api('/api/wifi', 'POST', body);
+    setButtonLoading(btn, false, 'Save & Reboot');
     if (d) triggerRebootSequence();
 }
 
 async function saveMqtt() {
     if (!confirm('Save MQTT config and reboot?')) return;
+    let btn = document.querySelector('#view-mqtt button[type="submit"]');
+    setButtonLoading(btn, true, 'Save & Reboot');
     let s = document.getElementById('cfg_mqtt_srv').value;
     let p = document.getElementById('cfg_mqtt_port').value;
     let pre = document.getElementById('cfg_mqtt_pre').value;
@@ -638,15 +691,19 @@ async function saveMqtt() {
     let body = `server=${encodeURIComponent(s)}&port=${encodeURIComponent(p)}&topic_prefix=${encodeURIComponent(pre)}&user=${encodeURIComponent(u)}&telemetry_interval=${encodeURIComponent(int)}`;
     if (pwDirty.cfg_mqtt_p) body += `&pass=${encodeURIComponent(document.getElementById('cfg_mqtt_p').value)}`;
     let d = await api('/api/mqtt', 'POST', body);
+    setButtonLoading(btn, false, 'Save & Reboot');
     if (d) triggerRebootSequence();
 }
 
 async function saveAccount() {
     if (!confirm('Update admin credentials and reboot?')) return;
+    let btn = document.querySelector('#view-account button[type="submit"]');
+    setButtonLoading(btn, true, 'Update Credentials & Reboot');
     let u = document.getElementById('cfg_admin_u').value;
     let p = document.getElementById('cfg_admin_p').value;
-    if (!u || !p) { showMsg('Cannot be empty', true); return; }
+    if (!u || !p) { showMsg('Cannot be empty', true); setButtonLoading(btn, false, 'Update Credentials & Reboot'); return; }
     let d = await api('/api/account', 'POST', `user=${u}&pass=${p}`);
+    setButtonLoading(btn, false, 'Update Credentials & Reboot');
     if (d) {
         logout();
         triggerRebootSequence();
@@ -781,20 +838,17 @@ async function importConfig() {
     }
 
     let btn = document.getElementById('import_btn');
-    btn.disabled = true;
-    btn.innerText = "Restoring...";
+    setButtonLoading(btn, true, 'Upload & Restore');
 
     let reader = new FileReader();
     reader.onload = async function (e) {
         let contents = e.target.result;
 
-        // Client-side JSON format check
         try {
             JSON.parse(contents);
         } catch (err) {
             showMsg("Invalid file: File must be a valid JSON configuration", true);
-            btn.disabled = false;
-            btn.innerText = "Upload & Restore";
+            setButtonLoading(btn, false, 'Upload & Restore');
             return;
         }
 
@@ -803,8 +857,7 @@ async function importConfig() {
             showMsg("Config imported successfully! Rebooting...");
             setTimeout(() => triggerRebootSequence(true), 1000);
         } else {
-            btn.disabled = false;
-            btn.innerText = "Upload & Restore";
+            setButtonLoading(btn, false, 'Upload & Restore');
         }
     };
     reader.readAsText(file);

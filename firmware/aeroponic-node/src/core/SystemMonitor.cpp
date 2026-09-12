@@ -30,6 +30,8 @@ void SystemMonitor::monitorTask(void* parameter) {
         
         if (ESP.getFreeHeap() < 10000) {
             Logger::system("CRITICAL: Low memory! Restarting...");
+            Logger::system("Free Heap: %d bytes, Min Heap: %d bytes, Max Alloc: %d bytes",
+                ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
             ESP.restart();
         }
 

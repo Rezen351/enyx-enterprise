@@ -35,10 +35,11 @@ void NetworkManager::wifiTask(void* parameter) {
             
             if (Config::WIFI_EAP_IDENTITY.length() > 0) {
                 Logger::network("Using WPA2-Enterprise (Eduroam/Radius) mode...");
-                WiFi.disconnect(true);
+                WiFi.disconnect(false);
                 WiFi.begin(Config::WIFI_SSID, WPA2_AUTH_PEAP, Config::WIFI_EAP_IDENTITY, Config::WIFI_EAP_IDENTITY, Config::WIFI_EAP_PASSWORD);
             } else {
                 Logger::network("Using standard WPA2-Personal mode...");
+                WiFi.disconnect(false);
                 WiFi.begin(Config::WIFI_SSID.c_str(), Config::WIFI_PASS.c_str());
             }
             
@@ -56,6 +57,7 @@ void NetworkManager::wifiTask(void* parameter) {
                 Logger::network("IP Address: %s", WiFi.localIP().toString().c_str());
             } else {
                 Logger::network("WiFi Connect Failed! Retrying in 5 seconds...");
+                vTaskDelay(5000 / portTICK_PERIOD_MS);
             }
         }
 
