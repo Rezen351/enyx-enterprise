@@ -14,7 +14,6 @@ namespace Config {
     // --- Identitas Perangkat ---
     String NODE_ID = "node-01";
     uint8_t PIN_LED_INDICATOR = 2;     // Built-in LED
-    uint8_t PIN_EMERGENCY_STOP = 255;  // 255 = disabled
 
     // --- Konfigurasi WiFi ---
     // Nilai diisi dari config.json via ConfigManager::init()
@@ -40,7 +39,6 @@ namespace Config {
     // --- Topik MQTT Default ---
     String TOPIC_TELEMETRY = MQTT_TOPIC_PREFIX + "/" + NODE_ID + "/telemetry";
     String TOPIC_ACTUATOR = MQTT_TOPIC_PREFIX + "/actuator/" + NODE_ID;
-    String TOPIC_ALERT = MQTT_TOPIC_PREFIX + "/" + NODE_ID + "/alert";
 
     // --- Pin Mapping ---
     uint8_t PIN_DHT_SENSOR = 4;

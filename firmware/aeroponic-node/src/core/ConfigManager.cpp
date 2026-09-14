@@ -152,12 +152,10 @@ bool ConfigManager::loadConfig() {
     // Updating dynamic topics based on potentially new NODE_ID and TOPIC_PREFIX
     Config::TOPIC_TELEMETRY = Config::MQTT_TOPIC_PREFIX + "/" + Config::NODE_ID + "/telemetry";
     Config::TOPIC_ACTUATOR  = Config::MQTT_TOPIC_PREFIX + "/actuator/" + Config::NODE_ID;
-    Config::TOPIC_ALERT = Config::MQTT_TOPIC_PREFIX + "/" + Config::NODE_ID + "/alert";
 
     Logger::config("MQTT Topics:");
     Logger::config("  Telemetry : %s", Config::TOPIC_TELEMETRY.c_str());
     Logger::config("  Actuator  : %s", Config::TOPIC_ACTUATOR.c_str());
-    Logger::config("  Alert     : %s", Config::TOPIC_ALERT.c_str());
 
     // Hardware
     Config::HardwareInputs.clear();

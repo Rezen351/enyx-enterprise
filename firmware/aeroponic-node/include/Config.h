@@ -62,7 +62,6 @@ namespace Config {
     // ==================== IDENTITAS PERANGKAT ====================
     extern String NODE_ID;
     extern uint8_t PIN_LED_INDICATOR;
-    extern uint8_t PIN_EMERGENCY_STOP;
 
     // ==================== KONFIGURASI WIFI ====================
     extern String WIFI_SSID;
@@ -85,7 +84,6 @@ namespace Config {
     // ==================== TOPIK MQTT ====================
     extern String TOPIC_TELEMETRY;
     extern String TOPIC_ACTUATOR;
-    extern String TOPIC_ALERT;
 
     // ==================== PIN MAPPING ====================
     extern uint8_t PIN_DHT_SENSOR;

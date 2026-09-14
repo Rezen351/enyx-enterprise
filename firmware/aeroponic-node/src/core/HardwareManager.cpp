@@ -30,10 +30,6 @@ namespace HardwareManager {
     // State terakhir output
     std::map<String, int> outputStates;
     
-    // Flag interrupt untuk emergency shutdown
-    volatile bool emergencyShutdownTriggered = false;
-    volatile unsigned long lastInterruptTime = 0;
-    
     // MQTT disconnect emergency stop flag
     volatile bool mqttDisconnectEmergencyTriggered = false;
     
@@ -46,22 +42,6 @@ namespace HardwareManager {
     // Pre-allocated static buffers (GAP #9 fix)
     static StaticJsonDocument<8192> doc;
     static char jsonBuffer[8192];
-
-    // ==================== INTERRUPT HANDLER ====================
-    // GAP #11: Interrupt untuk input kritis
-    void IRAM_ATTR emergencyInterruptHandler() {
-        unsigned long now = millis();
-        // Debounce 200ms
-        if (now - lastInterruptTime > 200) {
-            emergencyShutdownTriggered = true;
-            lastInterruptTime = now;
-        }
-    }
-
-    void IRAM_ATTR gpioInterruptHandler() {
-        // Generic interrupt handler — set flag, actual processing in telemetryTask
-        emergencyShutdownTriggered = true;
-    }
 
     // ==================== MQTT DISCONNECT EMERGENCY STOP ====================
     void triggerMqttDisconnectEmergencyStop() {
@@ -90,6 +70,8 @@ namespace HardwareManager {
                 delete kv.second;
             }
             activeOutputHandlers.clear();
+            outputStates.clear();
+            latestSensorValues.clear();
             
             // Re-initialize GPIO pin modes for legacy inputs/outputs
             for (const auto& hw : Config::HardwareInputs) {
@@ -97,15 +79,6 @@ namespace HardwareManager {
                 if (hw.pull == "UP") mode = INPUT_PULLUP;
                 else if (hw.pull == "DOWN") mode = INPUT_PULLDOWN;
                 pinMode(hw.pin, mode);
-
-                if (hw.interrupt != "NONE" && hw.interrupt.length() > 0) {
-                    detachInterrupt(digitalPinToInterrupt(hw.pin));
-                    int intMode = LOW;
-                    if (hw.interrupt == "RISING") intMode = RISING;
-                    else if (hw.interrupt == "FALLING") intMode = FALLING;
-                    else if (hw.interrupt == "CHANGE") intMode = CHANGE;
-                    attachInterrupt(digitalPinToInterrupt(hw.pin), gpioInterruptHandler, intMode);
-                }
             }
 
             // Create handlers for outputs (actuator) via ProtocolRegistry
@@ -249,14 +222,6 @@ namespace HardwareManager {
             digitalWrite(Config::PIN_LED_INDICATOR, LOW);
         }
 
-        // Emergency stop pin (GAP #11)
-        if (Config::PIN_EMERGENCY_STOP != 255) {
-            pinMode(Config::PIN_EMERGENCY_STOP, INPUT_PULLUP);
-            attachInterrupt(digitalPinToInterrupt(Config::PIN_EMERGENCY_STOP),
-                            emergencyInterruptHandler, FALLING);
-            Logger::hardware("Emergency stop interrupt attached");
-        }
-
         // Create Handlers Mutex
         handlersMutex = xSemaphoreCreateMutex();
 
@@ -297,23 +262,6 @@ namespace HardwareManager {
                 }
             }
             
-            // GAP #11: Cek flag interrupt untuk emergency shutdown
-            if (emergencyShutdownTriggered) {
-                emergencyShutdownTriggered = false;
-                Logger::emergency("Shutdown triggered by interrupt!");
-                
-                for (const auto& hw : Config::HardwareOutputs) {
-                    setOutput(hw.name, 0);
-                }
-                
-                // Kirim alert via MQTT
-                String alertPayload = "{\"alert\":\"EMERGENCY_SHUTDOWN\",\"node_id\":\"" 
-                    + Config::NODE_ID + "\",\"uptime_s\":" + String(millis() / 1000) + "}";
-                if (MqttManager::isConnected()) {
-                    MqttManager::publish(Config::TOPIC_ALERT, alertPayload);
-                }
-            }
-            
             doc.clear();
             
             // System Info
@@ -341,10 +289,17 @@ namespace HardwareManager {
             // Sensor Telemetry
             JsonObject telemetry = doc.createNestedObject("telemetry");
             
-            // Outputs telemetry
+            // Outputs telemetry - copy under mutex to avoid race with reloadConfiguration/setOutput
+            std::vector<OutputPin> hwOutputsSnapshot;
+            std::map<String, int> outputStatesSnapshot;
+            if (handlersMutex && xSemaphoreTake(handlersMutex, pdMS_TO_TICKS(4000)) == pdTRUE) {
+                hwOutputsSnapshot = Config::HardwareOutputs;
+                outputStatesSnapshot = outputStates;
+                xSemaphoreGive(handlersMutex);
+            }
             JsonObject outputsObj = telemetry.createNestedObject("outputs");
-            for (const auto& hw : Config::HardwareOutputs) {
-                outputsObj[hw.name] = outputStates[hw.name];
+            for (const auto& hw : hwOutputsSnapshot) {
+                outputsObj[hw.name] = outputStatesSnapshot[hw.name];
             }
             
             // Run all dynamic protocol handlers
@@ -409,17 +364,22 @@ namespace HardwareManager {
     
     // ==================== SET OUTPUT ====================
     bool setOutput(String targetName, int value) {
+        if (!handlersMutex) return false;
+        if (xSemaphoreTake(handlersMutex, pdMS_TO_TICKS(4000)) != pdTRUE) return false;
+        
         auto it = activeOutputHandlers.find(targetName);
         if (it != activeOutputHandlers.end()) {
             it->second->write(value);
             outputStates[targetName] = value;
             Logger::actuator("%s -> %d (via %s handler)",
                 targetName.c_str(), value, it->second->getProtocolName().c_str());
+            xSemaphoreGive(handlersMutex);
             if (telemetryTaskHandle != NULL) {
                 xTaskNotifyGive(telemetryTaskHandle);
             }
             return true;
         }
+        xSemaphoreGive(handlersMutex);
         Logger::actuator("Target '%s' not found in Output Configuration.", targetName.c_str());
         return false;
     }
