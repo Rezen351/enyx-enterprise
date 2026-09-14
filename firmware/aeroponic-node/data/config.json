@@ -11,7 +11,6 @@
   "protocols": {
     "wifi": {
       "ssid": "Aeroponik 1",
-      "password": "12345678",
       "auto_reconnect": true,
       "eap_identity": "",
       "eap_password": ""
@@ -20,8 +19,6 @@
       "server": "192.168.1.103",
       "port": 1883,
       "topic_prefix": "smartfarm",
-      "user": "esp32",
-      "pass": "esp32pass",
       "use_tls": false,
       "telemetry_interval_ms": 5000
     }
@@ -30,15 +27,6 @@
     "inputs": [],
     "outputs": [],
     "modbus": [],
-    "sensors": [
-      {
-        "name": "power_monitor",
-        "protocol": "I2C",
-        "type": "INA219",
-        "address": "0x40",
-        "sda_pin": "21",
-        "scl_pin": "22"
-      }
-    ]
+    "sensors": []
   }
 }

@@ -37,23 +37,23 @@ static bool saveFullConfig() {
     
     JsonObject security = doc.createNestedObject("security");
     security["credentials_encrypted"] = true;
-    security["auth_token"] = CryptoCredential::encrypt(Config::AUTH_TOKEN);
+    security["auth_token"] = Config::AUTH_TOKEN;
     security["admin_user"] = Config::ADMIN_USER;
-    security["admin_pass"] = CryptoCredential::encrypt(Config::ADMIN_PASS);
+    security["admin_pass"] = Config::ADMIN_PASS;
     
     JsonObject protocols = doc.createNestedObject("protocols");
     JsonObject wifi = protocols.createNestedObject("wifi");
     wifi["ssid"]         = Config::WIFI_SSID;
-    wifi["password"]     = CryptoCredential::encrypt(Config::WIFI_PASS);
+    wifi["password"]     = Config::WIFI_PASS;
     wifi["eap_identity"] = Config::WIFI_EAP_IDENTITY;
-    wifi["eap_password"] = CryptoCredential::encrypt(Config::WIFI_EAP_PASSWORD);
+    wifi["eap_password"] = Config::WIFI_EAP_PASSWORD;
     
     JsonObject mqtt = protocols.createNestedObject("mqtt");
     mqtt["server"]               = Config::MQTT_SERVER;
     mqtt["port"]                 = Config::MQTT_PORT;
     mqtt["topic_prefix"]         = Config::MQTT_TOPIC_PREFIX;
     mqtt["user"]                 = Config::MQTT_USER;
-    mqtt["pass"]                 = CryptoCredential::encrypt(Config::MQTT_PASS);
+    mqtt["pass"]                 = Config::MQTT_PASS;
     mqtt["use_tls"]              = Config::MQTT_USE_TLS;
     mqtt["telemetry_interval_ms"]= Config::MQTT_PUBLISH_INTERVAL;
     
@@ -142,7 +142,7 @@ bool WebConfigPortal::checkAuthToken() {
 void WebConfigPortal::startAP() {
     Logger::portal("Starting Captive Portal Access Point...");
     WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
-    String apName = "SmartFarm-" + Config::NODE_ID;
+    String apName = "ENYX-ENTERPRISE-" + Config::NODE_ID;
     WiFi.softAP(apName.c_str());
 
     dnsServer.start(DNS_PORT, "*", apIP);
@@ -183,7 +183,7 @@ void WebConfigPortal::startAP() {
 
     server.begin();
     portalActive = true;
-    Logger::portal("Captive Portal Started at %s. SSID: 'SmartFarm-%s'", apIP.toString().c_str(), Config::NODE_ID.c_str());
+    Logger::portal("Captive Portal Started at %s. SSID: 'ENYX-ENTERPRISE-%s'", apIP.toString().c_str(), Config::NODE_ID.c_str());
 }
 
 void WebConfigPortal::loop() {
@@ -709,13 +709,15 @@ void WebConfigPortal::handleApiConfigExport() {
         if (doc["protocols"]["wifi"]["password"]) doc["protocols"]["wifi"]["password"] = CryptoCredential::decrypt(doc["protocols"]["wifi"]["password"].as<String>());
         if (doc["protocols"]["wifi"]["eap_password"]) doc["protocols"]["wifi"]["eap_password"] = CryptoCredential::decrypt(doc["protocols"]["wifi"]["eap_password"].as<String>());
         if (doc["protocols"]["mqtt"]["pass"]) doc["protocols"]["mqtt"]["pass"] = CryptoCredential::decrypt(doc["protocols"]["mqtt"]["pass"].as<String>());
+        if (doc["protocols"]["mqtt"]["user"]) doc["protocols"]["mqtt"]["user"] = CryptoCredential::decrypt(doc["protocols"]["mqtt"]["user"].as<String>());
     }
 
-    doc.remove("security.admin_pass");
-    doc.remove("security.auth_token");
-    doc.remove("protocols.wifi.password");
-    doc.remove("protocols.wifi.eap_password");
-    doc.remove("protocols.mqtt.pass");
+    doc["security"].remove("admin_pass");
+    doc["security"].remove("auth_token");
+    doc["protocols"]["wifi"].remove("password");
+    doc["protocols"]["wifi"].remove("eap_password");
+    doc["protocols"]["mqtt"].remove("pass");
+    doc["protocols"]["mqtt"].remove("user");
 
     String out;
     serializeJson(doc, out);
@@ -738,6 +740,19 @@ void WebConfigPortal::handleApiConfigImport() {
     DeserializationError error = deserializeJson(doc, payload);
     if (error) {
         server.send(400, "application/json", "{\"error\":\"Invalid JSON format\"}");
+        return;
+    }
+
+    bool hasPlaintextCredential = false;
+    if (doc["security"]["admin_pass"].is<String>() && !doc["security"]["credentials_encrypted"].as<bool>()) hasPlaintextCredential = true;
+    if (doc["security"]["auth_token"].is<String>() && !doc["security"]["credentials_encrypted"].as<bool>()) hasPlaintextCredential = true;
+    if (doc["protocols"]["wifi"]["password"].is<String>() && !doc["security"]["credentials_encrypted"].as<bool>()) hasPlaintextCredential = true;
+    if (doc["protocols"]["wifi"]["eap_password"].is<String>() && !doc["security"]["credentials_encrypted"].as<bool>()) hasPlaintextCredential = true;
+    if (doc["protocols"]["mqtt"]["pass"].is<String>() && !doc["security"]["credentials_encrypted"].as<bool>()) hasPlaintextCredential = true;
+    if (doc["protocols"]["mqtt"]["user"].is<String>() && !doc["security"]["credentials_encrypted"].as<bool>()) hasPlaintextCredential = true;
+
+    if (hasPlaintextCredential) {
+        server.send(400, "application/json", "{\"error\":\"Rejected: imported config contains plaintext credentials. Use the exported config or re-enter credentials via the portal.\"}");
         return;
     }
     

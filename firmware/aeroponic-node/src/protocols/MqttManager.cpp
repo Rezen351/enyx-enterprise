@@ -58,12 +58,11 @@ String MqttManager::getLogsJSON() {
 }
 
 void MqttManager::init() {
-    // GAP #1: Pilih client berdasarkan TLS
     if (Config::MQTT_USE_TLS) {
         if (Config::MQTT_CA_CERT.length() > 0) {
             espClientSecure.setCACert(Config::MQTT_CA_CERT.c_str());
         } else {
-            espClientSecure.setInsecure(); // For testing only (not recommended for production)
+            Logger::mqtt("ERROR: TLS enabled but no CA cert provided.");
         }
         if (Config::MQTT_CLIENT_CERT.length() > 0) {
             espClientSecure.setCertificate(Config::MQTT_CLIENT_CERT.c_str());
@@ -91,7 +90,7 @@ void MqttManager::init() {
         NULL,
         2,
         NULL,
-        0
+        1
     );
 }
 
@@ -141,16 +140,17 @@ void MqttManager::publishDiscovery() {
 }
 
 void MqttManager::mqttTask(void* parameter) {
+    unsigned long lastDiscovery = 0;
+    
     while (true) {
-        TaskWatchdog::heartbeat("MqttTask"); // GAP #5
+        TaskWatchdog::heartbeat("MqttTask");
         
         if (NetworkManager::isConnected()) {
             if (!mqttClient->connected()) {
-                // GAP #18: Track disconnect
                 Logger::mqtt("Connecting to broker...");
                 addLog("Connecting to broker...");
                 
-                String clientId = "SmartFarmNode-" + Config::NODE_ID;
+                String clientId = "enyx-" + Config::NODE_ID;
                 String lwtTopic = Config::MQTT_TOPIC_PREFIX + "/status/" + Config::NODE_ID;
                 String macAsli = WiFi.macAddress();
                 String lwtPayload = "{\"status\":\"offline\",\"mac\":\"" + macAsli + "\"}";
@@ -162,12 +162,12 @@ void MqttManager::mqttTask(void* parameter) {
                         clientId.c_str(), 
                         Config::MQTT_USER.c_str(), 
                         Config::MQTT_PASS.c_str(), 
-                        lwtTopic.c_str(), 0, true, lwtPayload.c_str()
+                        lwtTopic.c_str(), 1, true, lwtPayload.c_str()
                     );
                 } else {
                     connected = mqttClient->connect(
                         clientId.c_str(), "", "",
-                        lwtTopic.c_str(), 0, true, lwtPayload.c_str()
+                        lwtTopic.c_str(), 1, true, lwtPayload.c_str()
                     );
                 }
                 
@@ -175,40 +175,16 @@ void MqttManager::mqttTask(void* parameter) {
                     Logger::mqtt("Connected to broker!");
                     addLog("Connected to broker!");
                     
-                    // Subscribe topics
                     mqttClient->subscribe(Config::TOPIC_ACTUATOR.c_str());
                     Logger::mqtt("Sub: %s", Config::TOPIC_ACTUATOR.c_str());
                     addLog(("Sub: " + Config::TOPIC_ACTUATOR).c_str());
                     
-                    // Publish online status (retained)
                     String onlinePayload = "{\"status\":\"online\",\"mac\":\"" + macAsli + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"fw\":\"" + Config::FW_VERSION + "\"}";
                     mqttClient->publish(lwtTopic.c_str(), onlinePayload.c_str(), true);
                     
-                     // Publish discovery
-                     publishDiscovery();
-
-                     // Publish discovery periodically every 60 seconds
-                     // so that missed discovery messages (e.g. due to
-                     // startup race conditions) are eventually recovered
-                     // by the module service.
-                     xTaskCreatePinnedToCore(
-                         [](void *param) {
-                             while (true) {
-                                 vTaskDelay(60000 / portTICK_PERIOD_MS);
-                                 if (mqttClient != nullptr && mqttClient->connected()) {
-                                     publishDiscovery();
-                                 }
-                             }
-                         },
-                         "DiscoveryPeriodic",
-                         4096,
-                         NULL,
-                         1,
-                         NULL,
-                         0
-                      );
-
-                 } else {
+                    publishDiscovery();
+                    lastDiscovery = millis();
+                } else {
                     int state = mqttClient->state();
                     Logger::mqtt("Conn failed, rc=%d", state);
                     addLog(("Conn failed, rc=" + String(state)).c_str());
@@ -216,6 +192,11 @@ void MqttManager::mqttTask(void* parameter) {
                 }
             } else {
                 mqttClient->loop();
+                
+                if (millis() - lastDiscovery >= 60000) {
+                    lastDiscovery = millis();
+                    publishDiscovery();
+                }
             }
         }
         

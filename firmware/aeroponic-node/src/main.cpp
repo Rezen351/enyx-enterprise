@@ -57,7 +57,7 @@ void checkBootHealth() {
 void setup() {
     Serial.begin(115200);
     delay(500);
-    Logger::init("\n--- SmartFarm Node Initializing ---");
+    Logger::init("\n--- E-Portal Node Initializing ---");
     
     // 0. Check boot health (GAP #8)
     checkBootHealth();

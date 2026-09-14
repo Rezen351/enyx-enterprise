@@ -3,11 +3,11 @@
 static void logPrintf(const char* tag, const char* fmt, va_list args) {
     char buf[256];
     vsnprintf(buf, sizeof(buf), fmt, args);
-    Serial.printf("[%s] %s\n", tag, buf);
+    Serial.printf("[%s] %s\r\n", tag, buf);
 }
 
 static void logPrint(const char* tag, const char* msg) {
-    Serial.printf("[%s] %s\n", tag, msg);
+    Serial.printf("[%s] %s\r\n", tag, msg);
 }
 
 void Logger::boot(const char* fmt, ...) {

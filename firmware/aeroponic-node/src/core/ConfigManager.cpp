@@ -106,8 +106,7 @@ bool ConfigManager::loadConfig() {
             generated += String(esp_random() % 16, HEX);
         }
         Config::ADMIN_PASS = generated;
-        Logger::config("No admin password in config.json. Generated random password: %s",
-                       Config::ADMIN_PASS.c_str());
+        Logger::config("No admin password in config.json. Generated random password.");
         Logger::config("Change it via the Web Portal at your earliest convenience.");
     }
 

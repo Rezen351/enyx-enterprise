@@ -2,72 +2,99 @@
 #include "WebConfigPortal.h"
 #include "../../include/Config.h"
 #include "../../include/Logger.h"
+#include "../core/TaskWatchdog.h"
 #include <WiFi.h>
 
+TaskHandle_t NetworkManager::wifiTaskHandle = NULL;
+volatile bool NetworkManager::wifiConnected = false;
+volatile bool NetworkManager::wifiConnecting = false;
+volatile bool NetworkManager::portalActive = false;
+unsigned long NetworkManager::connectStart = 0;
+bool NetworkManager::wasConnected = false;
+unsigned long NetworkManager::lastReconnectAttempt = 0;
+
+void NetworkManager::wifiTask(void* parameter) {
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.setAutoReconnect(true);
+    WiFi.persistent(true);
+    
+    WebConfigPortal::startAP();
+    portalActive = true;
+    wifiConnected = false;
+    wifiConnecting = false;
+    connectStart = 0;
+    wasConnected = false;
+    lastReconnectAttempt = 0;
+    
+    Logger::network("NetworkManager initialized, waiting for WiFi connection...");
+    
+    while (true) {
+        TaskWatchdog::heartbeat("WiFiTask");
+        
+        if (WiFi.status() == WL_CONNECTED) {
+            if (!wifiConnected) {
+                wifiConnected = true;
+                wifiConnecting = false;
+                connectStart = 0;
+                Logger::network("WiFi Connected! IP: %s", WiFi.localIP().toString().c_str());
+                
+                if (Config::NODE_ID == "" || Config::NODE_ID == "node-01") {
+                    String mac = WiFi.macAddress();
+                    mac.replace(":", "");
+                    Config::NODE_ID = mac;
+                    Logger::network("NODE_ID updated: %s", Config::NODE_ID.c_str());
+                }
+            }
+            wasConnected = true;
+        } else {
+            if (wifiConnected) {
+                Logger::network("WiFi disconnected!");
+                wifiConnected = false;
+            }
+            
+            if (!wifiConnecting && (millis() - lastReconnectAttempt > 5000 || lastReconnectAttempt == 0)) {
+                wifiConnecting = true;
+                connectStart = millis();
+                lastReconnectAttempt = millis();
+                Logger::network("Reconnecting to WiFi: %s", Config::WIFI_SSID.c_str());
+                
+                if (Config::WIFI_EAP_IDENTITY.length() > 0) {
+                    WiFi.begin(Config::WIFI_SSID, WPA2_AUTH_PEAP, Config::WIFI_EAP_IDENTITY, "", Config::WIFI_EAP_PASSWORD);
+                } else {
+                    WiFi.begin(Config::WIFI_SSID.c_str(), Config::WIFI_PASS.c_str());
+                }
+            }
+            
+            if (wifiConnecting && (millis() - connectStart > 10000)) {
+                Logger::network("WiFi connect timeout, will retry in 5s...");
+                WiFi.disconnect(false);
+                wifiConnecting = false;
+                lastReconnectAttempt = 0;
+                vTaskDelay(5000 / portTICK_PERIOD_MS);
+                continue;
+            }
+        }
+        
+        if (portalActive) {
+            WebConfigPortal::loop();
+        }
+        
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+    }
+}
+
 void NetworkManager::init() {
-    // Keep WiFi task running independently to ensure reconnects don't block the main loop
     xTaskCreatePinnedToCore(
-        NetworkManager::wifiTask,
+        wifiTask,
         "WiFiTask",
-        8192, // Increased stack for WebServer
+        8192,
         NULL,
-        2, // Higher priority for network
-        NULL,
+        2,
+        &wifiTaskHandle,
         0
     );
 }
 
 bool NetworkManager::isConnected() {
-    return WiFi.status() == WL_CONNECTED;
-}
-
-void NetworkManager::wifiTask(void* parameter) {
-    // Enable dual mode: Access Point & Station
-    WiFi.mode(WIFI_AP_STA);
-    
-    // Always start Captive Portal on boot
-    WebConfigPortal::startAP();
-    bool portalStarted = true;
-    
-    while (true) {
-        if (WiFi.status() != WL_CONNECTED) {
-            Logger::network("Connecting to WiFi: %s", Config::WIFI_SSID.c_str());
-            
-            if (Config::WIFI_EAP_IDENTITY.length() > 0) {
-                Logger::network("Using WPA2-Enterprise (Eduroam/Radius) mode...");
-                WiFi.disconnect(false);
-                WiFi.begin(Config::WIFI_SSID, WPA2_AUTH_PEAP, Config::WIFI_EAP_IDENTITY, Config::WIFI_EAP_IDENTITY, Config::WIFI_EAP_PASSWORD);
-            } else {
-                Logger::network("Using standard WPA2-Personal mode...");
-                WiFi.disconnect(false);
-                WiFi.begin(Config::WIFI_SSID.c_str(), Config::WIFI_PASS.c_str());
-            }
-            
-            int retries = 0;
-            while (WiFi.status() != WL_CONNECTED && retries < 20) {
-                vTaskDelay(500 / portTICK_PERIOD_MS);
-                WebConfigPortal::loop();
-                Serial.print(".");
-                retries++;
-            }
-            Serial.println();
-            
-            if (WiFi.status() == WL_CONNECTED) {
-                Logger::network("WiFi Connected!");
-                Logger::network("IP Address: %s", WiFi.localIP().toString().c_str());
-            } else {
-                Logger::network("WiFi Connect Failed! Retrying in 5 seconds...");
-                vTaskDelay(5000 / portTICK_PERIOD_MS);
-            }
-        }
-
-        
-        if (portalStarted) {
-            WebConfigPortal::loop();
-            vTaskDelay(10 / portTICK_PERIOD_MS); // Yield to other tasks
-        } else {
-            // Wait 5 seconds before checking connection again if not in AP mode
-            vTaskDelay(5000 / portTICK_PERIOD_MS);
-        }
-    }
+    return wifiConnected;
 }
