@@ -1,5 +1,6 @@
 #include "ProtocolHandlers.h"
 #include "HardwareManager.h"
+#include "../protocols/MqttManager.h"
 #include "../../include/Config.h"
 #include "../../include/Logger.h"
 
@@ -148,6 +149,13 @@ bool GPIOInputHandler::read(JsonObject& telemetry) {
         val = dval;
     }
     HardwareManager::latestSensorValues[name] = val;
+    String logMsg = "[";
+    logMsg += String(millis() / 1000);
+    logMsg += "s] GPIO ";
+    logMsg += name;
+    logMsg += "=";
+    logMsg += String(val, 1);
+    MqttManager::addLog(logMsg.c_str());
     return true;
 }
 
@@ -190,6 +198,8 @@ bool ModbusHandler::init(const JsonObject& config) {
         rc.name = r["name"].as<String>();
         rc.multiplier = r["multiplier"] | 1.0f;
         rc.type = r["type"] | "HOLDING";
+        rc.length = r["length"] | 1;
+        rc.data_type = r["data_type"] | "UINT16";
         registers.push_back(rc);
     }
     return true;
@@ -206,7 +216,7 @@ bool ModbusHandler::read(JsonObject& telemetry) {
         if (HardwareManager::currentBaud != baudrate) {
             Serial2.end();
             vTaskDelay(100 / portTICK_PERIOD_MS);
-            Serial2.begin(baudrate, SERIAL_8N1, Config::PIN_RS485_RX, Config::PIN_RS485_TX);
+            Serial2.begin(baudrate, Config::parityToSerialConfig(Config::PARITY), Config::PIN_RS485_RX, Config::PIN_RS485_TX);
             vTaskDelay(300 / portTICK_PERIOD_MS);
             HardwareManager::currentBaud = baudrate;
         }
@@ -214,17 +224,48 @@ bool ModbusHandler::read(JsonObject& telemetry) {
         
         for (const auto& reg : registers) {
             uint8_t result;
+            uint8_t regCount = (reg.length > 0 && reg.length <= 4) ? reg.length : 1;
+            
             if (reg.type == "INPUT") {
-                result = HardwareManager::node.readInputRegisters(reg.address, 1);
+                result = HardwareManager::node.readInputRegisters(reg.address, regCount);
             } else {
-                result = HardwareManager::node.readHoldingRegisters(reg.address, 1);
+                result = HardwareManager::node.readHoldingRegisters(reg.address, regCount);
             }
             
             if (result == HardwareManager::node.ku8MBSuccess) {
-                float val = HardwareManager::node.getResponseBuffer(0) * reg.multiplier;
+                float val = 0.0f;
+                
+                if (reg.data_type == "FLOAT32" && regCount >= 2) {
+                    uint32_t combined = ((uint32_t)HardwareManager::node.getResponseBuffer(0) << 16) |
+                                        HardwareManager::node.getResponseBuffer(1);
+                    val = *((float*)&combined);
+                } else if (reg.data_type == "INT32" && regCount >= 2) {
+                    int32_t combined = ((int32_t)HardwareManager::node.getResponseBuffer(0) << 16) |
+                                       HardwareManager::node.getResponseBuffer(1);
+                    val = (float)combined;
+                } else if (reg.data_type == "UINT32" && regCount >= 2) {
+                    uint32_t combined = ((uint32_t)HardwareManager::node.getResponseBuffer(0) << 16) |
+                                        HardwareManager::node.getResponseBuffer(1);
+                    val = (float)combined;
+                } else if (reg.data_type == "INT16") {
+                    val = (float)((int16_t)HardwareManager::node.getResponseBuffer(0));
+                } else {
+                    val = (float)HardwareManager::node.getResponseBuffer(0);
+                }
+                
+                val = val * reg.multiplier;
                 modbusDev[reg.name] = val;
                 HardwareManager::latestSensorValues[name + "_" + reg.name] = val;
                 HardwareManager::latestSensorValues[reg.name] = val;
+                String logMsg = "[";
+                logMsg += String(millis() / 1000);
+                logMsg += "s] MODBUS ";
+                logMsg += name;
+                logMsg += ".";
+                logMsg += reg.name;
+                logMsg += "=";
+                logMsg += String(val, 1);
+                MqttManager::addLog(logMsg.c_str());
             }
             vTaskDelay(10 / portTICK_PERIOD_MS);
         }
@@ -329,6 +370,17 @@ bool I2CHandler::read(JsonObject& telemetry) {
         HardwareManager::latestSensorValues[name + "_current"] = current;
         HardwareManager::latestSensorValues[name + "_power"] = power;
         HardwareManager::latestSensorValues[name] = current;
+        
+        String logMsg = "[";
+        logMsg += String(millis() / 1000);
+        logMsg += "s] I2C ";
+        logMsg += name;
+        logMsg += " ";
+        logMsg += String(current, 0);
+        logMsg += "mA ";
+        logMsg += String(busVoltage, 1);
+        logMsg += "V";
+        MqttManager::addLog(logMsg.c_str());
     } else if (type == "BME280" && bme) {
         float temp = bme->getTemperature();
         float humid = bme->getHumidity();
@@ -338,6 +390,17 @@ bool I2CHandler::read(JsonObject& telemetry) {
         HardwareManager::latestSensorValues[name + "_temp"] = temp;
         HardwareManager::latestSensorValues[name + "_humidity"] = humid;
         HardwareManager::latestSensorValues[name] = temp;
+        
+        String logMsg = "[";
+        logMsg += String(millis() / 1000);
+        logMsg += "s] I2C ";
+        logMsg += name;
+        logMsg += " ";
+        logMsg += String(temp, 1);
+        logMsg += "C ";
+        logMsg += String(humid, 0);
+        logMsg += "%";
+        MqttManager::addLog(logMsg.c_str());
     } else if (type == "DHT12") {
         Wire.beginTransmission(address);
         Wire.write(0);
@@ -358,6 +421,17 @@ bool I2CHandler::read(JsonObject& telemetry) {
                     HardwareManager::latestSensorValues[name + "_temp"] = temperature;
                     HardwareManager::latestSensorValues[name + "_humidity"] = humidity;
                     HardwareManager::latestSensorValues[name] = temperature;
+                    
+                    String logMsg = "[";
+                    logMsg += String(millis() / 1000);
+                    logMsg += "s] I2C ";
+                    logMsg += name;
+                    logMsg += " ";
+                    logMsg += String(temperature, 1);
+                    logMsg += "C ";
+                    logMsg += String(humidity, 0);
+                    logMsg += "%";
+                    MqttManager::addLog(logMsg.c_str());
                 } else {
                     devObj["error"] = "checksum_error";
                 }
@@ -394,6 +468,15 @@ bool OneWireHandler::read(JsonObject& telemetry) {
     
     HardwareManager::latestSensorValues[name + "_temp"] = mockTemp;
     HardwareManager::latestSensorValues[name] = mockTemp;
+    
+    String logMsg = "[";
+    logMsg += String(millis() / 1000);
+    logMsg += "s] 1WIRE ";
+    logMsg += name;
+    logMsg += " ";
+    logMsg += String(mockTemp, 1);
+    logMsg += "C";
+    MqttManager::addLog(logMsg.c_str());
     return true;
 }
 
@@ -419,5 +502,13 @@ bool SPIHandler::read(JsonObject& telemetry) {
     devObj["value"] = mockVal;
     
     HardwareManager::latestSensorValues[name] = mockVal;
+    
+    String logMsg = "[";
+    logMsg += String(millis() / 1000);
+    logMsg += "s] SPI ";
+    logMsg += name;
+    logMsg += "=";
+    logMsg += String(mockVal, 1);
+    MqttManager::addLog(logMsg.c_str());
     return true;
 }

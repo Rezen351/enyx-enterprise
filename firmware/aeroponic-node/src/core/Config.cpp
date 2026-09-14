@@ -48,13 +48,13 @@ namespace Config {
     uint8_t PIN_RS485_RX = 16;
     uint8_t PIN_RS485_TX = 17;
     uint8_t PIN_RS485_DE = 255; // 255 = Not Connected (Auto RS485 module)
+    uint8_t PARITY = 0; // 0 = None, 1 = Even, 2 = Odd
 
     // --- Universal Hardware Pins ---
     std::vector<InputPin> HardwareInputs;
     std::vector<OutputPin> HardwareOutputs;
     std::vector<ModbusSensor> HardwareModbus;
     std::vector<GenericSensor> HardwareSensors;
-    std::vector<LocalControlRule> LocalControlRules;
 
     // --- Interval Waktu (ms) ---
     uint32_t SENSOR_READ_INTERVAL = 5000;

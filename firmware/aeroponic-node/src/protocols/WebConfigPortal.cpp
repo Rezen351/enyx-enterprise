@@ -1,6 +1,7 @@
 #include "WebConfigPortal.h"
 #include "../core/ConfigManager.h"
 #include "../core/HardwareManager.h"
+#include "../core/CryptoCredential.h"
 #include "../../include/Config.h"
 #include "../../include/Logger.h"
 #include <WiFi.h>
@@ -35,23 +36,23 @@ static bool saveFullConfig() {
     device["fw_version"] = Config::FW_VERSION;
     
     JsonObject security = doc.createNestedObject("security");
-    security["auth_token"] = Config::AUTH_TOKEN;
+    security["auth_token"] = CryptoCredential::encrypt(Config::AUTH_TOKEN);
     security["admin_user"] = Config::ADMIN_USER;
-    security["admin_pass"] = Config::ADMIN_PASS;
+    security["admin_pass"] = CryptoCredential::encrypt(Config::ADMIN_PASS);
     
     JsonObject protocols = doc.createNestedObject("protocols");
     JsonObject wifi = protocols.createNestedObject("wifi");
     wifi["ssid"]         = Config::WIFI_SSID;
-    wifi["password"]     = Config::WIFI_PASS;
+    wifi["password"]     = CryptoCredential::encrypt(Config::WIFI_PASS);
     wifi["eap_identity"] = Config::WIFI_EAP_IDENTITY;
-    wifi["eap_password"] = Config::WIFI_EAP_PASSWORD;
+    wifi["eap_password"] = CryptoCredential::encrypt(Config::WIFI_EAP_PASSWORD);
     
     JsonObject mqtt = protocols.createNestedObject("mqtt");
     mqtt["server"]               = Config::MQTT_SERVER;
     mqtt["port"]                 = Config::MQTT_PORT;
     mqtt["topic_prefix"]         = Config::MQTT_TOPIC_PREFIX;
     mqtt["user"]                 = Config::MQTT_USER;
-    mqtt["pass"]                 = Config::MQTT_PASS;
+    mqtt["pass"]                 = CryptoCredential::encrypt(Config::MQTT_PASS);
     mqtt["use_tls"]              = Config::MQTT_USE_TLS;
     mqtt["telemetry_interval_ms"]= Config::MQTT_PUBLISH_INTERVAL;
     
@@ -92,6 +93,8 @@ static bool saveFullConfig() {
             reg["name"]       = r.name;
             reg["multiplier"] = r.multiplier;
             reg["type"]       = r.type;
+            reg["length"]     = r.length;
+            reg["data_type"]  = r.data_type;
         }
     }
 
@@ -109,17 +112,7 @@ static bool saveFullConfig() {
     doc["hardware"]["rs485_rx"] = Config::PIN_RS485_RX;
     doc["hardware"]["rs485_tx"] = Config::PIN_RS485_TX;
     doc["hardware"]["rs485_de"] = Config::PIN_RS485_DE;
-
-    JsonArray localControl = doc.createNestedArray("local_control");
-    for (const auto& rule : Config::LocalControlRules) {
-        JsonObject r = localControl.createNestedObject();
-        r["name"]           = rule.name;
-        r["input_sensor"]   = rule.inputSensor;
-        r["output_target"]  = rule.outputTarget;
-        r["threshold_high"] = rule.thresholdHigh;
-        r["threshold_low"]  = rule.thresholdLow;
-        r["enabled"]        = rule.enabled;
-    }
+    doc["hardware"]["rs485_parity"] = Config::PARITY;
     
     String out;
     serializeJson(doc, out);
@@ -172,6 +165,7 @@ void WebConfigPortal::startAP() {
     server.on("/api/modbus/start_scan", HTTP_POST, handleApiModbusStartScan);
     server.on("/api/modbus/cancel_scan", HTTP_POST, handleApiModbusCancelScan);
     server.on("/api/modbus/scan_reg", HTTP_GET, handleApiModbusScanReg);
+    server.on("/api/modbus/scan_reg_batch", HTTP_POST, handleApiModbusScanRegBatch);
     server.on("/api/account", HTTP_POST, handleApiAccountPost);
     server.on("/api/status", HTTP_GET, handleApiStatusGet);
     server.on("/api/ota", HTTP_POST, handleApiOtaUpdate, handleApiOtaUpload);
@@ -179,8 +173,6 @@ void WebConfigPortal::startAP() {
     server.on("/api/config/export", HTTP_GET, handleApiConfigExport);
     server.on("/api/config/import", HTTP_POST, handleApiConfigImport);
     server.on("/api/telemetry/latest", HTTP_GET, handleApiTelemetryLatest); // GAP #12
-    server.on("/api/local_control", HTTP_POST, handleApiLocalControlPost); // Local Control Rules
-    server.on("/api/local_control", HTTP_GET, handleApiLocalControlGet);   // Get Local Control Rules
     
     server.on("/api/root/health", HTTP_GET, []() {
         server.send(200, "application/json", "{\"status\":\"alive\",\"uptime_s\":" + String(millis()/1000) + "}");
@@ -298,67 +290,7 @@ void WebConfigPortal::handleApiStatusGet() {
     server.send(200, "application/json", out);
 }
 
-// ==================== LOCAL CONTROL HANDLERS ====================
-void WebConfigPortal::handleApiLocalControlGet() {
-    if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
-    
-    StaticJsonDocument<2048> doc;
-    JsonArray rules = doc.createNestedArray("local_control");
-    for (const auto& rule : Config::LocalControlRules) {
-        JsonObject r = rules.createNestedObject();
-        r["name"] = rule.name;
-        r["input_sensor"] = rule.inputSensor;
-        r["output_target"] = rule.outputTarget;
-        r["threshold_high"] = rule.thresholdHigh;
-        r["threshold_low"] = rule.thresholdLow;
-        r["enabled"] = rule.enabled;
-    }
-    
-    String out;
-    serializeJson(doc, out);
-    server.send(200, "application/json", out);
-}
-
-void WebConfigPortal::handleApiLocalControlPost() {
-    if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
-    
-    if (!server.hasArg("payload")) {
-        server.send(400, "application/json", "{\"error\":\"Missing payload\"}");
-        return;
-    }
-    
-    DynamicJsonDocument pdoc(2048);
-    DeserializationError err = deserializeJson(pdoc, server.arg("payload"));
-    if (err || !pdoc.is<JsonObject>()) {
-        server.send(400, "application/json", "{\"error\":\"Invalid JSON format\"}");
-        return;
-    }
-    
-    if (pdoc["local_control"].is<JsonArray>()) {
-        Config::LocalControlRules.clear();
-        for (JsonObject r : pdoc["local_control"].as<JsonArray>()) {
-            Config::LocalControlRule rule;
-            rule.name = r["name"].as<String>(); rule.name.trim();
-            rule.inputSensor = r["input_sensor"].as<String>(); rule.inputSensor.trim();
-            rule.outputTarget = r["output_target"].as<String>(); rule.outputTarget.trim();
-            rule.thresholdHigh = r["threshold_high"].as<float>();
-            rule.thresholdLow = r["threshold_low"].as<float>();
-            rule.enabled = r["enabled"].as<bool>();
-            Config::LocalControlRules.push_back(rule);
-        }
-        
-        if (saveFullConfig()) {
-            server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true,\"message\":\"Local control rules updated. Rebooting...\"}");
-            delay(1000);
-            ESP.restart();
-        } else {
-            server.send(500, "application/json", "{\"error\":\"Failed to save config\"}");
-        }
-    } else {
-        server.send(400, "application/json", "{\"error\":\"Missing 'local_control' array in payload\"}");
-    }
-}
-
+// Local Control feature removed
 void WebConfigPortal::handleApiFullConfigGet() {
     if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
     
@@ -422,6 +354,8 @@ void WebConfigPortal::handleApiFullConfigGet() {
             reg["name"]       = r.name;
             reg["multiplier"] = r.multiplier;
             reg["type"]       = r.type;
+            reg["length"]     = r.length;
+            reg["data_type"]  = r.data_type;
         }
     }
 
@@ -429,6 +363,7 @@ void WebConfigPortal::handleApiFullConfigGet() {
     doc["hardware"]["rs485_rx"] = Config::PIN_RS485_RX;
     doc["hardware"]["rs485_tx"] = Config::PIN_RS485_TX;
     doc["hardware"]["rs485_de"] = Config::PIN_RS485_DE;
+    doc["hardware"]["rs485_parity"] = Config::PARITY;
     
     // Sensors (I2C / 1-Wire / SPI)
     JsonArray sensors = doc["hardware"].createNestedArray("sensors");
@@ -441,17 +376,7 @@ void WebConfigPortal::handleApiFullConfigGet() {
         }
     }
 
-    // Local Control Rules
-    JsonArray localControl = doc.createNestedArray("local_control");
-    for (const auto& rule : Config::LocalControlRules) {
-        JsonObject r = localControl.createNestedObject();
-        r["name"]           = rule.name;
-        r["input_sensor"]   = rule.inputSensor;
-        r["output_target"]  = rule.outputTarget;
-        r["threshold_high"] = rule.thresholdHigh;
-        r["threshold_low"]  = rule.thresholdLow;
-        r["enabled"]        = rule.enabled;
-    }
+    // Local Control Rules removed - feature no longer supported
     
     String out;
     serializeJson(doc, out);
@@ -500,6 +425,7 @@ void WebConfigPortal::handleApiDevicePost() {
     if (server.hasArg("rs485_rx")) { Config::PIN_RS485_RX = server.arg("rs485_rx").toInt(); }
     if (server.hasArg("rs485_tx")) { Config::PIN_RS485_TX = server.arg("rs485_tx").toInt(); }
     if (server.hasArg("rs485_de")) { Config::PIN_RS485_DE = server.arg("rs485_de").toInt(); }
+    if (server.hasArg("rs485_parity")) { Config::PARITY = server.arg("rs485_parity").toInt(); }
 
     if (saveFullConfig()) {
         server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true,\"message\":\"Device config updated. Rebooting...\"}");
@@ -560,6 +486,8 @@ void WebConfigPortal::handleApiHardwarePost() {
                             reg.name = regj["name"].as<String>(); reg.name.trim();
                             reg.multiplier = regj["multiplier"].as<float>();
                             reg.type = regj["type"].as<String>(); reg.type.trim();
+                            reg.length = regj["length"].as<uint8_t>();
+                            reg.data_type = regj["data_type"].as<String>(); reg.data_type.trim();
                             ms.registers.push_back(reg);
                         }
                     }
@@ -600,13 +528,37 @@ void WebConfigPortal::handleApiHardwarePost() {
 void WebConfigPortal::handleApiModbusStartScan() {
     if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
     
-    if (server.hasArg("baud")) {
-        uint32_t baud = server.arg("baud").toInt();
-        String jsonResult = HardwareManager::runFullScanSync(baud);
-        String response = "{\"status\":\"completed\",\"found_ids\":" + jsonResult + "}";
-        return server.send(200, "application/json", response);
+    std::vector<uint32_t> bauds;
+    if (server.hasArg("bauds")) {
+        String baudsStr = server.arg("bauds");
+        baudsStr.trim();
+        while (baudsStr.length() > 0) {
+            int comma = baudsStr.indexOf(',');
+            String part;
+            if (comma >= 0) {
+                part = baudsStr.substring(0, comma);
+                baudsStr = baudsStr.substring(comma + 1);
+            } else {
+                part = baudsStr;
+                baudsStr = "";
+            }
+            part.trim();
+            if (part.length() > 0) {
+                bauds.push_back((uint32_t)part.toInt());
+            }
+        }
     }
-    server.send(400, "application/json", "{\"error\":\"Missing baud\"}");
+    if (bauds.empty() && server.hasArg("baud")) {
+        bauds.push_back((uint32_t)server.arg("baud").toInt());
+    }
+    if (bauds.empty()) {
+        server.send(400, "application/json", "{\"error\":\"Missing baud/bauds\"}");
+        return;
+    }
+    
+    String jsonResult = HardwareManager::runFullScanSync(bauds);
+    String response = "{\"status\":\"completed\",\"found_ids\":" + jsonResult + "}";
+    return server.send(200, "application/json", response);
 }
 
 void WebConfigPortal::handleApiModbusCancelScan() {
@@ -624,9 +576,35 @@ void WebConfigPortal::handleApiModbusScanReg() {
         uint16_t reg = server.arg("scan_reg").toInt();
         String type = server.arg("type");
         type.trim();
+        uint8_t length = server.hasArg("length") ? (uint8_t)server.arg("length").toInt() : 1;
+        if (length == 0) length = 1;
+        if (length > 4) length = 4;
         bool success = false;
-        uint16_t val = HardwareManager::scanModbusReg(id, baud, reg, type, success);
-        String json = "{\"reg\":" + String(reg) + ",\"success\":" + (success ? "true" : "false") + ",\"val\":" + String(val) + "}";
+        uint16_t val = HardwareManager::scanModbusReg(id, baud, reg, type, length, success);
+        String json = "{\"reg\":" + String(reg) + ",\"length\":" + String(length) + ",\"success\":" + (success ? "true" : "false") + ",\"val\":" + String(val) + "}";
+        return server.send(200, "application/json", json);
+    }
+    
+    server.send(400, "application/json", "{\"error\":\"Invalid parameters\"}");
+}
+
+void WebConfigPortal::handleApiModbusScanRegBatch() {
+    if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+    
+    if (server.hasArg("id") && server.hasArg("baud") && server.hasArg("type") && 
+        server.hasArg("start_reg") && server.hasArg("end_reg")) {
+        uint8_t id = server.arg("id").toInt();
+        uint32_t baud = server.arg("baud").toInt();
+        uint16_t startReg = server.arg("start_reg").toInt();
+        uint16_t endReg = server.arg("end_reg").toInt();
+        String type = server.arg("type");
+        type.trim();
+        uint8_t length = server.hasArg("length") ? (uint8_t)server.arg("length").toInt() : 1;
+        if (length == 0) length = 1;
+        if (length > 4) length = 4;
+        if (endReg < startReg) endReg = startReg;
+        String result = HardwareManager::scanModbusRegBatch(id, baud, startReg, endReg, type, length);
+        String json = "{\"status\":\"completed\",\"results\":" + result + "}";
         return server.send(200, "application/json", json);
     }
     
@@ -711,9 +689,37 @@ void WebConfigPortal::handleApiConfigExport() {
         server.send(500, "application/json", "{\"error\":\"Failed to open config.json\"}");
         return;
     }
-    server.sendHeader("Content-Disposition", "attachment; filename=config.json");
-    server.streamFile(file, "application/json");
+
+    String contents = file.readString();
     file.close();
+
+    DynamicJsonDocument doc(8192);
+    DeserializationError err = deserializeJson(doc, contents);
+    if (err) {
+        server.send(500, "application/json", "{\"error\":\"Failed to parse config.json\"}");
+        return;
+    }
+
+    bool encrypted = doc["security"]["credentials_encrypted"] | false;
+
+    if (encrypted) {
+        if (doc["security"]["admin_pass"]) doc["security"]["admin_pass"] = CryptoCredential::decrypt(doc["security"]["admin_pass"].as<String>());
+        if (doc["security"]["auth_token"]) doc["security"]["auth_token"] = CryptoCredential::decrypt(doc["security"]["auth_token"].as<String>());
+        if (doc["protocols"]["wifi"]["password"]) doc["protocols"]["wifi"]["password"] = CryptoCredential::decrypt(doc["protocols"]["wifi"]["password"].as<String>());
+        if (doc["protocols"]["wifi"]["eap_password"]) doc["protocols"]["wifi"]["eap_password"] = CryptoCredential::decrypt(doc["protocols"]["wifi"]["eap_password"].as<String>());
+        if (doc["protocols"]["mqtt"]["pass"]) doc["protocols"]["mqtt"]["pass"] = CryptoCredential::decrypt(doc["protocols"]["mqtt"]["pass"].as<String>());
+    }
+
+    doc.remove("security.admin_pass");
+    doc.remove("security.auth_token");
+    doc.remove("protocols.wifi.password");
+    doc.remove("protocols.wifi.eap_password");
+    doc.remove("protocols.mqtt.pass");
+
+    String out;
+    serializeJson(doc, out);
+    server.sendHeader("Content-Disposition", "attachment; filename=config.json");
+    server.send(200, "application/json", out);
 }
 
 void WebConfigPortal::handleApiConfigImport() {

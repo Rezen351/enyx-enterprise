@@ -65,40 +65,6 @@ namespace HardwareManager {
         scanCancelRequested = true;
     }
 
-    // ==================== LOCAL CONTROL EVALUATION ====================
-    // GAP #7: Edge control & histeresis
-    float getSensorValueByName(const String& name) {
-        auto it = latestSensorValues.find(name);
-        if (it != latestSensorValues.end()) {
-            return it->second;
-        }
-        return NAN;
-    }
-
-    void evaluateLocalControl() {
-        for (const auto& rule : Config::LocalControlRules) {
-            if (!rule.enabled) continue;
-            
-            float sensorValue = getSensorValueByName(rule.inputSensor);
-            if (isnan(sensorValue)) continue;
-            
-            int currentOutput = outputStates[rule.outputTarget];
-            
-            if (currentOutput == 0 && sensorValue > rule.thresholdHigh) {
-                setOutput(rule.outputTarget, 1);
-                Logger::control("%s -> %s ON (%.1f > %.1f)",
-                    rule.name.c_str(), rule.outputTarget.c_str(),
-                    sensorValue, rule.thresholdHigh);
-            }
-            else if (currentOutput == 1 && sensorValue < rule.thresholdLow) {
-                setOutput(rule.outputTarget, 0);
-                Logger::control("%s -> %s OFF (%.1f < %.1f)",
-                    rule.name.c_str(), rule.outputTarget.c_str(),
-                    sensorValue, rule.thresholdLow);
-            }
-        }
-    }
-
     // ==================== RELOAD CONFIGURATION ====================
     void reloadConfiguration() {
         if (!handlersMutex) return;
@@ -185,6 +151,8 @@ namespace HardwareManager {
                     reg["name"] = r.name;
                     reg["multiplier"] = r.multiplier;
                     reg["type"] = r.type;
+                    reg["length"] = r.length;
+                    reg["data_type"] = r.data_type;
                 }
                 
                 ProtocolHandler* h = ProtocolRegistry::createHandler("MODBUS", obj);
@@ -371,8 +339,7 @@ namespace HardwareManager {
                 xSemaphoreGive(handlersMutex);
             }
             
-            // GAP #7: Evaluate local control rules
-            evaluateLocalControl();
+            // GAP #7: Edge control removed - local control rules are no longer supported
             
             // Publish via MQTT
             memset(jsonBuffer, 0, sizeof(jsonBuffer));
@@ -383,6 +350,36 @@ namespace HardwareManager {
                 MqttManager::publish(Config::TOPIC_TELEMETRY, latestTelemetryJson);
                 stats.lastMqttConnected = millis();
                 stats.publishCount++;
+            }
+            
+            String sysLog = "[";
+            sysLog += String(millis() / 1000);
+            sysLog += "s] Sys: heap=";
+            sysLog += String(ESP.getFreeHeap() / 1024);
+            sysLog += "KB rssi=";
+            sysLog += String(WiFi.RSSI());
+            sysLog += "dBm mqtt=";
+            sysLog += MqttManager::isConnected() ? "ON" : "OFF";
+            MqttManager::addLog(sysLog.c_str());
+            
+            if (!latestSensorValues.empty()) {
+                String sensorLog = "[";
+                sensorLog += String(millis() / 1000);
+                sensorLog += "s] Sensors: ";
+                int count = 0;
+                for (auto& kv : latestSensorValues) {
+                    if (count >= 2) break;
+                    if (count > 0) sensorLog += ", ";
+                    sensorLog += kv.first;
+                    sensorLog += "=";
+                    sensorLog += String(kv.second, 1);
+                    count++;
+                }
+                if (latestSensorValues.size() > 2) {
+                    sensorLog += " +";
+                    sensorLog += String(latestSensorValues.size() - 2);
+                }
+                MqttManager::addLog(sensorLog.c_str());
             }
             
             // LED indikator (GAP #18)
@@ -412,53 +409,89 @@ namespace HardwareManager {
     }
 
     // ==================== MODBUS SCAN (GAP #6: dengan watchdog feed) ====================
-    String runFullScanSync(uint32_t baud) {
+    String runFullScanSync(const std::vector<uint32_t>& bauds) {
         String scanResultsJson = "[";
         bool firstFound = true;
         scanCancelRequested = false;
         
         if (xSemaphoreTake(modbusMutex, portMAX_DELAY) == pdTRUE) {
-            Serial2.end();
-            vTaskDelay(100 / portTICK_PERIOD_MS);
-            Serial2.begin(baud, SERIAL_8N1, Config::PIN_RS485_RX, Config::PIN_RS485_TX);
-            vTaskDelay(300 / portTICK_PERIOD_MS);
-            currentBaud = baud;
-            
-            Logger::modbus("================================");
-            Logger::modbus("STARTING MODBUS SCAN ON %d BAUD", baud);
-            Logger::modbus("================================");
-            
-            for (uint16_t id = 1; id <= 247; id++) {
-                if (scanCancelRequested) {
-                    Logger::modbus("SCAN CANCELLED BY USER");
-                    break;
-                }
-                esp_task_wdt_reset();
-                TaskWatchdog::heartbeat("TelemetryTask");
+            for (size_t bi = 0; bi < bauds.size(); bi++) {
+                uint32_t baud = bauds[bi];
+                Serial2.end();
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+                Serial2.begin(baud, Config::parityToSerialConfig(Config::PARITY), Config::PIN_RS485_RX, Config::PIN_RS485_TX);
+                vTaskDelay(300 / portTICK_PERIOD_MS);
+                currentBaud = baud;
                 
-                Logger::modbus("Checking Slave ID %d ...", id);
-                node.begin(id, Serial2);
-                uint8_t result = node.readHoldingRegisters(0, 1);
+                Logger::modbus("================================");
+                Logger::modbus("STARTING MODBUS SCAN ON %d BAUD", baud);
+                Logger::modbus("================================");
                 
-                if (result == node.ku8MBSuccess) {
-                    Logger::modbus("FOUND");
-                    Logger::modbus("Register0 = %d", node.getResponseBuffer(0));
-                    if (!firstFound) scanResultsJson += ",";
-                    scanResultsJson += String(id);
-                    firstFound = false;
-                } else if (result >= node.ku8MBIllegalFunction && result <= node.ku8MBSlaveDeviceFailure) {
-                    Logger::modbus("FOUND (Exception)");
-                    if (!firstFound) scanResultsJson += ",";
-                    scanResultsJson += String(id);
-                    firstFound = false;
-                } else {
-                    Logger::modbus("No Response (%d)", result);
+                for (uint16_t id = 1; id <= 247; id++) {
+                    if (scanCancelRequested) {
+                        Logger::modbus("SCAN CANCELLED BY USER");
+                        xSemaphoreGive(modbusMutex);
+                        scanResultsJson += "]";
+                        scanCancelRequested = false;
+                        return scanResultsJson;
+                    }
+                    esp_task_wdt_reset();
+                    TaskWatchdog::heartbeat("TelemetryTask");
+                    
+                    bool found = false;
+                    for (int attempt = 0; attempt < 2 && !found; attempt++) {
+                        if (attempt > 0) {
+                            Logger::modbus("Retrying ID %d ...", id);
+                            vTaskDelay(100 / portTICK_PERIOD_MS);
+                        }
+                        for (uint16_t reg = 0; reg <= 2 && !found; reg++) {
+                            node.begin(id, Serial2);
+                            uint8_t result = node.readHoldingRegisters(reg, 1);
+                            if (result == node.ku8MBSuccess) {
+                                Logger::modbus("FOUND (HOLDING reg %d)", reg);
+                                found = true;
+                                break;
+                            } else if (result >= node.ku8MBIllegalFunction && result <= node.ku8MBSlaveDeviceFailure) {
+                                Logger::modbus("FOUND (Exception on HOLDING reg %d)", reg);
+                                found = true;
+                                break;
+                            }
+                            vTaskDelay(10 / portTICK_PERIOD_MS);
+                        }
+                        if (found) break;
+                        for (uint16_t reg = 0; reg <= 2 && !found; reg++) {
+                            node.begin(id, Serial2);
+                            uint8_t result = node.readInputRegisters(reg, 1);
+                            if (result == node.ku8MBSuccess) {
+                                Logger::modbus("FOUND (INPUT reg %d)", reg);
+                                found = true;
+                                break;
+                            } else if (result >= node.ku8MBIllegalFunction && result <= node.ku8MBSlaveDeviceFailure) {
+                                Logger::modbus("FOUND (Exception on INPUT reg %d)", reg);
+                                found = true;
+                                break;
+                            }
+                            vTaskDelay(10 / portTICK_PERIOD_MS);
+                        }
+                    }
+                    
+                    if (found) {
+                        if (!firstFound) scanResultsJson += ",";
+                        scanResultsJson += "{\"id\":";
+                        scanResultsJson += String(id);
+                        scanResultsJson += ",\"baud\":";
+                        scanResultsJson += String(baud);
+                        scanResultsJson += "}";
+                        firstFound = false;
+                    } else {
+                        Logger::modbus("No Response (ID %d)", id);
+                    }
+                    vTaskDelay(50 / portTICK_PERIOD_MS);
                 }
-                vTaskDelay(50 / portTICK_PERIOD_MS);
+                Logger::modbus("================================");
+                Logger::modbus("SCAN COMPLETE FOR %d BAUD", baud);
+                Logger::modbus("================================");
             }
-            Logger::modbus("================================");
-            Logger::modbus("SCAN COMPLETE");
-            Logger::modbus("================================");
             xSemaphoreGive(modbusMutex);
         }
         
@@ -467,22 +500,22 @@ namespace HardwareManager {
         return scanResultsJson;
     }
     
-    uint16_t scanModbusReg(uint8_t id, uint32_t baud, uint16_t reg, String type, bool& success) {
+    uint16_t scanModbusReg(uint8_t id, uint32_t baud, uint16_t reg, String type, uint8_t length, bool& success) {
         if (xSemaphoreTake(modbusMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
             if (currentBaud != baud) {
             Serial2.end();
             vTaskDelay(100 / portTICK_PERIOD_MS);
-            Serial2.begin(baud, SERIAL_8N1, Config::PIN_RS485_RX, Config::PIN_RS485_TX);
+            Serial2.begin(baud, Config::parityToSerialConfig(Config::PARITY), Config::PIN_RS485_RX, Config::PIN_RS485_TX);
             vTaskDelay(300 / portTICK_PERIOD_MS);
             currentBaud = baud;
             }
-            Logger::modbus("Scanning %s Register %d on ID %d (Baud: %d)...", type.c_str(), reg, id, baud);
+            Logger::modbus("Scanning %s Register %d (length=%d) on ID %d (Baud: %d)...", type.c_str(), reg, length, id, baud);
             node.begin(id, Serial2);
             uint8_t result;
             if (type == "INPUT") {
-                result = node.readInputRegisters(reg, 1);
+                result = node.readInputRegisters(reg, length);
             } else {
-                result = node.readHoldingRegisters(reg, 1);
+                result = node.readHoldingRegisters(reg, length);
             }
             uint16_t val = 0;
             if (result == node.ku8MBSuccess) {
@@ -499,5 +532,50 @@ namespace HardwareManager {
         Logger::modbus("FAILED (Could not take Modbus Mutex)");
         success = false;
         return 0;
+    }
+    
+    String scanModbusRegBatch(uint8_t id, uint32_t baud, uint16_t startReg, uint16_t endReg, String type, uint8_t length) {
+        String resultJson = "[";
+        bool first = true;
+        
+        if (xSemaphoreTake(modbusMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
+            if (currentBaud != baud) {
+                Serial2.end();
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+                Serial2.begin(baud, Config::parityToSerialConfig(Config::PARITY), Config::PIN_RS485_RX, Config::PIN_RS485_TX);
+                vTaskDelay(300 / portTICK_PERIOD_MS);
+                currentBaud = baud;
+            }
+            node.begin(id, Serial2);
+            
+            for (uint16_t reg = startReg; reg <= endReg; reg++) {
+                esp_task_wdt_reset();
+                TaskWatchdog::heartbeat("TelemetryTask");
+                
+                bool success = false;
+                uint16_t val = 0;
+                uint8_t result;
+                if (type == "INPUT") {
+                    result = node.readInputRegisters(reg, length);
+                } else {
+                    result = node.readHoldingRegisters(reg, length);
+                }
+                if (result == node.ku8MBSuccess) {
+                    success = true;
+                    val = node.getResponseBuffer(0);
+                    Logger::modbus("Batch Reg %d = %d", reg, val);
+                } else {
+                    Logger::modbus("Batch Reg %d FAILED (Error %d)", reg, result);
+                }
+                
+                if (!first) resultJson += ",";
+                resultJson += "{\"reg\":" + String(reg) + ",\"success\":" + (success ? "true" : "false") + ",\"val\":" + String(val) + "}";
+                first = false;
+                vTaskDelay(20 / portTICK_PERIOD_MS);
+            }
+            xSemaphoreGive(modbusMutex);
+        }
+        resultJson += "]";
+        return resultJson;
     }
 }

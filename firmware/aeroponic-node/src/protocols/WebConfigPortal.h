@@ -9,6 +9,7 @@ public:
     static void loop();
 private:
     static void handleRoot();
+    static void handleNotFound();
     static void handleApiLogin();
     static void handleApiFullConfigGet();
     static void handleApiWifiPost();
@@ -18,6 +19,7 @@ private:
     static void handleApiModbusStartScan();
     static void handleApiModbusCancelScan();
     static void handleApiModbusScanReg();
+    static void handleApiModbusScanRegBatch();
     static void handleApiAccountPost();
     static void handleApiStatusGet();
     static void handleApiOtaUpdate();
@@ -27,9 +29,6 @@ private:
     static void handleApiConfigImport();
     static void handleApiTelemetryLatest();
     static void handleApiHardwareDiscover();
-    static void handleApiLocalControlGet();
-    static void handleApiLocalControlPost();
-    static void handleNotFound();
     
     static bool checkAuthToken();
     static String generateToken();

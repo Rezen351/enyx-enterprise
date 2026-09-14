@@ -241,21 +241,6 @@ bool ConfigManager::loadConfig() {
         Config::PIN_RS485_DE = doc["hardware"]["rs485_de"].as<uint8_t>();
     }
 
-    // Local Control Rules
-    Config::LocalControlRules.clear();
-    if (doc["local_control"].is<JsonArray>()) {
-        for (JsonObject r : doc["local_control"].as<JsonArray>()) {
-            Config::LocalControlRule rule;
-            rule.name         = r["name"].as<String>(); rule.name.trim();
-            rule.inputSensor  = r["input_sensor"].as<String>(); rule.inputSensor.trim();
-            rule.outputTarget = r["output_target"].as<String>(); rule.outputTarget.trim();
-            rule.thresholdHigh= r["threshold_high"].as<float>();
-            rule.thresholdLow = r["threshold_low"].as<float>();
-            rule.enabled      = r["enabled"] | true;
-            Config::LocalControlRules.push_back(rule);
-        }
-    }
-
     return true;
 }
 

@@ -14,12 +14,12 @@ public:
     static void publishDiscovery();
     static std::vector<String> getLogs();
     static String getLogsJSON();
+    static void addLog(const char* logMsg);
     
 private:
     static void mqttTask(void* parameter);
     static void mqttCallback(char* topic, byte* payload, unsigned int length);
     static std::vector<String> mqttLogs;
-    static void addLog(const char* logMsg);
 };
 
 #endif // MQTT_MANAGER_H

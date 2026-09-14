@@ -32,6 +32,8 @@ namespace Config {
         String name;
         float multiplier;
         String type; // "HOLDING", "INPUT"
+        uint8_t length;      // jumlah register (1 atau 2)
+        String data_type;    // "UINT16", "INT16", "FLOAT32", "INT32", "UINT32"
     };
 
     struct ModbusSensor {
@@ -45,17 +47,6 @@ namespace Config {
         String name;
         String protocol;
         std::map<String, String> params;
-    };
-
-    // ==================== LOCAL CONTROL RULE ====================
-    
-    struct LocalControlRule {
-        String name;                    // "overheat_protection"
-        String inputSensor;             // "s_atas_temp"
-        String outputTarget;            // "cooling_fan"
-        float thresholdHigh;            // 30.0 -> ON
-        float thresholdLow;             // 25.0 -> OFF (hysteresis)
-        bool enabled;                   // false = skip
     };
 
     // ==================== FIRMWARE VERSION ====================
@@ -102,13 +93,21 @@ namespace Config {
     extern uint8_t PIN_RS485_RX;
     extern uint8_t PIN_RS485_TX;
     extern uint8_t PIN_RS485_DE;
+    extern uint8_t PARITY;
+
+    inline SerialConfig parityToSerialConfig(uint8_t p) {
+        switch (p) {
+            case 1: return SERIAL_8E1;
+            case 2: return SERIAL_8O1;
+            default: return SERIAL_8N1;
+        }
+    }
 
     // ==================== UNIVERSAL HARDWARE PINS ====================
     extern std::vector<InputPin> HardwareInputs;
     extern std::vector<OutputPin> HardwareOutputs;
     extern std::vector<ModbusSensor> HardwareModbus;
     extern std::vector<GenericSensor> HardwareSensors;
-    extern std::vector<LocalControlRule> LocalControlRules;
 
     // ==================== INTERVAL WAKTU (ms) ====================
     extern uint32_t SENSOR_READ_INTERVAL;

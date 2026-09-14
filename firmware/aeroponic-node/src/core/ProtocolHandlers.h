@@ -84,6 +84,8 @@ private:
         String name;
         float multiplier;
         String type;
+        uint8_t length;
+        String data_type;
     };
     std::vector<RegisterConfig> registers;
 public:

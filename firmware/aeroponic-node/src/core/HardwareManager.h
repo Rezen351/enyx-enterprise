@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <map>
+#include <vector>
 #include <ModbusMaster.h>
 
 namespace HardwareManager {
@@ -16,10 +17,11 @@ namespace HardwareManager {
     void init();
     void telemetryTask(void* parameter);
     bool setOutput(String targetName, int value);
-    uint16_t scanModbusReg(uint8_t id, uint32_t baud, uint16_t reg, String type, bool& success);
+    uint16_t scanModbusReg(uint8_t id, uint32_t baud, uint16_t reg, String type, uint8_t length, bool& success);
+    String scanModbusRegBatch(uint8_t id, uint32_t baud, uint16_t startReg, uint16_t endReg, String type, uint8_t length);
     
     // Synchronous Scan ID
-    String runFullScanSync(uint32_t baud);
+    String runFullScanSync(const std::vector<uint32_t>& bauds);
     void requestScanCancel();
 
     // Dynamic configuration and discovery
