@@ -36,6 +36,7 @@ static bool saveFullConfig() {
     device["fw_version"] = Config::FW_VERSION;
     
     JsonObject security = doc.createNestedObject("security");
+    security["credentials_encrypted"] = true;
     security["auth_token"] = CryptoCredential::encrypt(Config::AUTH_TOKEN);
     security["admin_user"] = Config::ADMIN_USER;
     security["admin_pass"] = CryptoCredential::encrypt(Config::ADMIN_PASS);

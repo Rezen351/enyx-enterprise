@@ -3,6 +3,7 @@
 #include "../include/Logger.h"
 #include "core/SystemMonitor.h"
 #include "core/ConfigManager.h"
+#include "core/CryptoCredential.h"
 #include "core/HardwareManager.h"
 #include "core/TaskWatchdog.h"
 #include "protocols/NetworkManager.h"
@@ -63,6 +64,9 @@ void setup() {
     
     // 0. Initialize TaskWatchdog (GAP #5)
     TaskWatchdog::init();
+    
+    // 0. Initialize CryptoCredential before loading config
+    CryptoCredential::init();
     
     // 0. Initialize Configuration from LittleFS
     ConfigManager::init();

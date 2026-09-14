@@ -457,12 +457,14 @@ function drawModbus() {
                     <input type="number" placeholder="Addr" value="${r.address}" onchange="hwModbus[${idx}].registers[${ridx}].address=parseInt(this.value)" style="flex:1; min-width:60px; font-size:12px; padding:6px; margin:0;">
                     <select onchange="hwModbus[${idx}].registers[${ridx}].type=this.value" style="flex:1.5; min-width:85px; font-size:12px; padding:6px; margin:0;"><option value="HOLDING" ${r.type === 'HOLDING' ? 'selected' : ''}>HOLDING</option><option value="INPUT" ${r.type === 'INPUT' ? 'selected' : ''}>INPUT</option></select>
                     <input type="text" placeholder="Name" value="${r.name}" onchange="hwModbus[${idx}].registers[${ridx}].name=this.value" style="flex:2; min-width:90px; font-size:12px; padding:6px; margin:0;">
+                    <select onchange="hwModbus[${idx}].registers[${ridx}].length=parseInt(this.value)" style="flex:1; min-width:65px; font-size:12px; padding:6px; margin:0;" title="Register count"><option value="1" ${(r.length||1) == 1 ? 'selected' : ''}>1 reg</option><option value="2" ${(r.length||1) == 2 ? 'selected' : ''}>2 regs</option><option value="3" ${(r.length||1) == 3 ? 'selected' : ''}>3 regs</option><option value="4" ${(r.length||1) == 4 ? 'selected' : ''}>4 regs</option></select>
+                    <select onchange="hwModbus[${idx}].registers[${ridx}].data_type=this.value" style="flex:1.5; min-width:90px; font-size:12px; padding:6px; margin:0;" title="Data format"><option value="UINT16" ${(r.data_type||'UINT16') === 'UINT16' ? 'selected' : ''}>UINT16</option><option value="INT16" ${(r.data_type||'UINT16') === 'INT16' ? 'selected' : ''}>INT16</option><option value="FLOAT32" ${(r.data_type||'UINT16') === 'FLOAT32' ? 'selected' : ''}>FLOAT32</option><option value="INT32" ${(r.data_type||'UINT16') === 'INT32' ? 'selected' : ''}>INT32</option><option value="UINT32" ${(r.data_type||'UINT16') === 'UINT32' ? 'selected' : ''}>UINT32</option></select>
                     <input type="number" step="0.01" placeholder="Mult." value="${r.multiplier}" onchange="hwModbus[${idx}].registers[${ridx}].multiplier=parseFloat(this.value)" style="flex:1; min-width:55px; font-size:12px; padding:6px; margin:0;">
                     <button class="danger" style="padding:6px 12px; font-size:12px; min-width:40px; text-align:center;" onclick="if(confirm('Remove this register?')){hwModbus[${idx}].registers.splice(${ridx}, 1); drawModbus();}">X</button>
                 </div>`;
             });
 
-            html += `<button class="outline" style="font-size:12px; padding:4px 8px;" onclick="hwModbus[${idx}].registers.push({address:0, type:'HOLDING', name:'new_reg', multiplier:1.0}); drawModbus();">+ Reg</button>
+            html += `<button class="outline" style="font-size:12px; padding:4px 8px;" onclick="hwModbus[${idx}].registers.push({address:0, type:'HOLDING', name:'new_reg', length:1, data_type:'UINT16', multiplier:1.0}); drawModbus();">+ Reg</button>
                 </div>
                 <button style="margin-top:10px; background:#10b981; border-color:#10b981;" onclick="editModbusIdx=-1; drawModbus();">Done</button>
             </div>`;
@@ -544,11 +546,18 @@ function addI2CSensor() {
 
 // Scanner logic
 async function startScanId() {
-    let baud = document.getElementById('scan_baud').value;
+    let baudChecks = document.querySelectorAll('input[id^="scan_baud_"]:checked');
+    let bauds = Array.from(baudChecks).map(cb => cb.value);
     let resDiv = document.getElementById('scan_results');
-    let scanBtn = document.getElementById('scan_baud').nextElementSibling;
+    let scanBtn = document.querySelector('button[onclick="startScanId()"]');
+    
+    if (bauds.length === 0) {
+        resDiv.innerHTML = "<div style='color:var(--danger);'>Please select at least one baudrate.</div>";
+        return;
+    }
+    
     setButtonLoading(scanBtn, true, 'Scan All IDs');
-    resDiv.innerHTML = '<div style="color:var(--primary);">Scanning ID 1-247 on ' + baud + ' baud... Please wait (this may take a few minutes).</div>';
+    resDiv.innerHTML = `<div style="color:var(--primary);">Scanning ID 1-247 on ${bauds.join(', ')} baud... Please wait (this may take a few minutes).</div>`;
 
     try {
         let res = await fetch('/api/modbus/start_scan', {
@@ -557,7 +566,7 @@ async function startScanId() {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'Authorization': 'Bearer ' + token
             },
-            body: `baud=${baud}`
+            body: `bauds=${bauds.join(',')}`
         });
 
         if (!res.ok) {
@@ -571,8 +580,8 @@ async function startScanId() {
             let ids = data.found_ids || [];
             if (ids.length > 0) {
                 resDiv.innerHTML = `<div style="color:var(--success);"><strong>Scan Complete. Found ${ids.length} devices:</strong><br>`;
-                ids.forEach(id => {
-                    resDiv.innerHTML += `✅ Slave ID ${id} at ${baud} baud<br>`;
+                ids.forEach(item => {
+                    resDiv.innerHTML += `✅ Slave ID ${item.id} at ${item.baud} baud<br>`;
                 });
                 resDiv.innerHTML += "</div>";
             } else {
@@ -608,28 +617,49 @@ async function cancelScanId() {
 
 async function startScanReg() {
     let id = document.getElementById('scan_id').value;
-    let baud = document.getElementById('scan_baud').value;
+    let baudChecks = document.querySelectorAll('input[id^="scan_baud_"]:checked');
+    let baud = baudChecks.length > 0 ? baudChecks[0].value : '9600';
     let start = parseInt(document.getElementById('scan_reg_start').value);
     let end = parseInt(document.getElementById('scan_reg_end').value);
     let type = document.getElementById('scan_type').value;
+    let length = parseInt(document.getElementById('scan_length').value) || 1;
     let resDiv = document.getElementById('scan_results');
-    let scanRegBtn = document.getElementById('scan_reg_start').nextElementSibling;
+    let scanRegBtn = document.querySelector('button[onclick="startScanReg()"]');
     setButtonLoading(scanRegBtn, true, 'Scan Regs');
-    resDiv.innerHTML = `Scanning ${type} registers ${start} to ${end} on ID ${id}...<br>`;
+    resDiv.innerHTML = `Batch scanning ${type} registers ${start} to ${end} on ID ${id} at ${baud} baud...<br>`;
 
-    let foundAny = false;
-    for (let i = start; i <= end; i++) {
-        let res = await fetch(`/api/modbus/scan_reg?scan_reg=${i}&id=${id}&baud=${baud}&type=${type}`, { headers: { 'Authorization': 'Bearer ' + token } });
-        if (res.ok) {
-            let data = await res.json();
-            if (data.success) {
-                resDiv.innerHTML += `<div style="color:var(--success);">✅ Reg ${i}: Value = ${data.val}</div>`;
-                foundAny = true;
-            }
+    try {
+        let body = `id=${id}&baud=${baud}&type=${type}&start_reg=${start}&end_reg=${end}&length=${length}`;
+        let res = await fetch('/api/modbus/scan_reg_batch', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': 'Bearer ' + token
+            },
+            body: body
+        });
+
+        if (!res.ok) {
+            resDiv.innerHTML += "<div style='color:var(--danger);'>Failed to start batch scan.</div>";
+            return;
         }
+
+        let data = await res.json();
+        if (data.status === "completed" && data.results) {
+            let foundAny = false;
+            data.results.forEach(item => {
+                if (item.success) {
+                    resDiv.innerHTML += `<div style="color:var(--success);">✅ Reg ${item.reg}: Value = ${item.val}</div>`;
+                    foundAny = true;
+                }
+            });
+            if (!foundAny) resDiv.innerHTML += "<div style='color:var(--danger);'>No valid registers found in range.</div>";
+        }
+    } catch (e) {
+        resDiv.innerHTML += `<div style='color:var(--danger);'>Error: ${e.message}</div>`;
+    } finally {
+        setButtonLoading(scanRegBtn, false, 'Scan Regs');
     }
-    if (!foundAny) resDiv.innerHTML += "<div style='color:var(--danger);'>No valid registers found in range.</div>";
-    setButtonLoading(scanRegBtn, false, 'Scan Regs');
 }
 
 async function saveHardware() {

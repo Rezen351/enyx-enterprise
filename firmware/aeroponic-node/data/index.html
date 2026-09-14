@@ -261,11 +261,13 @@
                     <h3 style="margin-top:0;">Modbus Scanner Tool</h3>
                     <div class="form-group"
                         style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px;">
-                        <div style="flex: 1 1 120px;"><label>Baudrate (For Both Scans)</label><select id="scan_baud">
-                                <option value="4800">4800</option>
-                                <option value="9600" selected>9600</option>
-                                <option value="19200">19200</option>
-                            </select></div>
+                        <div style="flex: 1 1 100%;"><label>Baudrates (select one or more)</label>
+                            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:6px;">
+                                <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:normal;"><input type="checkbox" id="scan_baud_4800" value="4800"> 4800</label>
+                                <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:normal;"><input type="checkbox" id="scan_baud_9600" value="9600" checked> 9600</label>
+                                <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:normal;"><input type="checkbox" id="scan_baud_19200" value="19200"> 19200</label>
+                            </div>
+                        </div>
                         <div style="flex: 1 1 120px;"><button onclick="startScanId()"
                                 style="width:100%; height:42px; background-color:#111; border-color:#111; color:#fff; margin:0;"
                                 type="button">Scan
@@ -283,6 +285,12 @@
                                 value="0" min="0" max="65535"></div>
                         <div style="flex: 1 1 100px;"><label>End Reg</label><input type="number" id="scan_reg_end"
                                 value="10" min="0" max="65535"></div>
+                        <div style="flex: 1 1 100px;"><label>Length</label><select id="scan_length">
+                                <option value="1" selected>1 reg</option>
+                                <option value="2">2 regs</option>
+                                <option value="3">3 regs</option>
+                                <option value="4">4 regs</option>
+                            </select></div>
                         <div style="flex: 1 1 120px;"><button onclick="startScanReg()"
                                 style="width:100%; height:42px; background-color:#111; border-color:#111; color:#fff; margin:0;"
                                 type="button">Scan
