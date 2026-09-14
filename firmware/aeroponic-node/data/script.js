@@ -260,6 +260,7 @@ async function loadFullConfig() {
         document.getElementById('cfg_mqtt_p').value = '';
         document.getElementById('cfg_mqtt_p').placeholder = mqtt.pass ? PW_PLACEHOLDER : '';
         document.getElementById('cfg_mqtt_int').value = mqtt.telemetry_interval_ms || '';
+        document.getElementById('cfg_mqtt_emergency_stop').checked = !!mqtt.mqtt_disconnect_emergency_stop;
 
         pwDirty.cfg_pass = false;
         pwDirty.cfg_eap_pass = false;
@@ -718,7 +719,7 @@ async function saveMqtt() {
     let pre = document.getElementById('cfg_mqtt_pre').value;
     let u = document.getElementById('cfg_mqtt_u').value;
     let int = document.getElementById('cfg_mqtt_int').value;
-    let body = `server=${encodeURIComponent(s)}&port=${encodeURIComponent(p)}&topic_prefix=${encodeURIComponent(pre)}&user=${encodeURIComponent(u)}&telemetry_interval=${encodeURIComponent(int)}`;
+    let body = `server=${encodeURIComponent(s)}&port=${encodeURIComponent(p)}&topic_prefix=${encodeURIComponent(pre)}&user=${encodeURIComponent(u)}&telemetry_interval=${encodeURIComponent(int)}&mqtt_disconnect_emergency_stop=${document.getElementById('cfg_mqtt_emergency_stop').checked}`;
     if (pwDirty.cfg_mqtt_p) body += `&pass=${encodeURIComponent(document.getElementById('cfg_mqtt_p').value)}`;
     let d = await api('/api/mqtt', 'POST', body);
     setButtonLoading(btn, false, 'Save & Reboot');

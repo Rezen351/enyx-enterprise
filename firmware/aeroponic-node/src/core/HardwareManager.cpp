@@ -34,6 +34,9 @@ namespace HardwareManager {
     volatile bool emergencyShutdownTriggered = false;
     volatile unsigned long lastInterruptTime = 0;
     
+    // MQTT disconnect emergency stop flag
+    volatile bool mqttDisconnectEmergencyTriggered = false;
+    
     // Connection stats
     struct {
         unsigned long lastMqttConnected = 0;
@@ -58,6 +61,11 @@ namespace HardwareManager {
     void IRAM_ATTR gpioInterruptHandler() {
         // Generic interrupt handler — set flag, actual processing in telemetryTask
         emergencyShutdownTriggered = true;
+    }
+
+    // ==================== MQTT DISCONNECT EMERGENCY STOP ====================
+    void triggerMqttDisconnectEmergencyStop() {
+        mqttDisconnectEmergencyTriggered = true;
     }
 
     // ==================== SCAN CANCEL ====================
@@ -256,8 +264,6 @@ namespace HardwareManager {
         ProtocolRegistry::registerProtocol("GPIO", []() -> ProtocolHandler* { return new GPIOInputHandler(); });
         ProtocolRegistry::registerProtocol("MODBUS", []() -> ProtocolHandler* { return new ModbusHandler(); });
         ProtocolRegistry::registerProtocol("I2C", []() -> ProtocolHandler* { return new I2CHandler(); });
-        ProtocolRegistry::registerProtocol("1-WIRE", []() -> ProtocolHandler* { return new OneWireHandler(); });
-        ProtocolRegistry::registerProtocol("SPI", []() -> ProtocolHandler* { return new SPIHandler(); });
         ProtocolRegistry::registerProtocol("GPIO_OUT", []() -> ProtocolHandler* { return new GpioOutputHandler(); });
 
         // Load handlers initially
@@ -280,6 +286,16 @@ namespace HardwareManager {
         
         while (true) {
             TaskWatchdog::heartbeat("TelemetryTask"); // GAP #5
+            
+            // MQTT disconnect emergency stop
+            if (mqttDisconnectEmergencyTriggered) {
+                mqttDisconnectEmergencyTriggered = false;
+                Logger::emergency("Actuator emergency stop triggered by MQTT disconnect!");
+                
+                for (const auto& hw : Config::HardwareOutputs) {
+                    setOutput(hw.name, 0);
+                }
+            }
             
             // GAP #11: Cek flag interrupt untuk emergency shutdown
             if (emergencyShutdownTriggered) {
@@ -320,7 +336,7 @@ namespace HardwareManager {
             // Connection stats (GAP #18)
             JsonObject connStats = doc.createNestedObject("connection_stats");
             connStats["mqtt_connected"] = MqttManager::isConnected();
-            connStats["uptime_s"] = millis() / 1000;
+            connStats["mqtt_broker"] = Config::MQTT_SERVER;
             
             // Sensor Telemetry
             JsonObject telemetry = doc.createNestedObject("telemetry");

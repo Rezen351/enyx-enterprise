@@ -115,30 +115,6 @@ public:
     String getSensorName() override { return name; }
 };
 
-// 1-Wire Handler
-class OneWireHandler : public ProtocolHandler {
-private:
-    String name;
-    uint8_t pin;
-public:
-    bool init(const JsonObject& config) override;
-    bool read(JsonObject& telemetry) override;
-    String getProtocolName() override { return "1-WIRE"; }
-    String getSensorName() override { return name; }
-};
-
-// SPI Handler
-class SPIHandler : public ProtocolHandler {
-private:
-    String name;
-    uint8_t cs_pin;
-public:
-    bool init(const JsonObject& config) override;
-    bool read(JsonObject& telemetry) override;
-    String getProtocolName() override { return "SPI"; }
-    String getSensorName() override { return name; }
-};
-
 // I2C bus initializer helper
 void initI2C(uint8_t sda, uint8_t scl);
 

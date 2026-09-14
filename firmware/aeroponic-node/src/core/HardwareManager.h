@@ -28,6 +28,9 @@ namespace HardwareManager {
     void reloadConfiguration();
     String discoverSensors();
     String getLatestTelemetryJson();
+
+    // MQTT disconnect emergency stop
+    void triggerMqttDisconnectEmergencyStop();
 }
 
 #endif // HARDWARE_MANAGER_H

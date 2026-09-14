@@ -141,12 +141,25 @@ void MqttManager::publishDiscovery() {
 
 void MqttManager::mqttTask(void* parameter) {
     unsigned long lastDiscovery = 0;
+    static bool wasConnected = false;
     
     while (true) {
         TaskWatchdog::heartbeat("MqttTask");
         
         if (NetworkManager::isConnected()) {
             if (!mqttClient->connected()) {
+                if (wasConnected) {
+                    if (Config::MQTT_DISCONNECT_EMERGENCY_STOP) {
+                        Logger::mqtt("MQTT disconnected! Triggering actuator emergency stop.");
+                        addLog("MQTT disconnected! Actuator emergency stop triggered.");
+                        HardwareManager::triggerMqttDisconnectEmergencyStop();
+                    } else {
+                        Logger::mqtt("MQTT disconnected! Emergency stop is disabled.");
+                        addLog("MQTT disconnected! Emergency stop disabled.");
+                    }
+                    wasConnected = false;
+                }
+                
                 Logger::mqtt("Connecting to broker...");
                 addLog("Connecting to broker...");
                 
@@ -174,6 +187,7 @@ void MqttManager::mqttTask(void* parameter) {
                 if (connected) {
                     Logger::mqtt("Connected to broker!");
                     addLog("Connected to broker!");
+                    wasConnected = true;
                     
                     mqttClient->subscribe(Config::TOPIC_ACTUATOR.c_str());
                     Logger::mqtt("Sub: %s", Config::TOPIC_ACTUATOR.c_str());
@@ -198,6 +212,8 @@ void MqttManager::mqttTask(void* parameter) {
                     publishDiscovery();
                 }
             }
+        } else {
+            wasConnected = false;
         }
         
         vTaskDelay(100 / portTICK_PERIOD_MS);

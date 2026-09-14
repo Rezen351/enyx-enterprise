@@ -1,7 +1,6 @@
 #include "ConfigManager.h"
 #include "../../include/Config.h"
 #include "../../include/Logger.h"
-#include "CryptoCredential.h"
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <WiFi.h>
@@ -32,6 +31,8 @@ void ConfigManager::init() {
     if (!loadConfig()) {
         Logger::config("Failed to load config.json. Using default compiled configs.");
     }
+    Logger::config("Loaded admin user: %s", Config::ADMIN_USER.c_str());
+    Logger::config("Loaded admin pass: %s", Config::ADMIN_PASS.c_str());
 }
 
 bool ConfigManager::loadConfig() {
@@ -68,28 +69,16 @@ bool ConfigManager::loadConfig() {
     }
 
     // Security
-    bool credentialsEncrypted = doc["security"]["credentials_encrypted"] | false;
-    
     if (doc["security"]["admin_user"]) {
         Config::ADMIN_USER = doc["security"]["admin_user"].as<String>();
         Config::ADMIN_USER.trim();
     }
     if (doc["security"]["admin_pass"]) {
-        String encPass = doc["security"]["admin_pass"].as<String>();
-        if (credentialsEncrypted) {
-            Config::ADMIN_PASS = CryptoCredential::decrypt(encPass);
-        } else {
-            Config::ADMIN_PASS = encPass;
-        }
+        Config::ADMIN_PASS = doc["security"]["admin_pass"].as<String>();
         Config::ADMIN_PASS.trim();
     }
     if (doc["security"]["auth_token"]) {
-        String encToken = doc["security"]["auth_token"].as<String>();
-        if (credentialsEncrypted) {
-            Config::AUTH_TOKEN = CryptoCredential::decrypt(encToken);
-        } else {
-            Config::AUTH_TOKEN = encToken;
-        }
+        Config::AUTH_TOKEN = doc["security"]["auth_token"].as<String>();
         Config::AUTH_TOKEN.trim();
     }
 
@@ -116,12 +105,7 @@ bool ConfigManager::loadConfig() {
         Config::WIFI_SSID.trim();
     }
     if (doc["protocols"]["wifi"]["password"]) {
-        String encWifiPass = doc["protocols"]["wifi"]["password"].as<String>();
-        if (credentialsEncrypted) {
-            Config::WIFI_PASS = CryptoCredential::decrypt(encWifiPass);
-        } else {
-            Config::WIFI_PASS = encWifiPass;
-        }
+        Config::WIFI_PASS = doc["protocols"]["wifi"]["password"].as<String>();
         Config::WIFI_PASS.trim();
     }
     if (doc["protocols"]["wifi"]["eap_identity"]) {
@@ -129,12 +113,7 @@ bool ConfigManager::loadConfig() {
         Config::WIFI_EAP_IDENTITY.trim();
     }
     if (doc["protocols"]["wifi"]["eap_password"]) {
-        String encEapPass = doc["protocols"]["wifi"]["eap_password"].as<String>();
-        if (credentialsEncrypted) {
-            Config::WIFI_EAP_PASSWORD = CryptoCredential::decrypt(encEapPass);
-        } else {
-            Config::WIFI_EAP_PASSWORD = encEapPass;
-        }
+        Config::WIFI_EAP_PASSWORD = doc["protocols"]["wifi"]["eap_password"].as<String>();
         Config::WIFI_EAP_PASSWORD.trim();
     }
 
@@ -155,12 +134,7 @@ bool ConfigManager::loadConfig() {
         Config::MQTT_USER.trim();
     }
     if (doc["protocols"]["mqtt"]["pass"]) {
-        String encMqttPass = doc["protocols"]["mqtt"]["pass"].as<String>();
-        if (credentialsEncrypted) {
-            Config::MQTT_PASS = CryptoCredential::decrypt(encMqttPass);
-        } else {
-            Config::MQTT_PASS = encMqttPass;
-        }
+        Config::MQTT_PASS = doc["protocols"]["mqtt"]["pass"].as<String>();
         Config::MQTT_PASS.trim();
     }
     if (doc["protocols"]["mqtt"]["telemetry_interval_ms"]) {
@@ -170,6 +144,9 @@ bool ConfigManager::loadConfig() {
     // MQTT TLS
     if (doc["protocols"]["mqtt"]["use_tls"]) {
         Config::MQTT_USE_TLS = doc["protocols"]["mqtt"]["use_tls"].as<bool>();
+    }
+    if (doc["protocols"]["mqtt"]["mqtt_disconnect_emergency_stop"]) {
+        Config::MQTT_DISCONNECT_EMERGENCY_STOP = doc["protocols"]["mqtt"]["mqtt_disconnect_emergency_stop"].as<bool>();
     }
 
     // Updating dynamic topics based on potentially new NODE_ID and TOPIC_PREFIX

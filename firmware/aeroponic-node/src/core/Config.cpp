@@ -35,6 +35,7 @@ namespace Config {
     String MQTT_CA_CERT = "";
     String MQTT_CLIENT_CERT = "";
     String MQTT_CLIENT_KEY = "";
+    bool MQTT_DISCONNECT_EMERGENCY_STOP = true;
 
     // --- Topik MQTT Default ---
     String TOPIC_TELEMETRY = MQTT_TOPIC_PREFIX + "/" + NODE_ID + "/telemetry";

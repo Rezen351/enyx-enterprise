@@ -36,7 +36,7 @@ static bool saveFullConfig() {
     device["fw_version"] = Config::FW_VERSION;
     
     JsonObject security = doc.createNestedObject("security");
-    security["credentials_encrypted"] = true;
+    security["credentials_encrypted"] = false;
     security["auth_token"] = Config::AUTH_TOKEN;
     security["admin_user"] = Config::ADMIN_USER;
     security["admin_pass"] = Config::ADMIN_PASS;
@@ -56,6 +56,7 @@ static bool saveFullConfig() {
     mqtt["pass"]                 = Config::MQTT_PASS;
     mqtt["use_tls"]              = Config::MQTT_USE_TLS;
     mqtt["telemetry_interval_ms"]= Config::MQTT_PUBLISH_INTERVAL;
+    mqtt["mqtt_disconnect_emergency_stop"] = Config::MQTT_DISCONNECT_EMERGENCY_STOP;
     
     JsonObject hardware = doc.createNestedObject("hardware");
     JsonArray inputs = hardware.createNestedArray("inputs");
@@ -315,6 +316,7 @@ void WebConfigPortal::handleApiFullConfigGet() {
     doc["protocols"]["mqtt"]["user"]                  = Config::MQTT_USER;
     doc["protocols"]["mqtt"]["use_tls"]               = Config::MQTT_USE_TLS;
     doc["protocols"]["mqtt"]["telemetry_interval_ms"] = Config::MQTT_PUBLISH_INTERVAL;
+    doc["protocols"]["mqtt"]["mqtt_disconnect_emergency_stop"] = Config::MQTT_DISCONNECT_EMERGENCY_STOP;
     
     // Hardware Inputs
     JsonArray inputs = doc["hardware"].createNestedArray("inputs");
@@ -409,6 +411,7 @@ void WebConfigPortal::handleApiMqttPost() {
     if (server.hasArg("pass")) { Config::MQTT_PASS = server.arg("pass"); Config::MQTT_PASS.trim(); }
     if (server.hasArg("telemetry_interval")) Config::MQTT_PUBLISH_INTERVAL = server.arg("telemetry_interval").toInt();
     if (server.hasArg("use_tls")) Config::MQTT_USE_TLS = server.arg("use_tls") == "true";
+    if (server.hasArg("mqtt_disconnect_emergency_stop")) Config::MQTT_DISCONNECT_EMERGENCY_STOP = server.arg("mqtt_disconnect_emergency_stop") == "true";
     
     if (saveFullConfig()) {
         server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true,\"message\":\"Rebooting to apply\"}");
@@ -701,17 +704,6 @@ void WebConfigPortal::handleApiConfigExport() {
         return;
     }
 
-    bool encrypted = doc["security"]["credentials_encrypted"] | false;
-
-    if (encrypted) {
-        if (doc["security"]["admin_pass"]) doc["security"]["admin_pass"] = CryptoCredential::decrypt(doc["security"]["admin_pass"].as<String>());
-        if (doc["security"]["auth_token"]) doc["security"]["auth_token"] = CryptoCredential::decrypt(doc["security"]["auth_token"].as<String>());
-        if (doc["protocols"]["wifi"]["password"]) doc["protocols"]["wifi"]["password"] = CryptoCredential::decrypt(doc["protocols"]["wifi"]["password"].as<String>());
-        if (doc["protocols"]["wifi"]["eap_password"]) doc["protocols"]["wifi"]["eap_password"] = CryptoCredential::decrypt(doc["protocols"]["wifi"]["eap_password"].as<String>());
-        if (doc["protocols"]["mqtt"]["pass"]) doc["protocols"]["mqtt"]["pass"] = CryptoCredential::decrypt(doc["protocols"]["mqtt"]["pass"].as<String>());
-        if (doc["protocols"]["mqtt"]["user"]) doc["protocols"]["mqtt"]["user"] = CryptoCredential::decrypt(doc["protocols"]["mqtt"]["user"].as<String>());
-    }
-
     doc["security"].remove("admin_pass");
     doc["security"].remove("auth_token");
     doc["protocols"]["wifi"].remove("password");
@@ -743,19 +735,6 @@ void WebConfigPortal::handleApiConfigImport() {
         return;
     }
 
-    bool hasPlaintextCredential = false;
-    if (doc["security"]["admin_pass"].is<String>() && !doc["security"]["credentials_encrypted"].as<bool>()) hasPlaintextCredential = true;
-    if (doc["security"]["auth_token"].is<String>() && !doc["security"]["credentials_encrypted"].as<bool>()) hasPlaintextCredential = true;
-    if (doc["protocols"]["wifi"]["password"].is<String>() && !doc["security"]["credentials_encrypted"].as<bool>()) hasPlaintextCredential = true;
-    if (doc["protocols"]["wifi"]["eap_password"].is<String>() && !doc["security"]["credentials_encrypted"].as<bool>()) hasPlaintextCredential = true;
-    if (doc["protocols"]["mqtt"]["pass"].is<String>() && !doc["security"]["credentials_encrypted"].as<bool>()) hasPlaintextCredential = true;
-    if (doc["protocols"]["mqtt"]["user"].is<String>() && !doc["security"]["credentials_encrypted"].as<bool>()) hasPlaintextCredential = true;
-
-    if (hasPlaintextCredential) {
-        server.send(400, "application/json", "{\"error\":\"Rejected: imported config contains plaintext credentials. Use the exported config or re-enter credentials via the portal.\"}");
-        return;
-    }
-    
     if (ConfigManager::saveConfig(payload)) {
         ConfigManager::loadConfig();
         HardwareManager::reloadConfiguration();

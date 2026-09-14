@@ -80,6 +80,7 @@ namespace Config {
     extern String MQTT_CA_CERT;
     extern String MQTT_CLIENT_CERT;
     extern String MQTT_CLIENT_KEY;
+    extern bool MQTT_DISCONNECT_EMERGENCY_STOP;
 
     // ==================== TOPIK MQTT ====================
     extern String TOPIC_TELEMETRY;
