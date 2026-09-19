@@ -312,6 +312,32 @@ let editOutputIdx = -1;
 let editModbusIdx = -1;
 let editI2CIdx = -1;
 
+function getUsedGpioPins() {
+    let used = new Set();
+    hwInputs.forEach(p => {
+        if (p.protocol === 'GPIO' || p.protocol === '') used.add(Number(p.pin));
+    });
+    hwOutputs.forEach(p => {
+        if (p.protocol === 'GPIO_OUT' || p.protocol === '') used.add(Number(p.pin));
+    });
+    return used;
+}
+
+function buildGpioPinOptions(currentPin, usedPins) {
+    let options = '';
+    for (let i = 0; i <= 48; i++) {
+        if (!usedPins.has(i) || Number(i) === Number(currentPin)) {
+            options += `<option value="${i}" ${Number(i) === Number(currentPin) ? 'selected' : ''}>GPIO ${i}</option>`;
+        }
+    }
+    return options;
+}
+
+function refreshGpioViews() {
+    drawInputs();
+    drawOutputs();
+}
+
 function renderGpioRows(hw) {
     hwInputs = hw.inputs || [];
     hwOutputs = hw.outputs || [];
@@ -341,7 +367,7 @@ function drawInputs() {
             <div class="hw-row" style="flex-wrap:wrap; gap:8px;">
                 <div style="flex:1; min-width:140px;">
                     <label>Interface / Protocol</label>
-                    <select onchange="hwInputs[${idx}].protocol=this.value; if(this.value==='PCF8575_IN'){if(!hwInputs[${idx}].i2c_addr)hwInputs[${idx}].i2c_addr='0x20'; if(hwInputs[${idx}].pin>15)hwInputs[${idx}].pin=0;} drawInputs();">
+                    <select onchange="hwInputs[${idx}].protocol=this.value; if(this.value==='PCF8575_IN'){if(!hwInputs[${idx}].i2c_addr)hwInputs[${idx}].i2c_addr='0x20'; if(hwInputs[${idx}].pin>15)hwInputs[${idx}].pin=0;} refreshGpioViews();">
                         <option value="GPIO" ${!isPcf ? 'selected' : ''}>Direct GPIO (ESP32)</option>
                         <option value="PCF8575_IN" ${isPcf ? 'selected' : ''}>PCF8575 I2C Expander</option>
                     </select>
@@ -360,7 +386,9 @@ function drawInputs() {
                 ` : `
                 <div style="flex:1; min-width:80px;">
                     <label>GPIO Pin</label>
-                    <input type="number" min="0" max="48" value="${p.pin}" onchange="hwInputs[${idx}].pin=parseInt(this.value)">
+                    <select onchange="hwInputs[${idx}].pin=parseInt(this.value); refreshGpioViews();">
+                        ${buildGpioPinOptions(p.pin, getUsedGpioPins())}
+                    </select>
                 </div>
                 <div style="flex:1; min-width:120px;">
                     <label>Input Type</label>
@@ -435,7 +463,7 @@ function drawOutputs() {
             <div class="hw-row" style="flex-wrap:wrap; gap:8px;">
                 <div style="flex:1; min-width:140px;">
                     <label>Interface / Protocol</label>
-                    <select onchange="hwOutputs[${idx}].protocol=this.value; if(this.value==='PCF8575_OUT'){if(!hwOutputs[${idx}].i2c_addr)hwOutputs[${idx}].i2c_addr='0x20'; if(hwOutputs[${idx}].pin>15)hwOutputs[${idx}].pin=0; if(hwOutputs[${idx}].active_low===undefined)hwOutputs[${idx}].active_low=true;} drawOutputs();">
+                    <select onchange="hwOutputs[${idx}].protocol=this.value; if(this.value==='PCF8575_OUT'){if(!hwOutputs[${idx}].i2c_addr)hwOutputs[${idx}].i2c_addr='0x20'; if(hwOutputs[${idx}].pin>15)hwOutputs[${idx}].pin=0; if(hwOutputs[${idx}].active_low===undefined)hwOutputs[${idx}].active_low=true;} refreshGpioViews();">
                         <option value="GPIO_OUT" ${!isPcf ? 'selected' : ''}>Direct GPIO (ESP32)</option>
                         <option value="PCF8575_OUT" ${isPcf ? 'selected' : ''}>PCF8575 I2C Expander</option>
                     </select>
@@ -461,7 +489,9 @@ function drawOutputs() {
                 ` : `
                 <div style="flex:1; min-width:80px;">
                     <label>GPIO Pin</label>
-                    <input type="number" min="0" max="48" value="${p.pin}" onchange="hwOutputs[${idx}].pin=parseInt(this.value)">
+                    <select onchange="hwOutputs[${idx}].pin=parseInt(this.value); refreshGpioViews();">
+                        ${buildGpioPinOptions(p.pin, getUsedGpioPins())}
+                    </select>
                 </div>
                 <div style="flex:1; min-width:120px;">
                     <label>Output Type</label>
