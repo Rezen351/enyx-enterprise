@@ -207,6 +207,10 @@ bool ConfigManager::loadConfig() {
                     reg.name = r["name"].as<String>(); reg.name.trim();
                     reg.multiplier = r["multiplier"].as<float>();
                     reg.type = r["type"].as<String>(); reg.type.trim();
+                    reg.length = r["length"].as<uint8_t>();
+                    reg.data_type = r["data_type"].as<String>(); reg.data_type.trim();
+                    if (reg.length == 0) reg.length = 1;
+                    if (reg.data_type == "") reg.data_type = "UINT16";
                     ms.registers.push_back(reg);
                 }
             }

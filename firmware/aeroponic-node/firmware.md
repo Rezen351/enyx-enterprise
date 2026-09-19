@@ -172,6 +172,37 @@ Semua sensor didefinisikan di `config.json` bagian `hardware`:
 }
 ```
 
+#### Modbus Register Fields
+
+| Field | Type | Deskripsi |
+|-------|------|-----------|
+| `address` | uint16 | Register address (0 = register 40001) |
+| `name` | string | Nama register |
+| `multiplier` | float | Scaling factor diterapkan setelah decoding |
+| `type` | string | `"HOLDING"` atau `"INPUT"` |
+| `length` | uint8 | Jumlah register (1-4). Untuk FLOAT32/INT32/UINT32 gunakan `2` |
+| `data_type` | string | `"UINT16"`, `"INT16"`, `"FLOAT32"`, `"INT32"`, `"UINT32"` |
+
+#### Float32 / Multi-register (Big-Endian)
+
+Nilai 32-bit (FLOAT32, INT32, UINT32) dipecah ke dua register dengan urutan **big-endian (Motorola)**:
+
+- Register pertama (alamat N) = **High Word**
+- Register kedua (alamat N+1) = **Low Word
+
+Contoh: High Word `0x47C3` + Low Word `0x5000` digabung menjadi `0x47C35000` = float32 **100000.0**.
+
+```json
+{
+  "address": 0,
+  "name": "FlowRate",
+  "multiplier": 1.0,
+  "type": "HOLDING",
+  "length": 2,
+  "data_type": "FLOAT32"
+}
+```
+
 ---
 
 ## 6. Actuator Control
