@@ -57,7 +57,11 @@ async function api(path, method = 'GET', body = null) {
                             { address: 0, type: 'HOLDING', name: 'Moisture', multiplier: 0.1 },
                             { address: 1, type: 'HOLDING', name: 'Temperature', multiplier: 0.1 }
                         ]
-                    }]
+                    }],
+                    sensors: [
+                        { name: 'BME280 Main', protocol: 'I2C', type: 'BME280', address: '0x76' }
+                    ],
+                    i2c: { sda_pin: 21, scl_pin: 22 }
                 }
             };
         }
@@ -246,6 +250,13 @@ async function loadFullConfig() {
         if (document.getElementById('cfg_rs485_de')) {
             document.getElementById('cfg_rs485_de').value = (d.hardware && d.hardware.rs485_de != null) ? d.hardware.rs485_de : 255;
         }
+        // I2C global pins
+        if (document.getElementById('cfg_i2c_sda')) {
+            document.getElementById('cfg_i2c_sda').value = (d.hardware && d.hardware.i2c && d.hardware.i2c.sda_pin != null) ? d.hardware.i2c.sda_pin : 21;
+        }
+        if (document.getElementById('cfg_i2c_scl')) {
+            document.getElementById('cfg_i2c_scl').value = (d.hardware && d.hardware.i2c && d.hardware.i2c.scl_pin != null) ? d.hardware.i2c.scl_pin : 22;
+        }
         document.getElementById('cfg_admin_u').value = d.security.admin_user || '';
         document.getElementById('cfg_ssid').value = wifi.ssid || '';
         document.getElementById('cfg_pass').value = '';
@@ -305,7 +316,12 @@ function renderGpioRows(hw) {
     hwInputs = hw.inputs || [];
     hwOutputs = hw.outputs || [];
     hwModbus = hw.modbus || [];
-    hwI2C = hw.sensors || [];
+    // Strip sda/scl from sensor params — pins are now global
+    hwI2C = (hw.sensors || []).map(s => {
+        let clean = {};
+        for (let k in s) { if (k !== 'sda_pin' && k !== 'scl_pin') clean[k] = s[k]; }
+        return clean;
+    });
     editInputIdx = -1;
     editOutputIdx = -1;
     editModbusIdx = -1;
@@ -319,9 +335,29 @@ function renderGpioRows(hw) {
 function drawInputs() {
     let html = '';
     hwInputs.forEach((p, idx) => {
+        let isPcf = p.protocol === 'PCF8575_IN';
         if (editInputIdx === idx) {
             html += `
             <div class="hw-row" style="flex-wrap:wrap; gap:8px;">
+                <div style="flex:1; min-width:140px;">
+                    <label>Interface / Protocol</label>
+                    <select onchange="hwInputs[${idx}].protocol=this.value; if(this.value==='PCF8575_IN'){if(!hwInputs[${idx}].i2c_addr)hwInputs[${idx}].i2c_addr='0x20'; if(hwInputs[${idx}].pin>15)hwInputs[${idx}].pin=0;} drawInputs();">
+                        <option value="GPIO" ${!isPcf ? 'selected' : ''}>Direct GPIO (ESP32)</option>
+                        <option value="PCF8575_IN" ${isPcf ? 'selected' : ''}>PCF8575 I2C Expander</option>
+                    </select>
+                </div>
+                ${isPcf ? `
+                <div style="flex:1; min-width:90px;">
+                    <label>PCF Pin</label>
+                    <select onchange="hwInputs[${idx}].pin=parseInt(this.value)">
+                        ${Array.from({length: 16}, (_, i) => `<option value="${i}" ${p.pin == i ? 'selected' : ''}>P${i}</option>`).join('')}
+                    </select>
+                </div>
+                <div style="flex:1; min-width:100px;">
+                    <label>I2C Address</label>
+                    <input type="text" value="${p.i2c_addr || '0x20'}" placeholder="0x20" onchange="hwInputs[${idx}].i2c_addr=this.value.trim()">
+                </div>
+                ` : `
                 <div style="flex:1; min-width:80px;">
                     <label>GPIO Pin</label>
                     <input type="number" min="0" max="48" value="${p.pin}" onchange="hwInputs[${idx}].pin=parseInt(this.value)">
@@ -354,11 +390,12 @@ function drawInputs() {
                     <label>Debounce (ms)</label>
                     <input type="number" min="0" max="5000" value="${p.debounce_ms||0}" onchange="hwInputs[${idx}].debounce_ms=parseInt(this.value)">
                 </div>
+                `}
                 <div style="flex:2; min-width:150px;">
                     <label>Name Label</label>
                     <input type="text" value="${p.name}" placeholder="e.g. Water Sensor" onchange="hwInputs[${idx}].name=this.value">
                 </div>
-                <div style="flex:1; min-width:100px; display:flex; flex-direction:column; justify-content:flex-end;">
+                <div style="flex:1; min-width:110px; display:flex; flex-direction:column; justify-content:flex-end;">
                     <label style="margin-bottom:8px;">Invert Logic</label>
                     <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal; margin:0;">
                         <input type="checkbox" ${p.invert ? 'checked' : ''} onchange="hwInputs[${idx}].invert=this.checked" style="width:auto; margin:0;">
@@ -369,11 +406,14 @@ function drawInputs() {
             </div>
             `;
         } else {
+            let metaDesc = isPcf 
+                ? `PCF8575 (${p.i2c_addr || '0x20'}) Pin P${p.pin}${p.invert ? ' | ⇄ Inverted' : ''}`
+                : `GPIO ${p.pin} | ${p.type} | Pull: ${p.pull} | IRQ: ${p.interrupt||'NONE'} | Debounce: ${p.debounce_ms||0}ms${p.invert ? ' | ⇄ Inverted' : ''}`;
             html += `
             <div class="hw-list-item">
                 <div class="hw-info">
                     <span class="hw-name">${p.name || 'Unnamed Input'}</span>
-                    <span class="hw-meta">GPIO ${p.pin} | ${p.type} | Pull: ${p.pull} | IRQ: ${p.interrupt||'NONE'} | Debounce: ${p.debounce_ms||0}ms${p.invert ? ' | ⇄ Inverted' : ''}</span>
+                    <span class="hw-meta">${metaDesc}</span>
                 </div>
                 <div class="hw-actions">
                     <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editInputIdx=${idx}; drawInputs();">Edit</button>
@@ -389,12 +429,39 @@ function drawInputs() {
 function drawOutputs() {
     let html = '';
     hwOutputs.forEach((p, idx) => {
+        let isPcf = p.protocol === 'PCF8575_OUT';
         if (editOutputIdx === idx) {
             html += `
-            <div class="hw-row">
+            <div class="hw-row" style="flex-wrap:wrap; gap:8px;">
+                <div style="flex:1; min-width:140px;">
+                    <label>Interface / Protocol</label>
+                    <select onchange="hwOutputs[${idx}].protocol=this.value; if(this.value==='PCF8575_OUT'){if(!hwOutputs[${idx}].i2c_addr)hwOutputs[${idx}].i2c_addr='0x20'; if(hwOutputs[${idx}].pin>15)hwOutputs[${idx}].pin=0; if(hwOutputs[${idx}].active_low===undefined)hwOutputs[${idx}].active_low=true;} drawOutputs();">
+                        <option value="GPIO_OUT" ${!isPcf ? 'selected' : ''}>Direct GPIO (ESP32)</option>
+                        <option value="PCF8575_OUT" ${isPcf ? 'selected' : ''}>PCF8575 I2C Expander</option>
+                    </select>
+                </div>
+                ${isPcf ? `
+                <div style="flex:1; min-width:90px;">
+                    <label>PCF Pin</label>
+                    <select onchange="hwOutputs[${idx}].pin=parseInt(this.value)">
+                        ${Array.from({length: 16}, (_, i) => `<option value="${i}" ${p.pin == i ? 'selected' : ''}>P${i}</option>`).join('')}
+                    </select>
+                </div>
+                <div style="flex:1; min-width:100px;">
+                    <label>I2C Address</label>
+                    <input type="text" value="${p.i2c_addr || '0x20'}" placeholder="0x20" onchange="hwOutputs[${idx}].i2c_addr=this.value.trim()">
+                </div>
+                <div style="flex:1; min-width:130px; display:flex; flex-direction:column; justify-content:flex-end;">
+                    <label style="margin-bottom:8px;">Relay Trigger Mode</label>
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal; margin:0;">
+                        <input type="checkbox" ${p.active_low !== false ? 'checked' : ''} onchange="hwOutputs[${idx}].active_low=this.checked" style="width:auto; margin:0;">
+                        <span style="font-size:12px;">Active LOW (Relay)</span>
+                    </label>
+                </div>
+                ` : `
                 <div style="flex:1; min-width:80px;">
                     <label>GPIO Pin</label>
-                    <input type="number" min="0" max="48" value="${p.pin}" onchange="hwOutputs[${idx}].pin=this.value">
+                    <input type="number" min="0" max="48" value="${p.pin}" onchange="hwOutputs[${idx}].pin=parseInt(this.value)">
                 </div>
                 <div style="flex:1; min-width:120px;">
                     <label>Output Type</label>
@@ -403,19 +470,23 @@ function drawOutputs() {
                         <option value="PWM" ${p.type === 'PWM' ? 'selected' : ''}>PWM</option>
                     </select>
                 </div>
+                `}
                 <div style="flex:2; min-width:150px;">
                     <label>Name Label</label>
                     <input type="text" value="${p.name}" placeholder="e.g. Pump Relay" onchange="hwOutputs[${idx}].name=this.value">
                 </div>
-                <button style="margin-top:24px; background:#10b981; border-color:#10b981;" onclick="editOutputIdx=-1; drawOutputs();">Done</button>
+                <button style="margin-top:24px; background:#10b981; border-color:#10b981; align-self:flex-end;" onclick="editOutputIdx=-1; drawOutputs();">Done</button>
             </div>
             `;
         } else {
+            let metaDesc = isPcf
+                ? `PCF8575 (${p.i2c_addr || '0x20'}) Pin P${p.pin} | Relay ${p.active_low !== false ? 'Active-LOW' : 'Active-HIGH'}`
+                : `GPIO ${p.pin} | ${p.type}`;
             html += `
             <div class="hw-list-item">
                 <div class="hw-info">
                     <span class="hw-name">${p.name || 'Unnamed Output'}</span>
-                    <span class="hw-meta">GPIO ${p.pin} | ${p.type}</span>
+                    <span class="hw-meta">${metaDesc}</span>
                 </div>
                 <div class="hw-actions">
                     <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editOutputIdx=${idx}; drawOutputs();">Edit</button>
@@ -429,13 +500,13 @@ function drawOutputs() {
 }
 
 function addInputRow() {
-    hwInputs.push({ pin: 0, type: 'DIGITAL', pull: 'NONE', name: 'New Input', invert: false, debounce_ms: 0, interrupt: 'NONE' });
+    hwInputs.push({ pin: 0, protocol: 'GPIO', type: 'DIGITAL', pull: 'NONE', name: 'New Input', invert: false, debounce_ms: 0, interrupt: 'NONE', i2c_addr: '0x20' });
     editInputIdx = hwInputs.length - 1;
     drawInputs();
 }
 
 function addOutputRow() {
-    hwOutputs.push({ pin: 0, type: 'DIGITAL', name: 'New Output' });
+    hwOutputs.push({ pin: 0, protocol: 'GPIO_OUT', type: 'DIGITAL', name: 'New Output', i2c_addr: '0x20', active_low: true });
     editOutputIdx = hwOutputs.length - 1;
     drawOutputs();
 }
@@ -513,14 +584,6 @@ function drawI2C() {
                     <label>I2C Address</label>
                     <input type="text" value="${s.address || '0x40'}" onchange="hwI2C[${idx}].address=this.value">
                 </div>
-                <div style="flex:1; min-width:80px;">
-                    <label>SDA Pin</label>
-                    <input type="number" min="0" max="48" value="${s.sda_pin || 21}" onchange="hwI2C[${idx}].sda_pin=this.value">
-                </div>
-                <div style="flex:1; min-width:80px;">
-                    <label>SCL Pin</label>
-                    <input type="number" min="0" max="48" value="${s.scl_pin || 22}" onchange="hwI2C[${idx}].scl_pin=this.value">
-                </div>
                 <div style="display:flex; gap:6px; margin-top:8px;">
                     <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editI2CIdx=-1; drawI2C();">Done</button>
                 </div>
@@ -540,7 +603,7 @@ function drawI2C() {
 }
 
 function addI2CSensor() {
-    hwI2C.push({ name: 'New I2C Sensor', type: 'INA219', protocol: 'I2C', address: '0x40', sda_pin: '21', scl_pin: '22' });
+    hwI2C.push({ name: 'New I2C Sensor', type: 'INA219', protocol: 'I2C', address: '0x40' });
     editI2CIdx = hwI2C.length - 1;
     drawI2C();
 }
@@ -667,7 +730,10 @@ async function saveHardware() {
     if (!confirm('Save hardware config and reboot?')) return;
     let btn = document.querySelector('#view-gpio button[type="submit"]');
     setButtonLoading(btn, true, 'Save & Reboot');
-    let payload = encodeURIComponent(JSON.stringify({ inputs: hwInputs, outputs: hwOutputs, modbus: hwModbus, sensors: hwI2C }));
+    let i2cSda = document.getElementById('cfg_i2c_sda') ? document.getElementById('cfg_i2c_sda').value : 21;
+    let i2cScl = document.getElementById('cfg_i2c_scl') ? document.getElementById('cfg_i2c_scl').value : 22;
+    let hwPayload = { inputs: hwInputs, outputs: hwOutputs, modbus: hwModbus, sensors: hwI2C, i2c: { sda_pin: parseInt(i2cSda), scl_pin: parseInt(i2cScl) } };
+    let payload = encodeURIComponent(JSON.stringify(hwPayload));
     let d = await api('/api/hardware', 'POST', `payload=${payload}`);
     setButtonLoading(btn, false, 'Save & Reboot');
     if (d) triggerRebootSequence();

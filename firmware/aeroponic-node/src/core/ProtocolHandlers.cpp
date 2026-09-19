@@ -275,7 +275,7 @@ bool ModbusHandler::read(JsonObject& telemetry) {
 }
 
 // ==================== I2CHandler Implementation ====================
-I2CHandler::I2CHandler() : address(0), sda_pin(21), scl_pin(22), initialized(false), bme(nullptr), ina219(nullptr) {}
+I2CHandler::I2CHandler() : address(0), initialized(false), bme(nullptr), ina219(nullptr) {}
 
 I2CHandler::~I2CHandler() {
     if (bme) delete bme;
@@ -286,10 +286,7 @@ bool I2CHandler::init(const JsonObject& config) {
     if (!config.containsKey("name") || !config.containsKey("type")) return false;
     name = config["name"].as<String>();
     type = config["type"].as<String>();
-    
-    sda_pin = config.containsKey("sda_pin") ? (config["sda_pin"].is<int>() ? config["sda_pin"].as<int>() : config["sda_pin"].as<String>().toInt()) : 21;
-    scl_pin = config.containsKey("scl_pin") ? (config["scl_pin"].is<int>() ? config["scl_pin"].as<int>() : config["scl_pin"].as<String>().toInt()) : 22;
-    
+
     if (config.containsKey("address")) {
         if (config["address"].is<int>()) {
             address = config["address"].as<uint8_t>();
@@ -307,7 +304,8 @@ bool I2CHandler::init(const JsonObject& config) {
         else address = 0x76;
     }
 
-    initI2C(sda_pin, scl_pin);
+    // Use global I2C pin configuration (set once at startup)
+    initI2C(Config::PIN_I2C_SDA, Config::PIN_I2C_SCL);
 
     if (type == "BME280") {
         bme = new LightBME280(address);
@@ -444,5 +442,199 @@ bool I2CHandler::read(JsonObject& telemetry) {
         }
     }
     return true;
+}
+
+// ==================== PCF8575 I2C Expander Driver ====================
+namespace Pcf8575Bus {
+    static std::map<uint8_t, uint16_t> pcfStates;      // Shadow state per I2C address (default 0xFFFF)
+    static std::map<uint8_t, uint16_t> inputMasks;    // Bits designated as input (must stay 1)
+    static SemaphoreHandle_t pcfMutex = NULL;
+
+    static void ensureMutex() {
+        if (!pcfMutex) {
+            pcfMutex = xSemaphoreCreateMutex();
+        }
+    }
+
+    uint16_t getState(uint8_t addr) {
+        ensureMutex();
+        if (pcfStates.find(addr) == pcfStates.end()) {
+            pcfStates[addr] = 0xFFFF; // Default all HIGH (relay OFF for Active-LOW, and inputs ready)
+        }
+        return pcfStates[addr];
+    }
+
+    bool writePort(uint8_t addr, uint16_t state) {
+        ensureMutex();
+        initI2C(Config::PIN_I2C_SDA, Config::PIN_I2C_SCL);
+        
+        // Ensure any pins designated as inputs remain HIGH (1)
+        uint16_t inMask = inputMasks.count(addr) ? inputMasks[addr] : 0;
+        state |= inMask;
+
+        Wire.beginTransmission(addr);
+        Wire.write(lowByte(state));   // P0 .. P7
+        Wire.write(highByte(state));  // P8 .. P15
+        byte err = Wire.endTransmission();
+        if (err == 0) {
+            pcfStates[addr] = state;
+            return true;
+        } else {
+            Logger::hardware("PCF8575 (0x%02X) I2C write error code: %d", addr, err);
+            return false;
+        }
+    }
+
+    uint16_t readPort(uint8_t addr, bool& success) {
+        ensureMutex();
+        initI2C(Config::PIN_I2C_SDA, Config::PIN_I2C_SCL);
+
+        // Request 2 bytes from PCF8575
+        uint8_t count = Wire.requestFrom(addr, (uint8_t)2);
+        if (count == 2) {
+            uint8_t low = Wire.read();
+            uint8_t high = Wire.read();
+            success = true;
+            return ((uint16_t)high << 8) | low;
+        }
+        success = false;
+        return 0xFFFF;
+    }
+
+    bool setPin(uint8_t addr, uint8_t pin, bool levelHigh) {
+        if (pin > 15) return false;
+        ensureMutex();
+        if (xSemaphoreTake(pcfMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+            uint16_t current = getState(addr);
+            if (levelHigh) {
+                current |= (1u << pin);
+            } else {
+                current &= ~(1u << pin);
+            }
+            bool ok = writePort(addr, current);
+            xSemaphoreGive(pcfMutex);
+            return ok;
+        }
+        return false;
+    }
+
+    bool readPin(uint8_t addr, uint8_t pin, bool& levelHigh) {
+        if (pin > 15) return false;
+        ensureMutex();
+        if (xSemaphoreTake(pcfMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+            bool ok = false;
+            uint16_t val = readPort(addr, ok);
+            xSemaphoreGive(pcfMutex);
+            if (ok) {
+                levelHigh = (val & (1u << pin)) != 0;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void markAsInput(uint8_t addr, uint8_t pin) {
+        if (pin > 15) return;
+        ensureMutex();
+        if (xSemaphoreTake(pcfMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+            inputMasks[addr] |= (1u << pin);
+            uint16_t current = getState(addr) | (1u << pin);
+            writePort(addr, current);
+            xSemaphoreGive(pcfMutex);
+        }
+    }
+}
+
+// ==================== Pcf8575OutputHandler Implementation ====================
+bool Pcf8575OutputHandler::init(const JsonObject& config) {
+    if (!config.containsKey("name")) return false;
+    name = config["name"].as<String>();
+    pin = config["pin"] | 0;
+    if (pin > 15) pin = 15;
+
+    i2c_addr = 0x20;
+    if (config.containsKey("i2c_addr")) {
+        if (config["i2c_addr"].is<const char*>() || config["i2c_addr"].is<String>()) {
+            i2c_addr = (uint8_t)strtoul(config["i2c_addr"].as<const char*>(), NULL, 0);
+        } else {
+            i2c_addr = config["i2c_addr"].as<uint8_t>();
+        }
+    }
+    if (i2c_addr == 0) i2c_addr = 0x20;
+
+    active_low = config.containsKey("active_low") ? config["active_low"].as<bool>() : true;
+
+    // Safe default: set relay to OFF
+    write(0);
+    Logger::hardware("Init PCF8575 Relay Output: '%s' @ 0x%02X Pin P%d (Active %s)", 
+        name.c_str(), i2c_addr, pin, active_low ? "LOW" : "HIGH");
+    return true;
+}
+
+bool Pcf8575OutputHandler::read(JsonObject& telemetry) {
+    return true;
+}
+
+bool Pcf8575OutputHandler::write(int value) {
+    bool on = (value > 0);
+    // Active LOW: On -> LOW, Off -> HIGH
+    // Active HIGH: On -> HIGH, Off -> LOW
+    bool pinLevelHigh = active_low ? !on : on;
+    return Pcf8575Bus::setPin(i2c_addr, pin, pinLevelHigh);
+}
+
+// ==================== Pcf8575InputHandler Implementation ====================
+bool Pcf8575InputHandler::init(const JsonObject& config) {
+    if (!config.containsKey("name")) return false;
+    name = config["name"].as<String>();
+    pin = config["pin"] | 0;
+    if (pin > 15) pin = 15;
+
+    i2c_addr = 0x20;
+    if (config.containsKey("i2c_addr")) {
+        if (config["i2c_addr"].is<const char*>() || config["i2c_addr"].is<String>()) {
+            i2c_addr = (uint8_t)strtoul(config["i2c_addr"].as<const char*>(), NULL, 0);
+        } else {
+            i2c_addr = config["i2c_addr"].as<uint8_t>();
+        }
+    }
+    if (i2c_addr == 0) i2c_addr = 0x20;
+
+    invert = config["invert"] | false;
+
+    // Mark this pin as input on the bus so its bit stays 1 (weak pull-up)
+    Pcf8575Bus::markAsInput(i2c_addr, pin);
+    Logger::hardware("Init PCF8575 Input: '%s' @ 0x%02X Pin P%d (Invert: %d)",
+        name.c_str(), i2c_addr, pin, invert);
+    return true;
+}
+
+bool Pcf8575InputHandler::read(JsonObject& telemetry) {
+    JsonObject inputs = telemetry["inputs"];
+    if (inputs.isNull()) {
+        inputs = telemetry.createNestedObject("inputs");
+    }
+
+    bool pinLevelHigh = true;
+    bool ok = Pcf8575Bus::readPin(i2c_addr, pin, pinLevelHigh);
+    int dval = 0;
+    if (ok) {
+        dval = pinLevelHigh ? 1 : 0;
+        if (invert) dval = !dval;
+        inputs[name] = dval;
+        HardwareManager::latestSensorValues[name] = dval;
+
+        String logMsg = "[";
+        logMsg += String(millis() / 1000);
+        logMsg += "s] PCF8575_IN ";
+        logMsg += name;
+        logMsg += "=";
+        logMsg += String(dval);
+        MqttManager::addLog(logMsg.c_str());
+        return true;
+    } else {
+        inputs[name] = 0;
+        return false;
+    }
 }
 

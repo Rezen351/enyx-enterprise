@@ -71,6 +71,10 @@ static bool saveFullConfig() {
         p["interrupt"]   = pin.interrupt;
         p["analog_min"]  = pin.analog_min;
         p["analog_max"]  = pin.analog_max;
+        p["protocol"]    = pin.protocol != "" ? pin.protocol : "GPIO";
+        char addrBuf[8];
+        sprintf(addrBuf, "0x%02X", pin.i2c_addr ? pin.i2c_addr : 0x20);
+        p["i2c_addr"]    = String(addrBuf);
     }
     
     JsonArray outputs = hardware.createNestedArray("outputs");
@@ -79,7 +83,11 @@ static bool saveFullConfig() {
         p["pin"] = pin.pin;
         p["type"] = pin.type;
         p["name"] = pin.name;
-        p["protocol"] = pin.protocol;
+        p["protocol"] = pin.protocol != "" ? pin.protocol : "GPIO_OUT";
+        char addrBuf[8];
+        sprintf(addrBuf, "0x%02X", pin.i2c_addr ? pin.i2c_addr : 0x20);
+        p["i2c_addr"] = String(addrBuf);
+        p["active_low"] = pin.active_low;
     }
     
     JsonArray modbus = hardware.createNestedArray("modbus");
@@ -331,6 +339,10 @@ void WebConfigPortal::handleApiFullConfigGet() {
         p["interrupt"]   = pin.interrupt;
         p["analog_min"]  = pin.analog_min;
         p["analog_max"]  = pin.analog_max;
+        p["protocol"]    = pin.protocol != "" ? pin.protocol : "GPIO";
+        char addrBuf[8];
+        sprintf(addrBuf, "0x%02X", pin.i2c_addr ? pin.i2c_addr : 0x20);
+        p["i2c_addr"]    = String(addrBuf);
     }
     
     // Hardware Outputs
@@ -340,7 +352,11 @@ void WebConfigPortal::handleApiFullConfigGet() {
         p["pin"] = pin.pin;
         p["type"] = pin.type;
         p["name"] = pin.name;
-        p["protocol"] = pin.protocol;
+        p["protocol"] = pin.protocol != "" ? pin.protocol : "GPIO_OUT";
+        char addrBuf[8];
+        sprintf(addrBuf, "0x%02X", pin.i2c_addr ? pin.i2c_addr : 0x20);
+        p["i2c_addr"] = String(addrBuf);
+        p["active_low"] = pin.active_low;
     }
     
     // Modbus
@@ -378,6 +394,11 @@ void WebConfigPortal::handleApiFullConfigGet() {
             sensorObj[pair.first] = pair.second;
         }
     }
+
+    // I2C global pin configuration
+    JsonObject i2c = doc["hardware"].createNestedObject("i2c");
+    i2c["sda_pin"] = Config::PIN_I2C_SDA;
+    i2c["scl_pin"] = Config::PIN_I2C_SCL;
 
     // Local Control Rules removed - feature no longer supported
     
@@ -459,6 +480,17 @@ void WebConfigPortal::handleApiHardwarePost() {
                     pin.debounce_ms = gpio["debounce_ms"].as<uint16_t>();
                     pin.interrupt = gpio["interrupt"].as<String>(); pin.interrupt.trim();
                     pin.invert = gpio["invert"].as<bool>();
+                    pin.protocol = gpio["protocol"].as<String>(); pin.protocol.trim();
+                    if (pin.protocol == "") pin.protocol = "GPIO";
+                    if (gpio.containsKey("i2c_addr")) {
+                        if (gpio["i2c_addr"].is<const char*>() || gpio["i2c_addr"].is<String>()) {
+                            pin.i2c_addr = (uint8_t)strtoul(gpio["i2c_addr"].as<const char*>(), NULL, 0);
+                        } else {
+                            pin.i2c_addr = gpio["i2c_addr"].as<uint8_t>();
+                        }
+                    } else {
+                        pin.i2c_addr = 0x20;
+                    }
                     Config::HardwareInputs.push_back(pin);
                 }
             }
@@ -472,6 +504,16 @@ void WebConfigPortal::handleApiHardwarePost() {
                     pin.name = gpio["name"].as<String>(); pin.name.trim();
                     pin.protocol = gpio["protocol"].as<String>(); pin.protocol.trim();
                     if (pin.protocol == "") pin.protocol = "GPIO_OUT";
+                    if (gpio.containsKey("i2c_addr")) {
+                        if (gpio["i2c_addr"].is<const char*>() || gpio["i2c_addr"].is<String>()) {
+                            pin.i2c_addr = (uint8_t)strtoul(gpio["i2c_addr"].as<const char*>(), NULL, 0);
+                        } else {
+                            pin.i2c_addr = gpio["i2c_addr"].as<uint8_t>();
+                        }
+                    } else {
+                        pin.i2c_addr = 0x20;
+                    }
+                    pin.active_low = gpio.containsKey("active_low") ? gpio["active_low"].as<bool>() : true;
                     Config::HardwareOutputs.push_back(pin);
                 }
             }
@@ -499,21 +541,32 @@ void WebConfigPortal::handleApiHardwarePost() {
                 }
             }
 
-            if (pdoc["sensors"].is<JsonArray>()) {
-                Config::HardwareSensors.clear();
-                for (JsonObject sj : pdoc["sensors"].as<JsonArray>()) {
-                    Config::GenericSensor sensor;
-                    sensor.name = sj["name"].as<String>(); sensor.name.trim();
-                    sensor.protocol = sj["protocol"].as<String>(); sensor.protocol.trim();
-                    for (JsonPair pair : sj) {
-                        String key = pair.key().c_str();
-                        if (key != "name" && key != "protocol") {
-                            sensor.params[key] = pair.value().as<String>();
-                        }
-                    }
-                    Config::HardwareSensors.push_back(sensor);
-                }
-            }
+             if (pdoc["sensors"].is<JsonArray>()) {
+                 Config::HardwareSensors.clear();
+                 for (JsonObject sj : pdoc["sensors"].as<JsonArray>()) {
+                     Config::GenericSensor sensor;
+                     sensor.name = sj["name"].as<String>(); sensor.name.trim();
+                     sensor.protocol = sj["protocol"].as<String>(); sensor.protocol.trim();
+                     for (JsonPair pair : sj) {
+                         String key = pair.key().c_str();
+                         if (key != "name" && key != "protocol") {
+                             sensor.params[key] = pair.value().as<String>();
+                         }
+                     }
+                     Config::HardwareSensors.push_back(sensor);
+                 }
+             }
+
+             // I2C global pin configuration
+             if (pdoc["i2c"].is<JsonObject>()) {
+                 JsonObject i2c = pdoc["i2c"].as<JsonObject>();
+                 if (i2c.containsKey("sda_pin")) {
+                     Config::PIN_I2C_SDA = i2c["sda_pin"].as<uint8_t>();
+                 }
+                 if (i2c.containsKey("scl_pin")) {
+                     Config::PIN_I2C_SCL = i2c["scl_pin"].as<uint8_t>();
+                 }
+             }
 
             if (saveFullConfig()) {
                 HardwareManager::reloadConfiguration();

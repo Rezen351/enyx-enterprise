@@ -18,13 +18,17 @@ namespace Config {
         uint16_t analog_min;      // Analog threshold min (for DIGITAL conversion)
         uint16_t analog_max;      // Analog threshold max
         bool invert;              // Invert logic (true = LOW is active)
+        String protocol;          // "GPIO", "PCF8575_IN"
+        uint8_t i2c_addr;         // e.g. 0x20
     };
 
     struct OutputPin {
         uint8_t pin;
         String type;       // "DIGITAL", "PWM"
         String name;
-        String protocol;   // ProtocolHandler name, default "GPIO_OUT"
+        String protocol;   // ProtocolHandler name, default "GPIO_OUT" or "PCF8575_OUT"
+        uint8_t i2c_addr;  // e.g. 0x20
+        bool active_low;   // true for relay (default)
     };
 
     struct ModbusRegister {
@@ -87,6 +91,10 @@ namespace Config {
 
     // ==================== PIN MAPPING ====================
     extern uint8_t PIN_DHT_SENSOR;
+    
+    // ==================== I2C PINS (Global) ====================
+    extern uint8_t PIN_I2C_SDA;
+    extern uint8_t PIN_I2C_SCL;
     
     // ==================== MODBUS / RS485 PINS ====================
     extern uint8_t PIN_RS485_RX;

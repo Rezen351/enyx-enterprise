@@ -172,6 +172,17 @@ bool ConfigManager::loadConfig() {
             pin.interrupt = input["interrupt"] | "NONE"; pin.interrupt.trim();
             pin.analog_min = input["analog_min"] | 0;
             pin.analog_max = input["analog_max"] | 4095;
+            pin.protocol = input["protocol"].as<String>(); pin.protocol.trim();
+            if (pin.protocol == "") pin.protocol = "GPIO";
+            if (input.containsKey("i2c_addr")) {
+                if (input["i2c_addr"].is<const char*>() || input["i2c_addr"].is<String>()) {
+                    pin.i2c_addr = (uint8_t)strtoul(input["i2c_addr"].as<const char*>(), NULL, 0);
+                } else {
+                    pin.i2c_addr = input["i2c_addr"].as<uint8_t>();
+                }
+            } else {
+                pin.i2c_addr = 0x20;
+            }
             Config::HardwareInputs.push_back(pin);
         }
     }
@@ -186,6 +197,16 @@ bool ConfigManager::loadConfig() {
             pin.name = output["name"].as<String>(); pin.name.trim();
             pin.protocol = output["protocol"].as<String>(); pin.protocol.trim();
             if (pin.protocol == "") pin.protocol = "GPIO_OUT";
+            if (output.containsKey("i2c_addr")) {
+                if (output["i2c_addr"].is<const char*>() || output["i2c_addr"].is<String>()) {
+                    pin.i2c_addr = (uint8_t)strtoul(output["i2c_addr"].as<const char*>(), NULL, 0);
+                } else {
+                    pin.i2c_addr = output["i2c_addr"].as<uint8_t>();
+                }
+            } else {
+                pin.i2c_addr = 0x20;
+            }
+            pin.active_low = output.containsKey("active_low") ? output["active_low"].as<bool>() : true;
             Config::HardwareOutputs.push_back(pin);
         }
     }
@@ -245,6 +266,14 @@ bool ConfigManager::loadConfig() {
     }
     if (doc["hardware"]["rs485_de"]) {
         Config::PIN_RS485_DE = doc["hardware"]["rs485_de"].as<uint8_t>();
+    }
+
+    // I2C pins (global configuration)
+    if (doc["hardware"]["i2c"]["sda_pin"]) {
+        Config::PIN_I2C_SDA = doc["hardware"]["i2c"]["sda_pin"].as<uint8_t>();
+    }
+    if (doc["hardware"]["i2c"]["scl_pin"]) {
+        Config::PIN_I2C_SCL = doc["hardware"]["i2c"]["scl_pin"].as<uint8_t>();
     }
 
     return true;

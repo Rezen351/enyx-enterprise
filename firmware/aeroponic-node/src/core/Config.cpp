@@ -43,6 +43,10 @@ namespace Config {
     // --- Pin Mapping ---
     uint8_t PIN_DHT_SENSOR = 4;
     
+    // --- I2C Pins (Global) ---
+    uint8_t PIN_I2C_SDA = 21;
+    uint8_t PIN_I2C_SCL = 22;
+    
     // --- Modbus / RS485 Pins ---
     uint8_t PIN_RS485_RX = 16;
     uint8_t PIN_RS485_TX = 17;

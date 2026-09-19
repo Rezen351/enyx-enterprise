@@ -27,6 +27,10 @@
     "inputs": [],
     "outputs": [],
     "modbus": [],
-    "sensors": []
+    "sensors": [],
+    "i2c": {
+      "sda_pin": 21,
+      "scl_pin": 22
+    }
   }
 }

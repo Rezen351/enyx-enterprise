@@ -75,10 +75,12 @@ namespace HardwareManager {
             
             // Re-initialize GPIO pin modes for legacy inputs/outputs
             for (const auto& hw : Config::HardwareInputs) {
-                uint8_t mode = INPUT;
-                if (hw.pull == "UP") mode = INPUT_PULLUP;
-                else if (hw.pull == "DOWN") mode = INPUT_PULLDOWN;
-                pinMode(hw.pin, mode);
+                if (hw.protocol == "GPIO" || hw.protocol == "") {
+                    uint8_t mode = INPUT;
+                    if (hw.pull == "UP") mode = INPUT_PULLUP;
+                    else if (hw.pull == "DOWN") mode = INPUT_PULLDOWN;
+                    pinMode(hw.pin, mode);
+                }
             }
 
             // Create handlers for outputs (actuator) via ProtocolRegistry
@@ -89,6 +91,8 @@ namespace HardwareManager {
                 obj["type"] = hw.type;
                 obj["name"] = hw.name;
                 obj["protocol"] = hw.protocol;
+                obj["i2c_addr"] = hw.i2c_addr;
+                obj["active_low"] = hw.active_low;
                 ProtocolHandler* h = ProtocolRegistry::createHandler(hw.protocol, obj);
                 if (h) {
                     activeOutputHandlers[hw.name] = h;
@@ -100,7 +104,7 @@ namespace HardwareManager {
                 }
             }
 
-            // Create handlers for legacy inputs
+            // Create handlers for inputs
             for (const auto& hw : Config::HardwareInputs) {
                 StaticJsonDocument<512> cdoc;
                 JsonObject obj = cdoc.to<JsonObject>();
@@ -113,9 +117,18 @@ namespace HardwareManager {
                 obj["interrupt"] = hw.interrupt;
                 obj["analog_min"] = hw.analog_min;
                 obj["analog_max"] = hw.analog_max;
+                obj["protocol"] = hw.protocol;
+                obj["i2c_addr"] = hw.i2c_addr;
                 
-                ProtocolHandler* h = ProtocolRegistry::createHandler("GPIO", obj);
-                if (h) activeHandlers.push_back(h);
+                String proto = hw.protocol;
+                if (proto == "") proto = "GPIO";
+                ProtocolHandler* h = ProtocolRegistry::createHandler(proto, obj);
+                if (h) {
+                    activeHandlers.push_back(h);
+                    Logger::hardware("Registered Input: %s (Protocol: %s)", hw.name.c_str(), proto.c_str());
+                } else {
+                    Logger::hardware("Failed to create input handler for: %s (Protocol: %s)", hw.name.c_str(), proto.c_str());
+                }
             }
 
             // Create handlers for legacy modbus
@@ -166,7 +179,7 @@ namespace HardwareManager {
 
     // ==================== DISCOVER SENSORS ====================
     String discoverSensors() {
-        initI2C(21, 22);
+        initI2C(Config::PIN_I2C_SDA, Config::PIN_I2C_SCL);
         StaticJsonDocument<1024> ddoc;
         JsonArray i2cDevices = ddoc.createNestedArray("i2c");
         
@@ -185,6 +198,8 @@ namespace HardwareManager {
                     dev["detected_type"] = "BME280";
                 } else if (address == 0x40 || address == 0x41 || address == 0x44 || address == 0x45) {
                     dev["detected_type"] = "INA219";
+                } else if (address >= 0x20 && address <= 0x27) {
+                    dev["detected_type"] = "PCF8575";
                 } else {
                     dev["detected_type"] = "UNKNOWN_I2C";
                 }
@@ -230,6 +245,8 @@ namespace HardwareManager {
         ProtocolRegistry::registerProtocol("MODBUS", []() -> ProtocolHandler* { return new ModbusHandler(); });
         ProtocolRegistry::registerProtocol("I2C", []() -> ProtocolHandler* { return new I2CHandler(); });
         ProtocolRegistry::registerProtocol("GPIO_OUT", []() -> ProtocolHandler* { return new GpioOutputHandler(); });
+        ProtocolRegistry::registerProtocol("PCF8575_OUT", []() -> ProtocolHandler* { return new Pcf8575OutputHandler(); });
+        ProtocolRegistry::registerProtocol("PCF8575_IN", []() -> ProtocolHandler* { return new Pcf8575InputHandler(); });
 
         // Load handlers initially
         reloadConfiguration();
@@ -290,7 +307,7 @@ namespace HardwareManager {
             JsonObject telemetry = doc.createNestedObject("telemetry");
             
             // Outputs telemetry - copy under mutex to avoid race with reloadConfiguration/setOutput
-            std::vector<OutputPin> hwOutputsSnapshot;
+            std::vector<Config::OutputPin> hwOutputsSnapshot;
             std::map<String, int> outputStatesSnapshot;
             if (handlersMutex && xSemaphoreTake(handlersMutex, pdMS_TO_TICKS(4000)) == pdTRUE) {
                 hwOutputsSnapshot = Config::HardwareOutputs;

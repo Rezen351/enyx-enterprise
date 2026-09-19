@@ -326,10 +326,26 @@
             <!-- I2C -->
             <div id="view-i2c" class="view-section">
                 <form class="card" onsubmit="event.preventDefault(); saveHardware();">
+                    <h3 style="margin-top:0;">I2C Configuration</h3>
+                    <p style="color:var(--text-light); font-size:13px; margin-bottom:16px;">
+                        Configure the global I2C bus pins. These pins are shared across all I2C sensors.
+                    </p>
+                    <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:16px;">
+                        <div class="form-group" style="flex:1; min-width:120px;">
+                            <label>SDA Pin</label>
+                            <input type="number" id="cfg_i2c_sda" min="0" max="48" value="21">
+                        </div>
+                        <div class="form-group" style="flex:1; min-width:120px;">
+                            <label>SCL Pin</label>
+                            <input type="number" id="cfg_i2c_scl" min="0" max="48" value="22">
+                        </div>
+                    </div>
+                </form>
+
+                <form class="card" onsubmit="event.preventDefault(); saveHardware();">
                     <h3 style="margin-top:0;">I2C Sensors</h3>
                     <p style="color:var(--text-light); font-size:13px; margin-bottom:16px;">
-                        Add I2C sensors (INA219, BME280, DHT12). Make sure the address and SDA/SCL pins match the device
-                        wiring.
+                        Add I2C sensors (INA219, BME280, DHT12). I2C pins are configured globally above.
                     </p>
                     <div id="i2c-rows"></div>
                     <button class="outline" onclick="addI2CSensor()" style="margin-top:10px;" type="button">+ Add

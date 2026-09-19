@@ -101,8 +101,6 @@ private:
     String name;
     String type;
     uint8_t address;
-    uint8_t sda_pin;
-    uint8_t scl_pin;
     bool initialized;
     LightBME280* bme;
     Adafruit_INA219* ina219;
@@ -117,5 +115,44 @@ public:
 
 // I2C bus initializer helper
 void initI2C(uint8_t sda, uint8_t scl);
+
+// ==================== PCF8575 I2C Expander Driver ====================
+namespace Pcf8575Bus {
+    bool writePort(uint8_t addr, uint16_t state);
+    uint16_t readPort(uint8_t addr, bool& success);
+    bool setPin(uint8_t addr, uint8_t pin, bool levelHigh);
+    bool readPin(uint8_t addr, uint8_t pin, bool& levelHigh);
+    void markAsInput(uint8_t addr, uint8_t pin);
+    uint16_t getState(uint8_t addr);
+}
+
+// PCF8575 Output Handler (Relay / Actuator)
+class Pcf8575OutputHandler : public ProtocolHandler {
+private:
+    uint8_t pin;
+    uint8_t i2c_addr;
+    bool active_low;
+    String name;
+public:
+    bool init(const JsonObject& config) override;
+    bool read(JsonObject& telemetry) override;
+    bool write(int value) override;
+    String getProtocolName() override { return "PCF8575_OUT"; }
+    String getSensorName()  override { return name; }
+};
+
+// PCF8575 Input Handler (Sensor / Switch / Float)
+class Pcf8575InputHandler : public ProtocolHandler {
+private:
+    uint8_t pin;
+    uint8_t i2c_addr;
+    bool invert;
+    String name;
+public:
+    bool init(const JsonObject& config) override;
+    bool read(JsonObject& telemetry) override;
+    String getProtocolName() override { return "PCF8575_IN"; }
+    String getSensorName()  override { return name; }
+};
 
 #endif // PROTOCOL_HANDLERS_H

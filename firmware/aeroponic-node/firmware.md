@@ -107,9 +107,12 @@ Semua topik mengikuti format: `<prefix>/<node_id>/<kategori>`
 
 ### Supported Protocols
 
-| Protocol | Jenis Sensor | Keterangan |
+| Protocol | Jenis Sensor / Aktuator | Keterangan |
 |----------|--------------|-----------|
 | GPIO (Digital/Analog) | Sensor digital, analog, sensor tanah, level air | Pull-up/down, invert logic, debounce |
+| GPIO_OUT | Relay, solenoid, pompa, indikator LED | Direct ESP32 pin (Digital / PWM) |
+| PCF8575_OUT | Relay single/multi channel via I2C | 16-channel expander (P0-P15), Active-LOW / Active-HIGH |
+| PCF8575_IN | Digital switch, pelampung air, limit switch | 16-channel expander (P0-P15), quasi-bidirectional input |
 | I2C | BME280 (temp/hum/pressure), INA219 (voltage/current/power), DHT12 (temp/hum) | Alamat I2C konfigurasi per sensor |
 | Modbus RTU (RS485) | Holding/Input registers, berbagai tipe data | Multi-baud, slave ID 1-247, multiplier scaling |
 | Generic Sensor | Protocol handler berbasis konfigurasi | Didefinisikan via `params` map |
