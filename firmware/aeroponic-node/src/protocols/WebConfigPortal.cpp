@@ -1,7 +1,6 @@
 #include "WebConfigPortal.h"
 #include "../core/ConfigManager.h"
 #include "../core/HardwareManager.h"
-#include "../core/CryptoCredential.h"
 #include "../../include/Config.h"
 #include "../../include/Logger.h"
 #include <WiFi.h>
@@ -409,6 +408,14 @@ void WebConfigPortal::handleApiFullConfigGet() {
 
 void WebConfigPortal::handleApiWifiPost() {
     if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+    if (!server.hasArg("ssid") || server.arg("ssid").length() == 0) {
+        server.send(400, "application/json", "{\"error\":\"SSID is required\"}");
+        return;
+    }
+    if (server.hasArg("eap_identity") && server.arg("eap_identity").length() > 0 && (!server.hasArg("eap_password") || server.arg("eap_password").length() == 0)) {
+        server.send(400, "application/json", "{\"error\":\"Enterprise password is required when identity is set\"}");
+        return;
+    }
     if (server.hasArg("ssid")) { Config::WIFI_SSID = server.arg("ssid"); Config::WIFI_SSID.trim(); }
     if (server.hasArg("pass")) { Config::WIFI_PASS = server.arg("pass"); Config::WIFI_PASS.trim(); }
     if (server.hasArg("eap_identity")) { Config::WIFI_EAP_IDENTITY = server.arg("eap_identity"); Config::WIFI_EAP_IDENTITY.trim(); }
@@ -416,7 +423,6 @@ void WebConfigPortal::handleApiWifiPost() {
     
     if (saveFullConfig()) {
         server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true}");
-        delay(1000);
         ESP.restart();
     } else {
         server.send(500, "application/json", "{\"error\":\"Failed to save config\"}");
@@ -430,13 +436,12 @@ void WebConfigPortal::handleApiMqttPost() {
     if (server.hasArg("topic_prefix")) { Config::MQTT_TOPIC_PREFIX = server.arg("topic_prefix"); Config::MQTT_TOPIC_PREFIX.trim(); }
     if (server.hasArg("user")) { Config::MQTT_USER = server.arg("user"); Config::MQTT_USER.trim(); }
     if (server.hasArg("pass")) { Config::MQTT_PASS = server.arg("pass"); Config::MQTT_PASS.trim(); }
-    if (server.hasArg("telemetry_interval")) Config::MQTT_PUBLISH_INTERVAL = server.arg("telemetry_interval").toInt();
+    if (server.hasArg("telemetry_interval_ms")) Config::MQTT_PUBLISH_INTERVAL = server.arg("telemetry_interval_ms").toInt();
     if (server.hasArg("use_tls")) Config::MQTT_USE_TLS = server.arg("use_tls") == "true";
     if (server.hasArg("mqtt_disconnect_emergency_stop")) Config::MQTT_DISCONNECT_EMERGENCY_STOP = server.arg("mqtt_disconnect_emergency_stop") == "true";
     
     if (saveFullConfig()) {
         server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true,\"message\":\"Rebooting to apply\"}");
-        delay(1000);
         ESP.restart();
     } else {
         server.send(500, "application/json", "{\"error\":\"Failed to save config\"}");
@@ -454,7 +459,6 @@ void WebConfigPortal::handleApiDevicePost() {
 
     if (saveFullConfig()) {
         server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true,\"message\":\"Device config updated. Rebooting...\"}");
-        delay(1000);
         ESP.restart();
     } else {
         server.send(500, "application/json", "{\"error\":\"Failed to save config\"}");
@@ -676,7 +680,6 @@ void WebConfigPortal::handleApiAccountPost() {
     
     if (saveFullConfig()) {
         server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true,\"message\":\"Account updated. Rebooting...\"}");
-        delay(1000);
         ESP.restart();
     } else {
         server.send(500, "application/json", "{\"error\":\"Failed to save config\"}");
@@ -696,7 +699,6 @@ void WebConfigPortal::handleApiOtaUpdate() {
         server.send(500, "application/json", "{\"error\":\"" + String(Update.errorString()) + "\"}");
     } else {
         server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"OTA update completed. Rebooting...\"}");
-        delay(1000);
         ESP.restart();
     }
 }

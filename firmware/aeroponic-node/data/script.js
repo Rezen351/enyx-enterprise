@@ -88,6 +88,32 @@ async function api(path, method = 'GET', body = null) {
     }
 }
 
+function onWifiTypeChange() {
+    let type = document.getElementById('cfg_wifi_type').value;
+    let passGroup = document.getElementById('wifi-pass-group');
+    let enterpriseSection = document.getElementById('wifi-enterprise-section');
+
+    if (type === 'open') {
+        passGroup.style.display = 'none';
+        enterpriseSection.style.display = 'none';
+        document.getElementById('cfg_pass').value = '';
+        document.getElementById('cfg_eap_id').value = '';
+        document.getElementById('cfg_eap_pass').value = '';
+    } else if (type === 'wpa_personal') {
+        passGroup.style.display = 'block';
+        enterpriseSection.style.display = 'none';
+        document.getElementById('cfg_eap_id').value = '';
+        document.getElementById('cfg_eap_pass').value = '';
+    } else if (type === 'wpa_enterprise') {
+        passGroup.style.display = 'none';
+        enterpriseSection.style.display = 'block';
+        enterpriseSection.style.borderTop = 'none';
+        enterpriseSection.style.paddingTop = '0';
+        document.getElementById('cfg_eap_id').value = '';
+        document.getElementById('cfg_pass').value = '';
+    }
+}
+
 let statusTimer = null;
 
 function checkAuth() {
@@ -95,6 +121,9 @@ function checkAuth() {
     if (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' || window.location.protocol === 'file:') {
         document.getElementById('login-container').style.display = 'none';
         document.getElementById('app-container').style.display = 'flex';
+        loadStatus();
+        loadFullConfig();
+        if (typeof onWifiTypeChange === 'function') onWifiTypeChange();
         return;
     }
 
@@ -103,6 +132,7 @@ function checkAuth() {
         document.getElementById('app-container').style.display = 'flex';
         loadStatus();
         loadFullConfig();
+        if (typeof onWifiTypeChange === 'function') onWifiTypeChange();
     } else {
         document.getElementById('login-container').style.display = 'flex';
         document.getElementById('app-container').style.display = 'none';
@@ -258,6 +288,14 @@ async function loadFullConfig() {
             document.getElementById('cfg_i2c_scl').value = (d.hardware && d.hardware.i2c && d.hardware.i2c.scl_pin != null) ? d.hardware.i2c.scl_pin : 22;
         }
         document.getElementById('cfg_admin_u').value = d.security.admin_user || '';
+
+        let wifiType = 'wpa_personal';
+        if (wifi.eap_identity && wifi.eap_identity.trim() !== '') {
+            wifiType = 'wpa_enterprise';
+        }
+        document.getElementById('cfg_wifi_type').value = wifiType;
+        onWifiTypeChange();
+
         document.getElementById('cfg_ssid').value = wifi.ssid || '';
         document.getElementById('cfg_pass').value = '';
         document.getElementById('cfg_pass').placeholder = wifi.password ? PW_PLACEHOLDER : '';
@@ -376,7 +414,7 @@ function drawInputs() {
                 <div style="flex:1; min-width:90px;">
                     <label>PCF Pin</label>
                     <select onchange="hwInputs[${idx}].pin=parseInt(this.value)">
-                        ${Array.from({length: 16}, (_, i) => `<option value="${i}" ${p.pin == i ? 'selected' : ''}>P${i}</option>`).join('')}
+                        ${Array.from({ length: 16 }, (_, i) => `<option value="${i}" ${p.pin == i ? 'selected' : ''}>P${i}</option>`).join('')}
                     </select>
                 </div>
                 <div style="flex:1; min-width:100px;">
@@ -408,7 +446,7 @@ function drawInputs() {
                 <div style="flex:1; min-width:120px;">
                     <label>Interrupt Mode</label>
                     <select onchange="hwInputs[${idx}].interrupt=this.value">
-                        <option value="NONE" ${(p.interrupt||'NONE') === 'NONE' ? 'selected' : ''}>NONE</option>
+                        <option value="NONE" ${(p.interrupt || 'NONE') === 'NONE' ? 'selected' : ''}>NONE</option>
                         <option value="RISING" ${p.interrupt === 'RISING' ? 'selected' : ''}>RISING</option>
                         <option value="FALLING" ${p.interrupt === 'FALLING' ? 'selected' : ''}>FALLING</option>
                         <option value="CHANGE" ${p.interrupt === 'CHANGE' ? 'selected' : ''}>CHANGE</option>
@@ -416,7 +454,7 @@ function drawInputs() {
                 </div>
                 <div style="flex:1; min-width:100px;">
                     <label>Debounce (ms)</label>
-                    <input type="number" min="0" max="5000" value="${p.debounce_ms||0}" onchange="hwInputs[${idx}].debounce_ms=parseInt(this.value)">
+                    <input type="number" min="0" max="5000" value="${p.debounce_ms || 0}" onchange="hwInputs[${idx}].debounce_ms=parseInt(this.value)">
                 </div>
                 `}
                 <div style="flex:2; min-width:150px;">
@@ -434,9 +472,9 @@ function drawInputs() {
             </div>
             `;
         } else {
-            let metaDesc = isPcf 
+            let metaDesc = isPcf
                 ? `PCF8575 (${p.i2c_addr || '0x20'}) Pin P${p.pin}${p.invert ? ' | ⇄ Inverted' : ''}`
-                : `GPIO ${p.pin} | ${p.type} | Pull: ${p.pull} | IRQ: ${p.interrupt||'NONE'} | Debounce: ${p.debounce_ms||0}ms${p.invert ? ' | ⇄ Inverted' : ''}`;
+                : `GPIO ${p.pin} | ${p.type} | Pull: ${p.pull} | IRQ: ${p.interrupt || 'NONE'} | Debounce: ${p.debounce_ms || 0}ms${p.invert ? ' | ⇄ Inverted' : ''}`;
             html += `
             <div class="hw-list-item">
                 <div class="hw-info">
@@ -472,7 +510,7 @@ function drawOutputs() {
                 <div style="flex:1; min-width:90px;">
                     <label>PCF Pin</label>
                     <select onchange="hwOutputs[${idx}].pin=parseInt(this.value)">
-                        ${Array.from({length: 16}, (_, i) => `<option value="${i}" ${p.pin == i ? 'selected' : ''}>P${i}</option>`).join('')}
+                        ${Array.from({ length: 16 }, (_, i) => `<option value="${i}" ${p.pin == i ? 'selected' : ''}>P${i}</option>`).join('')}
                     </select>
                 </div>
                 <div style="flex:1; min-width:100px;">
@@ -559,8 +597,8 @@ function drawModbus() {
                     <input type="number" placeholder="Addr" value="${r.address}" onchange="hwModbus[${idx}].registers[${ridx}].address=parseInt(this.value)" style="flex:1; min-width:60px; font-size:12px; padding:6px; margin:0;">
                     <select onchange="hwModbus[${idx}].registers[${ridx}].type=this.value" style="flex:1.5; min-width:85px; font-size:12px; padding:6px; margin:0;"><option value="HOLDING" ${r.type === 'HOLDING' ? 'selected' : ''}>HOLDING</option><option value="INPUT" ${r.type === 'INPUT' ? 'selected' : ''}>INPUT</option></select>
                     <input type="text" placeholder="Name" value="${r.name}" onchange="hwModbus[${idx}].registers[${ridx}].name=this.value" style="flex:2; min-width:90px; font-size:12px; padding:6px; margin:0;">
-                    <select onchange="hwModbus[${idx}].registers[${ridx}].length=parseInt(this.value)" style="flex:1; min-width:65px; font-size:12px; padding:6px; margin:0;" title="Register count"><option value="1" ${(r.length||1) == 1 ? 'selected' : ''}>1 reg</option><option value="2" ${(r.length||1) == 2 ? 'selected' : ''}>2 regs</option><option value="3" ${(r.length||1) == 3 ? 'selected' : ''}>3 regs</option><option value="4" ${(r.length||1) == 4 ? 'selected' : ''}>4 regs</option></select>
-                    <select onchange="hwModbus[${idx}].registers[${ridx}].data_type=this.value" style="flex:1.5; min-width:90px; font-size:12px; padding:6px; margin:0;" title="Data format"><option value="UINT16" ${(r.data_type||'UINT16') === 'UINT16' ? 'selected' : ''}>UINT16</option><option value="INT16" ${(r.data_type||'UINT16') === 'INT16' ? 'selected' : ''}>INT16</option><option value="FLOAT32" ${(r.data_type||'UINT16') === 'FLOAT32' ? 'selected' : ''}>FLOAT32</option><option value="INT32" ${(r.data_type||'UINT16') === 'INT32' ? 'selected' : ''}>INT32</option><option value="UINT32" ${(r.data_type||'UINT16') === 'UINT32' ? 'selected' : ''}>UINT32</option></select>
+                    <select onchange="hwModbus[${idx}].registers[${ridx}].length=parseInt(this.value)" style="flex:1; min-width:65px; font-size:12px; padding:6px; margin:0;" title="Register count"><option value="1" ${(r.length || 1) == 1 ? 'selected' : ''}>1 reg</option><option value="2" ${(r.length || 1) == 2 ? 'selected' : ''}>2 regs</option><option value="3" ${(r.length || 1) == 3 ? 'selected' : ''}>3 regs</option><option value="4" ${(r.length || 1) == 4 ? 'selected' : ''}>4 regs</option></select>
+                    <select onchange="hwModbus[${idx}].registers[${ridx}].data_type=this.value" style="flex:1.5; min-width:90px; font-size:12px; padding:6px; margin:0;" title="Data format"><option value="UINT16" ${(r.data_type || 'UINT16') === 'UINT16' ? 'selected' : ''}>UINT16</option><option value="INT16" ${(r.data_type || 'UINT16') === 'INT16' ? 'selected' : ''}>INT16</option><option value="FLOAT32" ${(r.data_type || 'UINT16') === 'FLOAT32' ? 'selected' : ''}>FLOAT32</option><option value="INT32" ${(r.data_type || 'UINT16') === 'INT32' ? 'selected' : ''}>INT32</option><option value="UINT32" ${(r.data_type || 'UINT16') === 'UINT32' ? 'selected' : ''}>UINT32</option></select>
                     <input type="number" step="0.01" placeholder="Mult." value="${r.multiplier}" onchange="hwModbus[${idx}].registers[${ridx}].multiplier=parseFloat(this.value)" style="flex:1; min-width:55px; font-size:12px; padding:6px; margin:0;">
                     <button class="danger" style="padding:6px 12px; font-size:12px; min-width:40px; text-align:center;" onclick="if(confirm('Remove this register?')){hwModbus[${idx}].registers.splice(${ridx}, 1); drawModbus();}">X</button>
                 </div>`;
@@ -644,12 +682,12 @@ async function startScanId() {
     let bauds = Array.from(baudChecks).map(cb => cb.value);
     let resDiv = document.getElementById('scan_results');
     let scanBtn = document.querySelector('button[onclick="startScanId()"]');
-    
+
     if (bauds.length === 0) {
         resDiv.innerHTML = "<div style='color:var(--danger);'>Please select at least one baudrate.</div>";
         return;
     }
-    
+
     setButtonLoading(scanBtn, true, 'Scan All IDs');
     resDiv.innerHTML = `<div style="color:var(--primary);">Scanning ID 1-247 on ${bauds.join(', ')} baud... Please wait (this may take a few minutes).</div>`;
 
@@ -797,10 +835,20 @@ async function saveWifi() {
     let btn = document.querySelector('#view-wifi button[type="submit"]');
     setButtonLoading(btn, true, 'Save & Reboot');
     let s = document.getElementById('cfg_ssid').value;
+    let type = document.getElementById('cfg_wifi_type').value;
+    let p = document.getElementById('cfg_pass').value;
     let ei = document.getElementById('cfg_eap_id').value;
-    let body = `ssid=${encodeURIComponent(s)}&eap_identity=${encodeURIComponent(ei)}`;
-    if (pwDirty.cfg_pass) body += `&pass=${encodeURIComponent(document.getElementById('cfg_pass').value)}`;
-    if (pwDirty.cfg_eap_pass) body += `&eap_password=${encodeURIComponent(document.getElementById('cfg_eap_pass').value)}`;
+    let ep = document.getElementById('cfg_eap_pass').value;
+
+    let body = `ssid=${encodeURIComponent(s)}`;
+    if (type === 'open') {
+        body += `&pass=&eap_identity=&eap_password=`;
+    } else if (type === 'wpa_personal') {
+        body += `&pass=${encodeURIComponent(p)}&eap_identity=&eap_password=`;
+    } else if (type === 'wpa_enterprise') {
+        body += `&pass=&eap_identity=${encodeURIComponent(ei)}&eap_password=${encodeURIComponent(ep)}`;
+    }
+
     let d = await api('/api/wifi', 'POST', body);
     setButtonLoading(btn, false, 'Save & Reboot');
     if (d) triggerRebootSequence();

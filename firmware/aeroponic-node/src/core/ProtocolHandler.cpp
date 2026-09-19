@@ -14,6 +14,7 @@ ProtocolHandler* ProtocolRegistry::createHandler(const String& name, const JsonO
     auto it = reg.find(name);
     if (it != reg.end()) {
         ProtocolHandler* handler = it->second();
+        if (!handler) return nullptr;
         if (handler->init(config)) {
             return handler;
         } else {

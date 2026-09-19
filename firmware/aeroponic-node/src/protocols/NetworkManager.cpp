@@ -59,14 +59,23 @@ void NetworkManager::wifiTask(void* parameter) {
                 Logger::network("Reconnecting to WiFi: %s", Config::WIFI_SSID.c_str());
                 
                 if (Config::WIFI_EAP_IDENTITY.length() > 0) {
+                    WiFi.disconnect();
+                    delay(100);
+                    Logger::network("Attempting WPA2-Enterprise (PEAP) connection...");
                     WiFi.begin(Config::WIFI_SSID, WPA2_AUTH_PEAP, Config::WIFI_EAP_IDENTITY, "", Config::WIFI_EAP_PASSWORD);
-                } else {
+                } else if (Config::WIFI_PASS.length() > 0) {
+                    WiFi.disconnect();
+                    delay(100);
                     WiFi.begin(Config::WIFI_SSID.c_str(), Config::WIFI_PASS.c_str());
+                } else {
+                    WiFi.disconnect();
+                    delay(100);
+                    WiFi.begin(Config::WIFI_SSID.c_str());
                 }
             }
             
-            if (wifiConnecting && (millis() - connectStart > 10000)) {
-                Logger::network("WiFi connect timeout, will retry in 5s...");
+            if (wifiConnecting && (millis() - connectStart > 20000)) {
+                Logger::network("WiFi connect timeout (20s). Status=%d", WiFi.status());
                 WiFi.disconnect(false);
                 wifiConnecting = false;
                 lastReconnectAttempt = 0;

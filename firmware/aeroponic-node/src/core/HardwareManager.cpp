@@ -264,10 +264,16 @@ namespace HardwareManager {
 
     // ==================== TELEMETRY TASK ====================
     void telemetryTask(void* parameter) {
-        uint32_t delayTime = Config::MQTT_PUBLISH_INTERVAL > 0 ? Config::MQTT_PUBLISH_INTERVAL : 5000;
-        
         while (true) {
-            TaskWatchdog::heartbeat("TelemetryTask"); // GAP #5
+            TaskWatchdog::heartbeat("TelemetryTask");
+
+            uint32_t delayTime;
+            if (handlersMutex && xSemaphoreTake(handlersMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                delayTime = Config::MQTT_PUBLISH_INTERVAL > 0 ? Config::MQTT_PUBLISH_INTERVAL : 5000;
+                xSemaphoreGive(handlersMutex);
+            } else {
+                delayTime = 5000;
+            }
             
             // MQTT disconnect emergency stop
             if (mqttDisconnectEmergencyTriggered) {
@@ -528,6 +534,7 @@ namespace HardwareManager {
     }
     
     String scanModbusRegBatch(uint8_t id, uint32_t baud, uint16_t startReg, uint16_t endReg, String type, uint8_t length) {
+        if (endReg < startReg) return "[]";
         String resultJson = "[";
         bool first = true;
         

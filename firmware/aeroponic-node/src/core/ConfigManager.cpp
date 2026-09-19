@@ -100,21 +100,24 @@ bool ConfigManager::loadConfig() {
     }
 
     // Protocols - WiFi
-    if (doc["protocols"]["wifi"]["ssid"]) {
-        Config::WIFI_SSID = doc["protocols"]["wifi"]["ssid"].as<String>();
-        Config::WIFI_SSID.trim();
-    }
-    if (doc["protocols"]["wifi"]["password"]) {
-        Config::WIFI_PASS = doc["protocols"]["wifi"]["password"].as<String>();
-        Config::WIFI_PASS.trim();
-    }
-    if (doc["protocols"]["wifi"]["eap_identity"]) {
-        Config::WIFI_EAP_IDENTITY = doc["protocols"]["wifi"]["eap_identity"].as<String>();
-        Config::WIFI_EAP_IDENTITY.trim();
-    }
-    if (doc["protocols"]["wifi"]["eap_password"]) {
-        Config::WIFI_EAP_PASSWORD = doc["protocols"]["wifi"]["eap_password"].as<String>();
-        Config::WIFI_EAP_PASSWORD.trim();
+    if (doc["protocols"]["wifi"].is<JsonObject>()) {
+        JsonObject wifi = doc["protocols"]["wifi"].as<JsonObject>();
+        if (wifi.containsKey("ssid")) {
+            Config::WIFI_SSID = wifi["ssid"].as<String>();
+            Config::WIFI_SSID.trim();
+        }
+        if (wifi.containsKey("password")) {
+            Config::WIFI_PASS = wifi["password"].as<String>();
+            Config::WIFI_PASS.trim();
+        }
+        if (wifi.containsKey("eap_identity")) {
+            Config::WIFI_EAP_IDENTITY = wifi["eap_identity"].as<String>();
+            Config::WIFI_EAP_IDENTITY.trim();
+        }
+        if (wifi.containsKey("eap_password")) {
+            Config::WIFI_EAP_PASSWORD = wifi["eap_password"].as<String>();
+            Config::WIFI_EAP_PASSWORD.trim();
+        }
     }
 
     // Protocols - MQTT
