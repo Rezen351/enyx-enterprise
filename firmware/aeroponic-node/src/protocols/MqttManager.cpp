@@ -20,44 +20,56 @@ static int logIndex = 0;
 static int logCount = 0;
 
 std::vector<String> MqttManager::mqttLogs;
+SemaphoreHandle_t MqttManager::logMutex = NULL;
 
 void MqttManager::addLog(const char* logMsg) {
-    // GAP #16: Truncate long messages
-    snprintf(logBuffer[logIndex], MAX_LOG_LENGTH, "[%lus] %s", 
-             millis() / 1000, logMsg);
-    logIndex = (logIndex + 1) % MAX_LOG_ENTRIES;
-    if (logCount < MAX_LOG_ENTRIES) logCount++;
-    
-    // Juga simpan di vector untuk backward compatibility
-    // (lebih pendek)
-    String shortMsg = String(logMsg);
-    if (shortMsg.length() > 80) {
-        shortMsg = shortMsg.substring(0, 77) + "...";
-    }
-    String uptimeStr = "[" + String(millis() / 1000) + "s] ";
-    mqttLogs.push_back(uptimeStr + shortMsg);
-    if (mqttLogs.size() > 10) {
-        mqttLogs.erase(mqttLogs.begin());
+    if (logMutex && xSemaphoreTake(logMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        snprintf(logBuffer[logIndex], MAX_LOG_LENGTH, "[%lus] %s", 
+                 millis() / 1000, logMsg);
+        logIndex = (logIndex + 1) % MAX_LOG_ENTRIES;
+        if (logCount < MAX_LOG_ENTRIES) logCount++;
+        
+        String shortMsg = String(logMsg);
+        if (shortMsg.length() > 80) {
+            shortMsg = shortMsg.substring(0, 77) + "...";
+        }
+        String uptimeStr = "[" + String(millis() / 1000) + "s] ";
+        mqttLogs.push_back(uptimeStr + shortMsg);
+        if (mqttLogs.size() > 10) {
+            mqttLogs.erase(mqttLogs.begin());
+        }
+        xSemaphoreGive(logMutex);
     }
 }
 
 std::vector<String> MqttManager::getLogs() {
-    return mqttLogs;
+    if (logMutex && xSemaphoreTake(logMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        std::vector<String> copy = mqttLogs;
+        xSemaphoreGive(logMutex);
+        return copy;
+    }
+    return {};
 }
 
 String MqttManager::getLogsJSON() {
-    StaticJsonDocument<1024> doc;
-    JsonArray arr = doc.createNestedArray("logs");
-    for (int i = 0; i < logCount; i++) {
-        int idx = (logIndex - logCount + i + MAX_LOG_ENTRIES) % MAX_LOG_ENTRIES;
-        arr.add(String(logBuffer[idx]));
+    if (logMutex && xSemaphoreTake(logMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        StaticJsonDocument<1024> doc;
+        JsonArray arr = doc.createNestedArray("logs");
+        for (int i = 0; i < logCount; i++) {
+            int idx = (logIndex - logCount + i + MAX_LOG_ENTRIES) % MAX_LOG_ENTRIES;
+            arr.add(String(logBuffer[idx]));
+        }
+        String out;
+        serializeJson(doc, out);
+        xSemaphoreGive(logMutex);
+        return out;
     }
-    String out;
-    serializeJson(doc, out);
-    return out;
+    return "{\"logs\":[]}";
 }
 
 void MqttManager::init() {
+    logMutex = xSemaphoreCreateMutex();
+    
     if (Config::MQTT_USE_TLS) {
         if (Config::MQTT_CA_CERT.length() > 0) {
             espClientSecure.setCACert(Config::MQTT_CA_CERT.c_str());

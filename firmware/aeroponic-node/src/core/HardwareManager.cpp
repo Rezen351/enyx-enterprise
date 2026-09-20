@@ -20,6 +20,7 @@ namespace HardwareManager {
     
     SemaphoreHandle_t modbusMutex;
     SemaphoreHandle_t handlersMutex = NULL;
+    SemaphoreHandle_t telemetryMutex = NULL;
     TaskHandle_t telemetryTaskHandle = NULL;
     
     std::map<String, float> latestSensorValues;
@@ -98,6 +99,7 @@ namespace HardwareManager {
                     activeOutputHandlers[hw.name] = h;
                     int oldVal = outputStates.count(hw.name) ? outputStates[hw.name] : 0;
                     h->write(oldVal);
+                    outputStates[hw.name] = oldVal;
                     Logger::hardware("Registered Output: %s (Protocol: %s)", hw.name.c_str(), hw.protocol.c_str());
                 } else {
                     Logger::hardware("Failed to create output handler for: %s (Protocol: %s)", hw.name.c_str(), hw.protocol.c_str());
@@ -213,7 +215,12 @@ namespace HardwareManager {
 
     // ==================== GET LATEST TELEMETRY JSON ====================
     String getLatestTelemetryJson() {
-        return latestTelemetryJson;
+        if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+            String copy = latestTelemetryJson;
+            xSemaphoreGive(telemetryMutex);
+            return copy;
+        }
+        return "{}";
     }
 
     // ==================== INIT ====================
@@ -239,6 +246,9 @@ namespace HardwareManager {
 
         // Create Handlers Mutex
         handlersMutex = xSemaphoreCreateMutex();
+
+        // Create Telemetry Mutex
+        telemetryMutex = xSemaphoreCreateMutex();
 
         // Register protocol creators in ProtocolRegistry
         ProtocolRegistry::registerProtocol("GPIO", []() -> ProtocolHandler* { return new GPIOInputHandler(); });
@@ -338,7 +348,10 @@ namespace HardwareManager {
             // Publish via MQTT
             memset(jsonBuffer, 0, sizeof(jsonBuffer));
             serializeJson(doc, jsonBuffer, sizeof(jsonBuffer) - 1);
-            latestTelemetryJson = String(jsonBuffer); // Save copy for local API / REST fallback
+            if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                latestTelemetryJson = String(jsonBuffer);
+                xSemaphoreGive(telemetryMutex);
+            }
             
             if (MqttManager::isConnected()) {
                 MqttManager::publish(Config::TOPIC_TELEMETRY, latestTelemetryJson);

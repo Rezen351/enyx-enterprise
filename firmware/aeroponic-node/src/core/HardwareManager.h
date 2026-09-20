@@ -11,6 +11,7 @@ namespace HardwareManager {
     extern ModbusMaster node;
     extern uint32_t currentBaud;
     extern SemaphoreHandle_t modbusMutex;
+    extern SemaphoreHandle_t telemetryMutex;
     extern std::map<String, float> latestSensorValues;
     extern volatile bool scanCancelRequested;
 

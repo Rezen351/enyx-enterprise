@@ -20,6 +20,7 @@ private:
     static void mqttTask(void* parameter);
     static void mqttCallback(char* topic, byte* payload, unsigned int length);
     static std::vector<String> mqttLogs;
+    static SemaphoreHandle_t logMutex;
 };
 
 #endif // MQTT_MANAGER_H
