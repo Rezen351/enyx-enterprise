@@ -222,6 +222,13 @@ bool ConfigManager::loadConfig() {
             ms.name = m["name"].as<String>(); ms.name.trim();
             ms.slave_id = m["slave_id"].as<uint8_t>();
             ms.baudrate = m["baudrate"].as<uint32_t>();
+            ms.transport = m["transport"].as<String>(); ms.transport.trim();
+            if (ms.transport == "") ms.transport = "RTU";
+            ms.ip_address = m["ip_address"].as<String>(); ms.ip_address.trim();
+            if (m["port"].is<uint32_t>()) ms.port = (uint16_t)m["port"].as<uint32_t>();
+            else if (m["port"].is<const char*>()) ms.port = (uint16_t)atoi(m["port"].as<const char*>());
+            else ms.port = 502;
+            if (ms.transport == "TCP" && ms.ip_address == "") ms.ip_address = "192.168.1.100";
             
             if (m["registers"].is<JsonArray>()) {
                 JsonArray registers = m["registers"].as<JsonArray>();

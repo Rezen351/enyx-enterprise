@@ -140,6 +140,9 @@ namespace HardwareManager {
                 obj["name"] = ms.name;
                 obj["slave_id"] = ms.slave_id;
                 obj["baudrate"] = ms.baudrate;
+                obj["transport"] = ms.transport;
+                obj["ip_address"] = ms.ip_address;
+                obj["port"] = ms.port;
                 JsonArray regs = obj.createNestedArray("registers");
                 for (const auto& r : ms.registers) {
                     JsonObject reg = regs.createNestedObject();
@@ -151,7 +154,8 @@ namespace HardwareManager {
                     reg["data_type"] = r.data_type;
                 }
                 
-                ProtocolHandler* h = ProtocolRegistry::createHandler("MODBUS", obj);
+                String proto = (ms.transport == "TCP") ? "MODBUS_TCP" : "MODBUS";
+                ProtocolHandler* h = ProtocolRegistry::createHandler(proto, obj);
                 if (h) activeHandlers.push_back(h);
             }
 
@@ -253,6 +257,7 @@ namespace HardwareManager {
         // Register protocol creators in ProtocolRegistry
         ProtocolRegistry::registerProtocol("GPIO", []() -> ProtocolHandler* { return new GPIOInputHandler(); });
         ProtocolRegistry::registerProtocol("MODBUS", []() -> ProtocolHandler* { return new ModbusHandler(); });
+        ProtocolRegistry::registerProtocol("MODBUS_TCP", []() -> ProtocolHandler* { return new ModbusTCPHandler(); });
         ProtocolRegistry::registerProtocol("I2C", []() -> ProtocolHandler* { return new I2CHandler(); });
         ProtocolRegistry::registerProtocol("GPIO_OUT", []() -> ProtocolHandler* { return new GpioOutputHandler(); });
         ProtocolRegistry::registerProtocol("PCF8575_OUT", []() -> ProtocolHandler* { return new Pcf8575OutputHandler(); });

@@ -49,7 +49,7 @@
             <div class="menu-item" onclick="switchView('wifi')">WIFI</div>
             <div class="menu-item" onclick="switchView('mqtt')">MQTT</div>
             <div class="menu-item" onclick="switchView('gpio')">GPIO</div>
-            <div class="menu-item" onclick="switchView('modbus')">RS485</div>
+            <div class="menu-item" onclick="switchView('modbus')">MODBUS</div>
             <div class="menu-item" onclick="switchView('i2c')">I2C</div>
             <div class="menu-item" onclick="switchView('ota')">FIRMWARE</div>
 
@@ -188,8 +188,8 @@
                     </div>
                     <div class="form-group"><label>SSID</label><input type="text" id="cfg_ssid" required
                             autocomplete="username"></div>
-                    <div class="form-group" id="wifi-pass-group" style="display:none;"><label>Password</label><input type="password"
-                             id="cfg_pass" autocomplete="current-password"></div>
+                    <div class="form-group" id="wifi-pass-group" style="display:none;"><label>Password</label><input
+                            type="password" id="cfg_pass" autocomplete="current-password"></div>
 
                     <div id="wifi-enterprise-section" style="display:none; margin-top:24px;">
                         <div class="form-group"><label>Identity (Email/Username)</label><input type="text"
@@ -250,9 +250,9 @@
             <!-- MODBUS -->
             <div id="view-modbus" class="view-section">
                 <div class="card" style="margin-top:0px;">
-                    <h3 class="card-title">RS485 Configuration</h3>
+                    <h3 class="card-title">Modbus RTU Configuration</h3>
                     <p style="color:var(--text-light); font-size:13px; margin-bottom:16px;">
-                        Configure UART pins for Modbus RS485 communication.
+                        Configure UART pins for Modbus RTU.
                     </p>
                     <form onsubmit="event.preventDefault(); saveRS485();">
                         <div class="form-group">
@@ -272,7 +272,7 @@
                 </div>
 
                 <div class="card">
-                    <h3 style="margin-top:0;">Modbus Scanner Tool</h3>
+                    <h3 style="margin-top:0;">Modbus RTU Scanner</h3>
                     <div class="form-group"
                         style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px;">
                         <div style="flex: 1 1 100%;"><label>Baudrates (select one or more)</label>
@@ -305,11 +305,9 @@
                                 value="0" min="0" max="65535"></div>
                         <div style="flex: 1 1 100px;"><label>End Reg</label><input type="number" id="scan_reg_end"
                                 value="10" min="0" max="65535"></div>
-                        <div style="flex: 1 1 100px;"><label>Length</label><select id="scan_length">
-                                <option value="1" selected>1 reg</option>
-                                <option value="2">2 regs</option>
-                                <option value="3">3 regs</option>
-                                <option value="4">4 regs</option>
+                        <div style="flex: 1 1 100px;"><label>Length</label> <select id="scan_length">
+                                <option value="1" selected>1 register</option>
+                                <option value="2">2 registers</option>
                             </select></div>
                         <div style="flex: 1 1 120px;"><button onclick="startScanReg()"
                                 style="width:100%; height:42px; background-color:#111; border-color:#111; color:#fff; margin:0;"
@@ -358,7 +356,7 @@
                     <div id="i2c-rows"></div>
                     <button class="outline" onclick="addI2CSensor()" style="margin-top:10px;" type="button">+ Add
                         I2C Sensor</button>
-                    <button style="width:100%; margin-top:10px;" type="submit">Save & Reboot All I2C</button>
+                    <button style="width:100%; margin-top:10px;" type="submit">Save & Reboot</button>
                 </form>
             </div>
 

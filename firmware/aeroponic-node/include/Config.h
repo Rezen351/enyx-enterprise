@@ -44,6 +44,9 @@ namespace Config {
         String name;
         uint8_t slave_id;
         uint32_t baudrate;
+        String transport;     // "RTU" or "TCP"
+        String ip_address;    // for TCP: device IP
+        uint16_t port;        // for TCP: device port (default 502)
         std::vector<ModbusRegister> registers;
     };
 

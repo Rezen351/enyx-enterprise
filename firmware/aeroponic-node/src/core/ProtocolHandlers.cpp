@@ -3,6 +3,7 @@
 #include "../protocols/MqttManager.h"
 #include "../../include/Config.h"
 #include "../../include/Logger.h"
+#include <WiFiClient.h>
 
 // I2C bus tracking variables
 static bool wireInitialized = false;
@@ -224,7 +225,7 @@ bool ModbusHandler::read(JsonObject& telemetry) {
         
         for (const auto& reg : registers) {
             uint8_t result;
-            uint8_t regCount = (reg.length > 0 && reg.length <= 4) ? reg.length : 1;
+            uint8_t regCount = (reg.length > 0 && reg.length <= 2) ? reg.length : 1;
             
             if (reg.type == "INPUT") {
                 result = HardwareManager::node.readInputRegisters(reg.address, regCount);
@@ -274,7 +275,147 @@ bool ModbusHandler::read(JsonObject& telemetry) {
     return true;
 }
 
-// ==================== I2CHandler Implementation ====================
+// ==================== Modbus TCP Handler Implementation ====================
+
+bool ModbusTCPHandler::init(const JsonObject& config) {
+    if (!config.containsKey("name") || !config.containsKey("slave_id") ||
+        !config.containsKey("ip_address")) return false;
+    name = config["name"].as<String>();
+    slave_id = config["slave_id"].as<uint8_t>();
+    ip_address = config["ip_address"].as<String>();
+    port = config.containsKey("port") ? (uint16_t)config["port"].as<uint32_t>() : 502;
+
+    JsonArray regs = config["registers"];
+    for (JsonObject r : regs) {
+        RegisterConfig rc;
+        rc.address = r["address"];
+        rc.name = r["name"].as<String>();
+        rc.multiplier = r["multiplier"] | 1.0f;
+        rc.type = r["type"] | "HOLDING";
+        rc.length = r["length"] | 1;
+        rc.data_type = r["data_type"] | "UINT16";
+        registers.push_back(rc);
+    }
+    return true;
+}
+
+bool ModbusTCPHandler::read(JsonObject& telemetry) {
+    JsonObject modbus = telemetry["modbus"];
+    if (modbus.isNull()) {
+        modbus = telemetry.createNestedObject("modbus");
+    }
+    JsonObject modbusDev = modbus.createNestedObject(name);
+
+    if (!client.connected()) {
+        client.stop();
+        if (!client.connect(ip_address.c_str(), port)) {
+            modbusDev["error"] = "tcp_connect_failed";
+            return false;
+        }
+    }
+
+    for (const auto& reg : registers) {
+        uint8_t regCount = (reg.length > 0 && reg.length <= 2) ? reg.length : 1;
+
+        uint8_t pdu[5];
+        pdu[0] = (reg.type == "INPUT") ? 0x04 : 0x03;
+        pdu[1] = (uint8_t)((reg.address >> 8) & 0xFF);
+        pdu[2] = (uint8_t)(reg.address & 0xFF);
+        pdu[3] = (uint8_t)((regCount >> 8) & 0xFF);
+        pdu[4] = (uint8_t)(regCount & 0xFF);
+
+        uint8_t mbap[7];
+        uint16_t pduLen = (uint16_t)(sizeof(pdu) + 1);
+        mbap[0] = 0x00;
+        mbap[1] = 0x01;
+        mbap[2] = 0x00;
+        mbap[3] = 0x00;
+        mbap[4] = (uint8_t)((pduLen >> 8) & 0xFF);
+        mbap[5] = (uint8_t)(pduLen & 0xFF);
+        mbap[6] = (uint8_t)(slave_id & 0xFF);
+
+        client.write(mbap, sizeof(mbap));
+        client.write(pdu, sizeof(pdu));
+
+        uint32_t startWait = millis();
+        while (client.available() < 1 && (millis() - startWait) < 1000) {
+            vTaskDelay(2 / portTICK_PERIOD_MS);
+        }
+
+        if (client.available() < 7) {
+            client.stop();
+            modbusDev[reg.name + "_error"] = "tcp_timeout";
+            continue;
+        }
+
+        uint8_t hdr[7];
+        client.read(hdr, sizeof(hdr));
+        uint16_t respLen = ((uint16_t)hdr[4] << 8) | hdr[5];
+        respLen -= 1;
+        if (respLen > 260) respLen = 260;
+
+        uint32_t pduWaitStart = millis();
+        while (client.available() < respLen && (millis() - pduWaitStart) < 1000) {
+            vTaskDelay(2 / portTICK_PERIOD_MS);
+        }
+
+        uint8_t pduResp[260];
+        int readLen = client.read(pduResp, respLen);
+        if (readLen < 1) {
+            client.stop();
+            modbusDev[reg.name + "_error"] = "tcp_pdu_timeout";
+            continue;
+        }
+
+        uint8_t fc = pduResp[0];
+        uint8_t byteCount = pduResp[1];
+        if (fc != pdu[0] || byteCount != (uint8_t)(regCount * 2)) {
+            modbusDev[reg.name + "_error"] = "tcp_invalid_response";
+            continue;
+        }
+
+        float val = 0.0f;
+        if (reg.data_type == "FLOAT32" && regCount >= 2) {
+            uint32_t combined = ((uint32_t)pduResp[2] << 24) |
+                                ((uint32_t)pduResp[3] << 16) |
+                                ((uint32_t)pduResp[4] << 8) |
+                                pduResp[5];
+            val = *((float*)&combined);
+        } else if (reg.data_type == "INT32" && regCount >= 2) {
+            int32_t combined = ((int32_t)((uint32_t)pduResp[2] << 24)) |
+                               ((int32_t)((uint32_t)pduResp[3] << 16)) |
+                               ((int32_t)((uint32_t)pduResp[4] << 8)) |
+                               pduResp[5];
+            val = (float)combined;
+        } else if (reg.data_type == "UINT32" && regCount >= 2) {
+            uint32_t combined = ((uint32_t)pduResp[2] << 24) |
+                                ((uint32_t)pduResp[3] << 16) |
+                                ((uint32_t)pduResp[4] << 8) |
+                                pduResp[5];
+            val = (float)combined;
+        } else if (reg.data_type == "INT16") {
+            val = (float)((int16_t)((pduResp[2] << 8) | pduResp[3]));
+        } else {
+            val = (float)((pduResp[2] << 8) | pduResp[3]);
+        }
+
+        val = val * reg.multiplier;
+        modbusDev[reg.name] = val;
+        HardwareManager::latestSensorValues[name + "_" + reg.name] = val;
+        HardwareManager::latestSensorValues[reg.name] = val;
+        String logMsg = "[";
+        logMsg += String(millis() / 1000);
+        logMsg += "s] MODBUS_TCP ";
+        logMsg += name;
+        logMsg += ".";
+        logMsg += reg.name;
+        logMsg += "=";
+        logMsg += String(val, 1);
+        MqttManager::addLog(logMsg.c_str());
+    }
+    return true;
+}
+
 I2CHandler::I2CHandler() : address(0), initialized(false), bme(nullptr), ina219(nullptr) {}
 
 I2CHandler::~I2CHandler() {

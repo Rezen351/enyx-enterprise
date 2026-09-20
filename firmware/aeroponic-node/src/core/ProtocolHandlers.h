@@ -4,6 +4,7 @@
 #include "ProtocolHandler.h"
 #include <Wire.h>
 #include <Adafruit_INA219.h>
+#include <WiFiClient.h>
 
 // Light weight Bosch BME280 driver
 class LightBME280 {
@@ -73,7 +74,7 @@ public:
     String getSensorName()  override { return name; }
 };
 
-// Modbus Handler
+// Modbus RTU Handler
 class ModbusHandler : public ProtocolHandler {
 private:
     String name;
@@ -92,6 +93,30 @@ public:
     bool init(const JsonObject& config) override;
     bool read(JsonObject& telemetry) override;
     String getProtocolName() override { return "MODBUS"; }
+    String getSensorName() override { return name; }
+};
+
+// Modbus TCP Handler
+class ModbusTCPHandler : public ProtocolHandler {
+private:
+    String name;
+    uint8_t slave_id;
+    String ip_address;
+    uint16_t port;
+    struct RegisterConfig {
+        uint16_t address;
+        String name;
+        float multiplier;
+        String type;
+        uint8_t length;
+        String data_type;
+    };
+    std::vector<RegisterConfig> registers;
+    WiFiClient client;
+public:
+    bool init(const JsonObject& config) override;
+    bool read(JsonObject& telemetry) override;
+    String getProtocolName() override { return "MODBUS_TCP"; }
     String getSensorName() override { return name; }
 };
 

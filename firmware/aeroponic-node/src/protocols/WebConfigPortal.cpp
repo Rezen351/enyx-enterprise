@@ -95,6 +95,9 @@ static bool saveFullConfig() {
         m["name"]     = ms.name;
         m["slave_id"] = ms.slave_id;
         m["baudrate"] = ms.baudrate;
+        m["transport"] = ms.transport;
+        m["ip_address"] = ms.ip_address;
+        m["port"] = ms.port;
         JsonArray regs = m.createNestedArray("registers");
         for (const auto& r : ms.registers) {
             JsonObject reg = regs.createNestedObject();
@@ -365,6 +368,9 @@ void WebConfigPortal::handleApiFullConfigGet() {
         m["name"]     = ms.name;
         m["slave_id"] = ms.slave_id;
         m["baudrate"] = ms.baudrate;
+        m["transport"] = ms.transport;
+        m["ip_address"] = ms.ip_address;
+        m["port"] = ms.port;
         JsonArray regs = m.createNestedArray("registers");
         for (const auto& r : ms.registers) {
             JsonObject reg = regs.createNestedObject();
@@ -529,6 +535,13 @@ void WebConfigPortal::handleApiHardwarePost() {
                     ms.name = msj["name"].as<String>(); ms.name.trim();
                     ms.slave_id = msj["slave_id"].as<uint8_t>();
                     ms.baudrate = msj["baudrate"].as<uint32_t>();
+                    ms.transport = msj["transport"].as<String>(); ms.transport.trim();
+                    if (ms.transport == "") ms.transport = "RTU";
+                    ms.ip_address = msj["ip_address"].as<String>(); ms.ip_address.trim();
+                    if (msj["port"].is<uint32_t>()) ms.port = (uint16_t)msj["port"].as<uint32_t>();
+                    else if (msj["port"].is<const char*>()) ms.port = (uint16_t)atoi(msj["port"].as<const char*>());
+                    else ms.port = 502;
+                    if (ms.transport == "TCP" && ms.ip_address == "") ms.ip_address = "192.168.1.100";
                     if (msj["registers"].is<JsonArray>()) {
                         for (JsonObject regj : msj["registers"].as<JsonArray>()) {
                             Config::ModbusRegister reg;

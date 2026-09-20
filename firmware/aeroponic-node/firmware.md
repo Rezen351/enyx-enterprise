@@ -183,7 +183,7 @@ Semua sensor didefinisikan di `config.json` bagian `hardware`:
 | `name` | string | Nama register |
 | `multiplier` | float | Scaling factor diterapkan setelah decoding |
 | `type` | string | `"HOLDING"` atau `"INPUT"` |
-| `length` | uint8 | Jumlah register (1-4). Untuk FLOAT32/INT32/UINT32 gunakan `2` |
+| `length` | uint8 | Jumlah register (1-2). Untuk FLOAT32/INT32/UINT32 gunakan `2` |
 | `data_type` | string | `"UINT16"`, `"INT16"`, `"FLOAT32"`, `"INT32"`, `"UINT32"` |
 
 #### Float32 / Multi-register (Big-Endian)

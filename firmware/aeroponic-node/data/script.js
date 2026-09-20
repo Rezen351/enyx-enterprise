@@ -583,36 +583,53 @@ function drawModbus() {
     let html = '';
     hwModbus.forEach((m, idx) => {
         if (editModbusIdx === idx) {
+            let transport = (m.transport || 'RTU').toUpperCase();
             html += `<div class="hw-row" style="flex-direction:column; gap:10px;">
                 <div style="display:flex; gap:10px; flex-wrap:wrap;">
                     <div style="flex:2; min-width:150px;"><label>Sensor Name</label><input type="text" value="${m.name}" onchange="hwModbus[${idx}].name=this.value"></div>
                     <div style="flex:1; min-width:80px;"><label>Slave ID</label><input type="number" min="1" max="247" value="${m.slave_id}" onchange="hwModbus[${idx}].slave_id=parseInt(this.value)"></div>
-                    <div style="flex:1; min-width:100px;"><label>Baudrate</label><select onchange="hwModbus[${idx}].baudrate=parseInt(this.value)"><option value="4800" ${m.baudrate == 4800 ? 'selected' : ''}>4800</option><option value="9600" ${m.baudrate == 9600 ? 'selected' : ''}>9600</option><option value="19200" ${m.baudrate == 19200 ? 'selected' : ''}>19200</option></select></div>
+                    <div style="flex:1; min-width:100px;"><label>Transport</label><select onchange="hwModbus[${idx}].transport=this.value; drawModbus();"><option value="RTU" ${transport === 'RTU' ? 'selected' : ''}>RTU (RS485)</option><option value="TCP" ${transport === 'TCP' ? 'selected' : ''}>TCP</option></select></div>
                 </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:4px;">`;
+            if (transport === 'TCP') {
+                html += `<div style="flex:2; min-width:150px;"><label>IP Address</label><input type="text" value="${m.ip_address || ''}" onchange="hwModbus[${idx}].ip_address=this.value" placeholder="192.168.1.100"></div>
+                         <div style="flex:1; min-width:80px;"><label>Port</label><input type="number" min="1" max="65535" value="${m.port || 502}" onchange="hwModbus[${idx}].port=parseInt(this.value)"></div>`;
+            } else {
+                html += `<div style="flex:1; min-width:100px;"><label>Baudrate</label><select onchange="hwModbus[${idx}].baudrate=parseInt(this.value)"><option value="4800" ${m.baudrate == 4800 ? 'selected' : ''}>4800</option><option value="9600" ${m.baudrate == 9600 ? 'selected' : ''}>9600</option><option value="19200" ${m.baudrate == 19200 ? 'selected' : ''}>19200</option></select></div>`;
+            }
+            html += `</div>
                 <div style="margin-top:10px; padding:10px; background:rgba(0,0,0,0.02); border-radius:4px;">
                     <label style="margin-bottom:5px; display:block;">Registers to Read</label>`;
 
             m.registers.forEach((r, ridx) => {
                 html += `<div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; background:#fff; padding:6px; border-radius:4px; border:1px solid #ddd; align-items:center;">
-                    <input type="number" placeholder="Addr" value="${r.address}" onchange="hwModbus[${idx}].registers[${ridx}].address=parseInt(this.value)" style="flex:1; min-width:60px; font-size:12px; padding:6px; margin:0;">
-                    <select onchange="hwModbus[${idx}].registers[${ridx}].type=this.value" style="flex:1.5; min-width:85px; font-size:12px; padding:6px; margin:0;"><option value="HOLDING" ${r.type === 'HOLDING' ? 'selected' : ''}>HOLDING</option><option value="INPUT" ${r.type === 'INPUT' ? 'selected' : ''}>INPUT</option></select>
-                    <input type="text" placeholder="Name" value="${r.name}" onchange="hwModbus[${idx}].registers[${ridx}].name=this.value" style="flex:2; min-width:90px; font-size:12px; padding:6px; margin:0;">
-                    <select onchange="hwModbus[${idx}].registers[${ridx}].length=parseInt(this.value)" style="flex:1; min-width:65px; font-size:12px; padding:6px; margin:0;" title="Register count"><option value="1" ${(r.length || 1) == 1 ? 'selected' : ''}>1 reg</option><option value="2" ${(r.length || 1) == 2 ? 'selected' : ''}>2 regs</option><option value="3" ${(r.length || 1) == 3 ? 'selected' : ''}>3 regs</option><option value="4" ${(r.length || 1) == 4 ? 'selected' : ''}>4 regs</option></select>
-                    <select onchange="hwModbus[${idx}].registers[${ridx}].data_type=this.value" style="flex:1.5; min-width:90px; font-size:12px; padding:6px; margin:0;" title="Data format"><option value="UINT16" ${(r.data_type || 'UINT16') === 'UINT16' ? 'selected' : ''}>UINT16</option><option value="INT16" ${(r.data_type || 'UINT16') === 'INT16' ? 'selected' : ''}>INT16</option><option value="FLOAT32" ${(r.data_type || 'UINT16') === 'FLOAT32' ? 'selected' : ''}>FLOAT32</option><option value="INT32" ${(r.data_type || 'UINT16') === 'INT32' ? 'selected' : ''}>INT32</option><option value="UINT32" ${(r.data_type || 'UINT16') === 'UINT32' ? 'selected' : ''}>UINT32</option></select>
-                    <input type="number" step="0.01" placeholder="Mult." value="${r.multiplier}" onchange="hwModbus[${idx}].registers[${ridx}].multiplier=parseFloat(this.value)" style="flex:1; min-width:55px; font-size:12px; padding:6px; margin:0;">
+                    <input type="number" placeholder="Register Address" value="${r.address}" onchange="hwModbus[${idx}].registers[${ridx}].address=parseInt(this.value)" style="flex:1; min-width:60px; font-size:12px; padding:6px; margin:0;">
+                    <select onchange="hwModbus[${idx}].registers[${ridx}].type=this.value" style="flex:1.5; min-width:85px; font-size:12px; padding:6px; margin:0;"><option value="HOLDING" ${r.type === 'HOLDING' ? 'selected' : ''}>HOLDING (03)</option><option value="INPUT" ${r.type === 'INPUT' ? 'selected' : ''}>INPUT (04)</option></select>
+                    <input type="text" placeholder="Register Name" value="${r.name}" onchange="hwModbus[${idx}].registers[${ridx}].name=this.value" style="flex:2; min-width:90px; font-size:12px; padding:6px; margin:0;">
+                    <select onchange="hwModbus[${idx}].registers[${ridx}].length=parseInt(this.value)" style="flex:1; min-width:65px; font-size:12px; padding:6px; margin:0;" title="Register Count"><option value="1" ${(r.length || 1) == 1 ? 'selected' : ''}>1 register</option><option value="2" ${(r.length || 1) == 2 ? 'selected' : ''}>2 registers</option></select>
+                    <select onchange="hwModbus[${idx}].registers[${ridx}].data_type=this.value" style="flex:1.5; min-width:90px; font-size:12px; padding:6px; margin:0;" title="Data Type"><option value="UINT16" ${(r.data_type || 'UINT16') === 'UINT16' ? 'selected' : ''}>UINT16</option><option value="INT16" ${(r.data_type || 'UINT16') === 'INT16' ? 'selected' : ''}>INT16</option><option value="FLOAT32" ${(r.data_type || 'UINT16') === 'FLOAT32' ? 'selected' : ''}>FLOAT32</option><option value="INT32" ${(r.data_type || 'UINT16') === 'INT32' ? 'selected' : ''}>INT32</option><option value="UINT32" ${(r.data_type || 'UINT16') === 'UINT32' ? 'selected' : ''}>UINT32</option></select>
+                    <input type="number" step="0.01" placeholder="Multiplier" value="${r.multiplier}" onchange="hwModbus[${idx}].registers[${ridx}].multiplier=parseFloat(this.value)" style="flex:1; min-width:55px; font-size:12px; padding:6px; margin:0;">
                     <button class="danger" style="padding:6px 12px; font-size:12px; min-width:40px; text-align:center;" onclick="if(confirm('Remove this register?')){hwModbus[${idx}].registers.splice(${ridx}, 1); drawModbus();}">X</button>
                 </div>`;
             });
 
-            html += `<button class="outline" style="font-size:12px; padding:4px 8px;" onclick="hwModbus[${idx}].registers.push({address:0, type:'HOLDING', name:'new_reg', length:1, data_type:'UINT16', multiplier:1.0}); drawModbus();">+ Reg</button>
+            html += `<button class="outline" style="font-size:12px; padding:4px 8px;" onclick="hwModbus[${idx}].registers.push({address:0, type:'HOLDING', name:'register_1', length:1, data_type:'UINT16', multiplier:1.0}); drawModbus();">+ Register</button>
                 </div>
                 <button style="margin-top:10px; background:#10b981; border-color:#10b981;" onclick="editModbusIdx=-1; drawModbus();">Done</button>
             </div>`;
         } else {
+            let transport = (m.transport || 'RTU').toUpperCase();
+            let meta = `ID: ${m.slave_id}`;
+            if (transport === 'TCP') {
+                meta += ` | ${m.ip_address || '?'}:${m.port || 502}`;
+            } else {
+                meta += ` | Baud: ${m.baudrate}`;
+            }
+            meta += ` | Regs: ${m.registers.length}`;
             html += `<div class="hw-list-item">
                 <div class="hw-info">
                     <span class="hw-name">${m.name || 'Unnamed Sensor'}</span>
-                    <span class="hw-meta">ID: ${m.slave_id} | Baud: ${m.baudrate} | Regs: ${m.registers.length}</span>
+                    <span class="hw-meta">${meta}</span>
                 </div>
                 <div class="hw-actions">
                     <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editModbusIdx=${idx}; drawModbus();">Edit</button>
@@ -625,7 +642,7 @@ function drawModbus() {
 }
 
 function addModbusSensor() {
-    hwModbus.push({ name: 'New RS485 Sensor', slave_id: 1, baudrate: 9600, registers: [] });
+    hwModbus.push({ name: 'New Modbus Sensor', slave_id: 1, transport: 'RTU', baudrate: 9600, ip_address: '', port: 502, registers: [] });
     editModbusIdx = hwModbus.length - 1;
     drawModbus();
 }
