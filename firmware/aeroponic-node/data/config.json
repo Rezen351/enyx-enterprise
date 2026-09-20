@@ -2,7 +2,7 @@
   "device": {
     "node_id": "node-01",
     "fw_version": "1.0.0",
-    "description": "Node SmartFarm Aeroponik"
+    "description": "Node Control and Sensor Acquisition"
   },
   "security": {
     "admin_user": "admin",
@@ -10,13 +10,13 @@
   },
   "protocols": {
     "wifi": {
-      "ssid": "Aeroponik 1",
+      "ssid": "eduroam",
       "auto_reconnect": true,
-      "eap_identity": "",
+      "eap_identity": "13322006@mahasiswa.itb.ac.id",
       "eap_password": ""
     },
     "mqtt": {
-      "server": "192.168.1.103",
+      "server": "167.205.44.103",
       "port": 1883,
       "topic_prefix": "smartfarm",
       "use_tls": false,
@@ -27,10 +27,6 @@
     "inputs": [],
     "outputs": [],
     "modbus": [],
-    "sensors": [],
-    "i2c": {
-      "sda_pin": 21,
-      "scl_pin": 22
-    }
+    "sensors": []
   }
 }

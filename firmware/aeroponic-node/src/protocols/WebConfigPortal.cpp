@@ -125,6 +125,10 @@ static bool saveFullConfig() {
     doc["hardware"]["rs485_tx"] = Config::PIN_RS485_TX;
     doc["hardware"]["rs485_de"] = Config::PIN_RS485_DE;
     doc["hardware"]["rs485_parity"] = Config::PARITY;
+
+    // I2C global pins (flat, same style as RS485)
+    doc["hardware"]["i2c_sda_pin"] = Config::PIN_I2C_SDA;
+    doc["hardware"]["i2c_scl_pin"] = Config::PIN_I2C_SCL;
     
     String out;
     serializeJson(doc, out);
@@ -388,6 +392,10 @@ void WebConfigPortal::handleApiFullConfigGet() {
     doc["hardware"]["rs485_de"] = Config::PIN_RS485_DE;
     doc["hardware"]["rs485_parity"] = Config::PARITY;
     
+    // I2C global pins (flat, same style as RS485)
+    doc["hardware"]["i2c_sda_pin"] = Config::PIN_I2C_SDA;
+    doc["hardware"]["i2c_scl_pin"] = Config::PIN_I2C_SCL;
+
     // Sensors (I2C / 1-Wire / SPI)
     JsonArray sensors = doc["hardware"].createNestedArray("sensors");
     for (const auto& s : Config::HardwareSensors) {
@@ -571,15 +579,16 @@ void WebConfigPortal::handleApiHardwarePost() {
                  }
              }
 
-             // I2C global pin configuration
-             if (pdoc["i2c"].is<JsonObject>()) {
-                 JsonObject i2c = pdoc["i2c"].as<JsonObject>();
-                 if (i2c.containsKey("sda_pin")) {
-                     Config::PIN_I2C_SDA = i2c["sda_pin"].as<uint8_t>();
-                 }
-                 if (i2c.containsKey("scl_pin")) {
-                     Config::PIN_I2C_SCL = i2c["scl_pin"].as<uint8_t>();
-                 }
+             // I2C global pin configuration (flat, same style as RS485)
+             if (pdoc.containsKey("i2c_sda_pin")) {
+                 Config::PIN_I2C_SDA = pdoc["i2c_sda_pin"].as<uint8_t>();
+             }
+             if (pdoc.containsKey("i2c_scl_pin")) {
+                 Config::PIN_I2C_SCL = pdoc["i2c_scl_pin"].as<uint8_t>();
+             }
+             if (Config::PIN_I2C_SDA > 39 || Config::PIN_I2C_SCL > 39) {
+                 server.send(400, "application/json", "{\"error\":\"Invalid I2C pins. SDA and SCL must be GPIO 0-39.\"}");
+                 return;
              }
 
             if (saveFullConfig()) {

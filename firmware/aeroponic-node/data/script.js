@@ -282,10 +282,10 @@ async function loadFullConfig() {
         }
         // I2C global pins
         if (document.getElementById('cfg_i2c_sda')) {
-            document.getElementById('cfg_i2c_sda').value = (d.hardware && d.hardware.i2c && d.hardware.i2c.sda_pin != null) ? d.hardware.i2c.sda_pin : 21;
+            document.getElementById('cfg_i2c_sda').value = (d.hardware && d.hardware.i2c_sda_pin != null) ? d.hardware.i2c_sda_pin : 21;
         }
         if (document.getElementById('cfg_i2c_scl')) {
-            document.getElementById('cfg_i2c_scl').value = (d.hardware && d.hardware.i2c && d.hardware.i2c.scl_pin != null) ? d.hardware.i2c.scl_pin : 22;
+            document.getElementById('cfg_i2c_scl').value = (d.hardware && d.hardware.i2c_scl_pin != null) ? d.hardware.i2c_scl_pin : 22;
         }
         document.getElementById('cfg_admin_u').value = d.security.admin_user || '';
 
@@ -817,7 +817,7 @@ async function saveHardware() {
     setButtonLoading(btn, true, 'Save & Reboot');
     let i2cSda = document.getElementById('cfg_i2c_sda') ? document.getElementById('cfg_i2c_sda').value : 21;
     let i2cScl = document.getElementById('cfg_i2c_scl') ? document.getElementById('cfg_i2c_scl').value : 22;
-    let hwPayload = { inputs: hwInputs, outputs: hwOutputs, modbus: hwModbus, sensors: hwI2C, i2c: { sda_pin: parseInt(i2cSda), scl_pin: parseInt(i2cScl) } };
+    let hwPayload = { inputs: hwInputs, outputs: hwOutputs, modbus: hwModbus, sensors: hwI2C, i2c_sda_pin: parseInt(i2cSda), i2c_scl_pin: parseInt(i2cScl) };
     let payload = encodeURIComponent(JSON.stringify(hwPayload));
     let d = await api('/api/hardware', 'POST', `payload=${payload}`);
     setButtonLoading(btn, false, 'Save & Reboot');

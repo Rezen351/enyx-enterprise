@@ -278,12 +278,18 @@ bool ConfigManager::loadConfig() {
         Config::PIN_RS485_DE = doc["hardware"]["rs485_de"].as<uint8_t>();
     }
 
-    // I2C pins (global configuration)
-    if (doc["hardware"]["i2c"]["sda_pin"]) {
-        Config::PIN_I2C_SDA = doc["hardware"]["i2c"]["sda_pin"].as<uint8_t>();
+    // I2C pins (flat properties, same style as RS485)
+    if (doc["hardware"]["i2c_sda_pin"]) {
+        Config::PIN_I2C_SDA = doc["hardware"]["i2c_sda_pin"].as<uint8_t>();
     }
-    if (doc["hardware"]["i2c"]["scl_pin"]) {
-        Config::PIN_I2C_SCL = doc["hardware"]["i2c"]["scl_pin"].as<uint8_t>();
+    if (doc["hardware"]["i2c_scl_pin"]) {
+        Config::PIN_I2C_SCL = doc["hardware"]["i2c_scl_pin"].as<uint8_t>();
+    }
+
+    if (Config::PIN_I2C_SDA > 39 || Config::PIN_I2C_SCL > 39) {
+        Logger::config("Invalid I2C pins detected in config, resetting to defaults 21/22");
+        Config::PIN_I2C_SDA = 21;
+        Config::PIN_I2C_SCL = 22;
     }
 
     return true;

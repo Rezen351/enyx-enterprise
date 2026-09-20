@@ -9,8 +9,18 @@ static bool wireInitialized = false;
 static uint8_t activeSda = 21;
 static uint8_t activeScl = 22;
 
+static bool isValidGpioPin(uint8_t pin) {
+    return pin <= 39;
+}
+
 void initI2C(uint8_t sda, uint8_t scl) {
+    if (!isValidGpioPin(sda) || !isValidGpioPin(scl)) {
+        Logger::hardware("Invalid I2C pins: SDA=%d, SCL=%d. Using defaults 21/22.", sda, scl);
+        sda = 21;
+        scl = 22;
+    }
     if (!wireInitialized || activeSda != sda || activeScl != scl) {
+        Wire.end();
         Wire.begin(sda, scl);
         wireInitialized = true;
         activeSda = sda;
@@ -596,6 +606,21 @@ namespace Pcf8575Bus {
         }
     }
 
+    static bool isValidPcfAddress(uint8_t addr) {
+        return addr >= 0x20 && addr <= 0x27;
+    }
+
+    static uint8_t clampPcfAddress(uint8_t addr) {
+        if (!isValidPcfAddress(addr)) return 0x20;
+        return addr;
+    }
+
+    static void recoverI2cBus() {
+        Wire.end();
+        delay(2);
+        initI2C(Config::PIN_I2C_SDA, Config::PIN_I2C_SCL);
+    }
+
     uint16_t getState(uint8_t addr) {
         ensureMutex();
         if (pcfStates.find(addr) == pcfStates.end()) {
@@ -606,37 +631,58 @@ namespace Pcf8575Bus {
 
     bool writePort(uint8_t addr, uint16_t state) {
         ensureMutex();
+        addr = clampPcfAddress(addr);
         initI2C(Config::PIN_I2C_SDA, Config::PIN_I2C_SCL);
         
         // Ensure any pins designated as inputs remain HIGH (1)
         uint16_t inMask = inputMasks.count(addr) ? inputMasks[addr] : 0;
         state |= inMask;
 
-        Wire.beginTransmission(addr);
-        Wire.write(lowByte(state));   // P0 .. P7
-        Wire.write(highByte(state));  // P8 .. P15
-        byte err = Wire.endTransmission();
-        if (err == 0) {
-            pcfStates[addr] = state;
-            return true;
-        } else {
-            Logger::hardware("PCF8575 (0x%02X) I2C write error code: %d", addr, err);
-            return false;
+        // Retry up to 3 times with bus recovery on failure
+        for (int attempt = 0; attempt < 3; attempt++) {
+            if (attempt > 0) {
+                recoverI2cBus();
+                delay(2);
+            }
+            
+            Wire.beginTransmission(addr);
+            Wire.write(lowByte(state));   // P0 .. P7
+            Wire.write(highByte(state));  // P8 .. P15
+            byte err = Wire.endTransmission();
+            if (err == 0) {
+                pcfStates[addr] = state;
+                return true;
+            }
+            Logger::hardware("PCF8575 (0x%02X) I2C write error code: %d (attempt %d)", addr, err, attempt + 1);
         }
+        
+        Logger::hardware("PCF8575 (0x%02X) write FAILED after 3 attempts", addr);
+        return false;
     }
 
     uint16_t readPort(uint8_t addr, bool& success) {
         ensureMutex();
+        addr = clampPcfAddress(addr);
         initI2C(Config::PIN_I2C_SDA, Config::PIN_I2C_SCL);
 
-        // Request 2 bytes from PCF8575
-        uint8_t count = Wire.requestFrom(addr, (uint8_t)2);
-        if (count == 2) {
-            uint8_t low = Wire.read();
-            uint8_t high = Wire.read();
-            success = true;
-            return ((uint16_t)high << 8) | low;
+        // Retry up to 3 times with bus recovery on failure
+        for (int attempt = 0; attempt < 3; attempt++) {
+            if (attempt > 0) {
+                recoverI2cBus();
+                delay(2);
+            }
+            
+            // Request 2 bytes from PCF8575
+            uint8_t count = Wire.requestFrom(addr, (uint8_t)2);
+            if (count == 2) {
+                uint8_t low = Wire.read();
+                uint8_t high = Wire.read();
+                success = true;
+                return ((uint16_t)high << 8) | low;
+            }
+            Logger::hardware("PCF8575 (0x%02X) I2C read error: got %d bytes (attempt %d)", addr, count, attempt + 1);
         }
+        
         success = false;
         return 0xFFFF;
     }
@@ -701,14 +747,19 @@ bool Pcf8575OutputHandler::init(const JsonObject& config) {
         }
     }
     if (i2c_addr == 0) i2c_addr = 0x20;
+    if (!Pcf8575Bus::isValidPcfAddress(i2c_addr)) {
+        Logger::hardware("PCF8575_OUT '%s': invalid address 0x%02X, falling back to 0x20", name.c_str(), i2c_addr);
+        i2c_addr = 0x20;
+    }
 
     active_low = config.containsKey("active_low") ? config["active_low"].as<bool>() : true;
 
-    // Safe default: set relay to OFF
-    write(0);
-    Logger::hardware("Init PCF8575 Relay Output: '%s' @ 0x%02X Pin P%d (Active %s)", 
-        name.c_str(), i2c_addr, pin, active_low ? "LOW" : "HIGH");
-    return true;
+    // Verify device is reachable; safe default is OFF
+    bool ok = write(0);
+    Logger::hardware("Init PCF8575 Relay Output: '%s' @ 0x%02X Pin P%d (Active %s)%s", 
+        name.c_str(), i2c_addr, pin, active_low ? "LOW" : "HIGH",
+        ok ? "" : " — WARNING: device not reachable");
+    return ok;
 }
 
 bool Pcf8575OutputHandler::read(JsonObject& telemetry) {
@@ -739,14 +790,25 @@ bool Pcf8575InputHandler::init(const JsonObject& config) {
         }
     }
     if (i2c_addr == 0) i2c_addr = 0x20;
+    if (!Pcf8575Bus::isValidPcfAddress(i2c_addr)) {
+        Logger::hardware("PCF8575_IN '%s': invalid address 0x%02X, falling back to 0x20", name.c_str(), i2c_addr);
+        i2c_addr = 0x20;
+    }
 
     invert = config["invert"] | false;
 
     // Mark this pin as input on the bus so its bit stays 1 (weak pull-up)
     Pcf8575Bus::markAsInput(i2c_addr, pin);
-    Logger::hardware("Init PCF8575 Input: '%s' @ 0x%02X Pin P%d (Invert: %d)",
-        name.c_str(), i2c_addr, pin, invert);
-    return true;
+    
+    // Verify device is reachable
+    bool dummy = false;
+    uint16_t portState = Pcf8575Bus::readPort(i2c_addr, dummy);
+    bool reachable = dummy;
+    
+    Logger::hardware("Init PCF8575 Input: '%s' @ 0x%02X Pin P%d (Invert: %d)%s", 
+        name.c_str(), i2c_addr, pin, invert,
+        reachable ? "" : " — WARNING: device not reachable");
+    return reachable;
 }
 
 bool Pcf8575InputHandler::read(JsonObject& telemetry) {
