@@ -40,9 +40,6 @@ namespace Config {
     String TOPIC_TELEMETRY = MQTT_TOPIC_PREFIX + "/" + NODE_ID + "/telemetry";
     String TOPIC_ACTUATOR = MQTT_TOPIC_PREFIX + "/actuator/" + NODE_ID;
 
-    // --- Pin Mapping ---
-    uint8_t PIN_DHT_SENSOR = 4;
-    
     // --- I2C Pins (Global) ---
     uint8_t PIN_I2C_SDA = 21;
     uint8_t PIN_I2C_SCL = 22;
@@ -60,6 +57,5 @@ namespace Config {
     std::vector<GenericSensor> HardwareSensors;
 
     // --- Interval Waktu (ms) ---
-    uint32_t SENSOR_READ_INTERVAL = 5000;
     uint32_t MQTT_PUBLISH_INTERVAL = 5000;
 }

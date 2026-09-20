@@ -10,10 +10,8 @@ public:
     static void init();
     static bool isConnected();
     static bool publish(String topic, String payload);
-    static bool publishRetained(String topic, String payload);
     static void publishDiscovery();
     static std::vector<String> getLogs();
-    static String getLogsJSON();
     static void addLog(const char* logMsg);
     
 private:

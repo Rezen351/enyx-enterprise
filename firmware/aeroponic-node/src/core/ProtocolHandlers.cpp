@@ -3,7 +3,6 @@
 #include "../protocols/MqttManager.h"
 #include "../../include/Config.h"
 #include "../../include/Logger.h"
-#include <WiFiClient.h>
 
 // I2C bus tracking variables
 static bool wireInitialized = false;

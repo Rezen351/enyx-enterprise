@@ -22,7 +22,6 @@ class ProtocolRegistry {
 public:
     static void registerProtocol(const String& name, ProtocolHandlerCreator creator);
     static ProtocolHandler* createHandler(const String& name, const JsonObject& config);
-    static std::vector<String> getRegisteredProtocols();
 private:
     static std::map<String, ProtocolHandlerCreator>& getRegistry();
 };

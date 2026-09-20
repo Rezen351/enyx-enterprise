@@ -51,22 +51,6 @@ std::vector<String> MqttManager::getLogs() {
     return {};
 }
 
-String MqttManager::getLogsJSON() {
-    if (logMutex && xSemaphoreTake(logMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
-        StaticJsonDocument<1024> doc;
-        JsonArray arr = doc.createNestedArray("logs");
-        for (int i = 0; i < logCount; i++) {
-            int idx = (logIndex - logCount + i + MAX_LOG_ENTRIES) % MAX_LOG_ENTRIES;
-            arr.add(String(logBuffer[idx]));
-        }
-        String out;
-        serializeJson(doc, out);
-        xSemaphoreGive(logMutex);
-        return out;
-    }
-    return "{\"logs\":[]}";
-}
-
 void MqttManager::init() {
     logMutex = xSemaphoreCreateMutex();
     
@@ -122,13 +106,6 @@ bool MqttManager::publish(String topic, String payload) {
             addLog("Pub FAILED");
             return false;
         }
-    }
-    return false;
-}
-
-bool MqttManager::publishRetained(String topic, String payload) {
-    if (isConnected()) {
-        return mqttClient->publish(topic.c_str(), payload.c_str(), true);
     }
     return false;
 }

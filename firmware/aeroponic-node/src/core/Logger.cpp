@@ -52,13 +52,6 @@ void Logger::hardware(const char* fmt, ...) {
     va_end(args);
 }
 
-void Logger::control(const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    logPrintf("CONTROL", fmt, args);
-    va_end(args);
-}
-
 void Logger::actuator(const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -98,20 +91,6 @@ void Logger::portal(const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
     logPrintf("PORTAL", fmt, args);
-    va_end(args);
-}
-
-void Logger::info(const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    logPrintf("INFO", fmt, args);
-    va_end(args);
-}
-
-void Logger::warn(const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    logPrintf("WARN", fmt, args);
     va_end(args);
 }
 

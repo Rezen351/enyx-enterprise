@@ -92,9 +92,6 @@ namespace Config {
     extern String TOPIC_TELEMETRY;
     extern String TOPIC_ACTUATOR;
 
-    // ==================== PIN MAPPING ====================
-    extern uint8_t PIN_DHT_SENSOR;
-    
     // ==================== I2C PINS (Global) ====================
     extern uint8_t PIN_I2C_SDA;
     extern uint8_t PIN_I2C_SCL;
@@ -119,9 +116,8 @@ namespace Config {
     extern std::vector<ModbusSensor> HardwareModbus;
     extern std::vector<GenericSensor> HardwareSensors;
 
-    // ==================== INTERVAL WAKTU (ms) ====================
-    extern uint32_t SENSOR_READ_INTERVAL;
-    extern uint32_t MQTT_PUBLISH_INTERVAL;
+// ==================== INTERVAL WAKTU (ms) ====================
+extern uint32_t MQTT_PUBLISH_INTERVAL;
 }
 
 #endif // CONFIG_H

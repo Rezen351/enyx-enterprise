@@ -25,10 +25,4 @@ ProtocolHandler* ProtocolRegistry::createHandler(const String& name, const JsonO
     return nullptr;
 }
 
-std::vector<String> ProtocolRegistry::getRegisteredProtocols() {
-    std::vector<String> protocols;
-    for (const auto& pair : getRegistry()) {
-        protocols.push_back(pair.first);
-    }
-    return protocols;
-}
+

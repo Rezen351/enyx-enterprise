@@ -302,7 +302,6 @@ void WebConfigPortal::handleApiStatusGet() {
     server.send(200, "application/json", out);
 }
 
-// Local Control feature removed
 void WebConfigPortal::handleApiFullConfigGet() {
     if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
     
@@ -405,8 +404,6 @@ void WebConfigPortal::handleApiFullConfigGet() {
     i2c["sda_pin"] = Config::PIN_I2C_SDA;
     i2c["scl_pin"] = Config::PIN_I2C_SCL;
 
-    // Local Control Rules removed - feature no longer supported
-    
     String out;
     serializeJson(doc, out);
     server.send(200, "application/json", out);

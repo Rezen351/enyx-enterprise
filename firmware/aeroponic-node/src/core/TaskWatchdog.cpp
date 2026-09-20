@@ -20,21 +20,6 @@ void TaskWatchdog::init() {
     Logger::watchdog("Initialized");
 }
 
-void TaskWatchdog::registerTask(const char* name, TaskHandle_t handle, unsigned long timeoutMs, void (*restartFunc)()) {
-    if (xSemaphoreTake(mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        ManagedTask t;
-        t.name = String(name);
-        t.handle = handle;
-        t.lastHeartbeatMs = millis();
-        t.timeoutMs = timeoutMs;
-        t.restartFunc = restartFunc;
-        tasks.push_back(t);
-        xSemaphoreGive(mutex);
-        
-        Logger::watchdog("Registered '%s' (timeout: %lu ms)", name, timeoutMs);
-    }
-}
-
 void TaskWatchdog::heartbeat(const char* taskName) {
     if (xSemaphoreTake(mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         for (auto& t : tasks) {

@@ -15,7 +15,6 @@ struct ManagedTask {
 class TaskWatchdog {
 public:
     static void init();
-    static void registerTask(const char* name, TaskHandle_t handle, unsigned long timeoutMs, void (*restartFunc)());
     static void heartbeat(const char* taskName);
 
 private:

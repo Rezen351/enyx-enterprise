@@ -348,8 +348,6 @@ namespace HardwareManager {
                 xSemaphoreGive(handlersMutex);
             }
             
-            // GAP #7: Edge control removed - local control rules are no longer supported
-            
             // Publish via MQTT
             memset(jsonBuffer, 0, sizeof(jsonBuffer));
             serializeJson(doc, jsonBuffer, sizeof(jsonBuffer) - 1);
