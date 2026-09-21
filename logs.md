@@ -2,7 +2,43 @@
 
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 
-### Perbaikan Config Export + Login + Credential Handling di Captive Portal (2026-09-14)
+---
+
+### Implementasi Modbus TCP + UI Transport Selector (2026-09-20)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Schema Config:** Menambahkan field `transport`, `ip_address`, dan `port` pada `Config::ModbusSensor` di [`include/Config.h`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/include/Config.h:~34) dengan default `"RTU"` untuk backward compatibility. |
+| 2 | ✅ | **Handler TCP:** Membuat `ModbusTCPHandler` di [`ProtocolHandlers.h`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/ProtocolHandlers.h:~98) & [`ProtocolHandlers.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/ProtocolHandlers.cpp:~277) yang melakukan raw Modbus TCP frame via `WiFiClient` (MBAP header + PDU), dengan timeout 1s per register dan parsing multitype (`UINT16`, `INT16`, `UINT32`, `INT32`, `FLOAT32`). |
+| 3 | ✅ | **Registry:** Mendaftarkan protocol `"MODBUS_TCP"` di [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/HardwareManager.cpp:~255). Handler dipilih otomatis berdasarkan `ms.transport == "TCP"` saat reload config. |
+| 4 | ✅ | **Config Load:** Memperbarui [`ConfigManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/ConfigManager.cpp:~217) dan [`WebConfigPortal.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/protocols/WebConfigPortal.cpp:~528) untuk parse field TCP baru dengan default aman (`ip_address="192.168.1.100"`, `port=502`). |
+| 5 | ✅ | **Frontend UI:** Memperbarui [`script.js`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/data/script.js:~582) `drawModbus()` untuk menampilkan dropdown **Transport** (RTU/TCP). Jika TCP: tampilkan field IP Address + Port. Jika RTU: tampilkan Baudrate. Metadata list view ikut menyesuaikan. |
+| 6 | ✅ | **Backward Compat:** Config lama tanpa field `transport` tetap berjalan karena default ke `"RTU"`. Tidak ada breaking change pada API `/api/hardware` atau MQTT telemetry format. |
+
+**Keputusan Teknis:**
+- Menggunakan raw TCP frame daripada library `ModbusIP` untuk menghindari dependensi eksternal baru dan kontrol penuh terhadap MBAP header pada ESP32.
+- `ModbusTCPHandler` menggunakan single static `WiFiClient` yang reconnect otomatis jika koneksi terputus, menjaga konsistensi dengan pola single-transport-per-handler yang sudah ada.
+- Scanner Modbus (`/api/modbus/start_scan`, `/api/modbus/scan_reg_batch`) intentionally **belum diubah** ke TCP; UI scanner tetap RTU-only untuk sekarang. Transisi UI scanner ke RTU/TCP choice akan dilakukan di fase berikutnya.
+
+### Integrasi Modul Multiplexer PCF8575 Relay (Output) & Sensor/Switch (Input) (2026-09-19)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Driver PCF8575 Bus:** Mengimplementasikan `Pcf8575Bus` di [`ProtocolHandlers.h`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/ProtocolHandlers.h) & [`ProtocolHandlers.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/ProtocolHandlers.cpp) dengan bitmask shadow `pcfStates` 16-bit, safe initial state (`0xFFFF`), serta read/write atomic bit-level via I2C `Wire`. |
+| 2 | ✅ | **Handler Output (`PCF8575_OUT`):** Membuat `Pcf8575OutputHandler` (turunan `ProtocolHandler`) untuk mengendalikan modul relay single/multi channel dengan dukungan mode `active_low` dan alamat I2C configurable (default `0x20`). |
+| 3 | ✅ | **Handler Input (`PCF8575_IN`):** Membuat `Pcf8575InputHandler` untuk memanfaatkan pin quasi-bidirectional PCF8575 sebagai input sensor digital/switch, terintegrasi ke telemetri MQTT periodik. |
+| 4 | ✅ | **Registry & Hot-Swap:** Mendaftarkan `"PCF8575_OUT"` dan `"PCF8575_IN"` ke `ProtocolRegistry` di [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/HardwareManager.cpp). Memperbaiki deklarasi scope `Config::OutputPin` di `HardwareManager::telemetryTask`. |
+| 5 | ✅ | **I2C Auto-Discovery Scanner:** Menambahkan deteksi otomatis perangkat PCF8575 (range alamat `0x20` - `0x27`) pada fungsi `HardwareManager::discoverSensors()`. |
+| 6 | ✅ | **Rest API Web Portal:** Memperbarui endpoint `GET /api/config/hardware` dan `POST /api/config/hardware` di [`WebConfigPortal.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/protocols/WebConfigPortal.cpp) untuk parsing atribut `protocol`, `i2c_addr`, dan `active_low`. |
+| 7 | ✅ | **Web Portal UI (`script.js`):** Menambahkan antarmuka konfigurasi interaktif pada tab Hardware Inputs dan Outputs untuk memilih protocol Direct GPIO vs PCF8575 Expander, nomor channel `P0`–`P15`, alamat I2C, serta toggle Active-LOW. |
+| 8 | ✅ | **Build Verifikasi:** Kompilasi sukses tanpa error menggunakan PlatformIO (`pio run`) menghasilkan `firmware.bin` (RAM: 20.2%, Flash: 83.9%) dan image LittleFS `littlefs.bin`. |
+
+**Keputusan Teknis:**
+- Default mode untuk relay PCF8575 adalah **Active-LOW** karena arsitektur internal PCF8575 memiliki current sink yang jauh lebih kuat saat LOW (~25mA) dibanding HIGH (~100µA weak pull-up).
+- Saat boot, semua 16 pin PCF8575 di-drive ke HIGH (`0xFFFF`) untuk mencegah glitch relay menyala sesaat ketika ESP32 baru dinyalakan.
+- Format topik MQTT actuasi (`set_output`) dan telemetri output/input tetap 100% konsisten sehingga tidak menimbulkan breaking changes pada backend microservices dan dashboard.
+
+---
 
 | # | Status | Aktivitas |
 |---|---|---|
