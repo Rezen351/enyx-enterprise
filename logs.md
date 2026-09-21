@@ -173,3 +173,24 @@
 
 ---
 
+### Migrasi Kredensial ke NVS Namespace `creds` — Firmware Node (2026-09-21)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Membuat `CredentialManager`** — module baru [`src/core/CredentialManager.h`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/CredentialManager.h) & [`src/core/CredentialManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/CredentialManager.cpp) yang membungkus semua operasi NVS namespace `creds` untuk 9 field kredensial: `admin_user`, `admin_pass`, `auth_token`, `wifi_ssid`, `wifi_pass`, `wifi_eap_identity`, `wifi_eap_password`, `mqtt_user`, `mqtt_pass`. |
+| 2 | ✅ | **Integrasi `CredentialManager` ke boot flow** — [`ConfigManager::init()`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/ConfigManager.cpp:~9) kini memanggil `CredentialManager::init()` lalu `CredentialManager::loadCredentials()` jika NVS berisi kredensial. Jika NVS kosong, fallback ke `loadConfig()` dari `config.json` lalu otomatis memigrasi ke NVS. |
+| 3 | ✅ | **Pembatasan `loadConfig()`** — field kredensial di `config.json` hanya di-load jika NVS belum berisi kredensial (`!useNvsCredentials`). Ini mencegah overwrite NVS saat device sudah pernah di-konfigurasi. |
+| 4 | ✅ | **Penyelarasan API handlers** — `handleApiLogin`, `handleApiWifiPost`, `handleApiMqttPost`, dan `handleApiAccountPost` di [`WebConfigPortal.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/protocols/WebConfigPortal.cpp) kini menulis kredensial yang diubah ke NVS melalui `CredentialManager::set*()` sebelum menyimpan config non-kredensial. |
+| 5 | ✅ | **Config export/import tanpa credential** — endpoint `/api/config/export` mengembalikan raw `config.json` (tidak ada credential untuk di-strip karena sudah pindah ke NVS). Endpoint `/api/config/import` memvalidasi payload, menulis ke `config.json`, lalu memanggil `CredentialManager::saveCredentials()` agar kredensial yang ada di payload otomatis dimigrasikan ke NVS. |
+| 6 | ✅ | **Pembaruan template `data/config.json`** — menghapus blok `security` dan field credential WiFi/MQTT dari LittleFS template agar file ini aman untuk export/import dan tidak menyimpan secret. |
+| 7 | ✅ | **Dokumentasi `firmware.md`** — memperbarui [firmware.md](file:///home/almuzky/TA/Microservices/firmware/node/firmware.md) untuk menjelaskan NVS namespace `creds`, perubahan boot sequence, dan format `config.json` baru tanpa credential. |
+| 8 | ✅ | **Verifikasi build** — firmware berhasil dikompilasi untuk kedua target `esp32dev` dan `esp32s3` menggunakan PlatformIO venv (`/home/almuzky/venv/bin/pio run`). |
+
+**Keputusan Teknis:**
+- NVS namespace dipisah menjadi `creds` agar jelas batas antara data sensitif dan konfigurasi umum.
+- `config.json` tetap menjadi single source of truth untuk konfigurasi non-kredensial; NVS menjadi single source of truth untuk kredensial.
+- Migrasi otomatis dari `config.json` ke NVS hanya terjadi jika NVS belum memiliki flag `has_creds`, sehingga existing device yang pertama kali di-upgrade tetap bisa membaca config.json lama tanpa kredensial hilang.
+- `saveFullConfig()` tidak lagi menyertakan field credential ke JSON, sehingga export/import lebih aman dan konsisten.
+
+---
+

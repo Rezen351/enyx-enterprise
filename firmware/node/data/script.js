@@ -61,7 +61,8 @@ async function api(path, method = 'GET', body = null) {
                     sensors: [
                         { name: 'BME280 Main', protocol: 'I2C', type: 'BME280', address: '0x76' }
                     ],
-                    i2c: { sda_pin: 21, scl_pin: 22 }
+                    i2c_sda_pin: 21,
+                    i2c_scl_pin: 22
                 }
             };
         }

@@ -6,6 +6,7 @@
 #include <WiFi.h>
 #include "esp_partition.h"
 #include "CredentialManager.h"
+#include "MemoryHelper.h"
 
 void ConfigManager::init() {
     Logger::config("Mounting LittleFS...");
@@ -29,6 +30,11 @@ void ConfigManager::init() {
 
     Logger::config("LittleFS mounted successfully.");
 
+    Logger::config("Memory: PSRAM %s, free heap=%u KB, free PSRAM=%u KB",
+                   MemoryHelper::hasPsram() ? "yes" : "no",
+                   MemoryHelper::getFreeInternalHeap() / 1024,
+                   MemoryHelper::getFreePsram() / 1024);
+
     CredentialManager::init();
     if (CredentialManager::hasCredentials()) {
         Logger::config("Found credentials in NVS. Loading from NVS...");
@@ -47,7 +53,8 @@ bool ConfigManager::loadConfig() {
         return false;
     }
 
-    DynamicJsonDocument doc(4096);
+    Logger::config("Loading config.json (%u bytes)", file.size());
+    DynamicJsonDocument doc(24576);
     DeserializationError error = deserializeJson(doc, file);
     file.close();
 

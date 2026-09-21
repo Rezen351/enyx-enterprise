@@ -29,7 +29,7 @@ static std::vector<LoginAttempt> loginAttempts;
 
 // ==================== SAVE FULL CONFIG FUNCTION (GAP #15: Refactor macro) ====================
 static bool saveFullConfig() {
-    DynamicJsonDocument doc(8192);
+    DynamicJsonDocument doc(24576);
     
     JsonObject device = doc.createNestedObject("device");
     device["node_id"] = Config::NODE_ID;
@@ -303,7 +303,7 @@ void WebConfigPortal::handleApiStatusGet() {
 void WebConfigPortal::handleApiFullConfigGet() {
     if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
     
-    DynamicJsonDocument doc(8192);
+    DynamicJsonDocument doc(24576);
     
     doc["device"]["node_id"]    = Config::NODE_ID;
     doc["device"]["fw_version"] = Config::FW_VERSION;
@@ -401,11 +401,6 @@ void WebConfigPortal::handleApiFullConfigGet() {
         }
     }
 
-    // I2C global pin configuration
-    JsonObject i2c = doc["hardware"].createNestedObject("i2c");
-    i2c["sda_pin"] = Config::PIN_I2C_SDA;
-    i2c["scl_pin"] = Config::PIN_I2C_SCL;
-
     String out;
     serializeJson(doc, out);
     server.send(200, "application/json", out);
@@ -482,8 +477,13 @@ void WebConfigPortal::handleApiHardwarePost() {
     if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
     
     if (server.hasArg("payload")) {
-        DynamicJsonDocument pdoc(4096);
-        DeserializationError err = deserializeJson(pdoc, server.arg("payload"));
+        String payload = server.arg("payload");
+        if (payload.length() > 24576) {
+            server.send(413, "application/json", "{\"error\":\"Payload too large\"}");
+            return;
+        }
+        DynamicJsonDocument pdoc(24576);
+        DeserializationError err = deserializeJson(pdoc, payload);
         if (!err && pdoc.is<JsonObject>()) {
             
             if (pdoc["inputs"].is<JsonArray>()) {
@@ -790,9 +790,13 @@ void WebConfigPortal::handleApiConfigImport() {
     }
     
     String payload = server.arg("payload");
+    if (payload.length() > 24576) {
+        server.send(413, "application/json", "{\"error\":\"Payload too large\"}");
+        return;
+    }
     
     // Validasi JSON format
-    DynamicJsonDocument doc(4096);
+    DynamicJsonDocument doc(24576);
     DeserializationError error = deserializeJson(doc, payload);
     if (error) {
         server.send(400, "application/json", "{\"error\":\"Invalid JSON format\"}");

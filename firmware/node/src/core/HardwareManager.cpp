@@ -41,8 +41,8 @@ namespace HardwareManager {
     } stats;
     
     // Pre-allocated static buffers (GAP #9 fix)
-    static StaticJsonDocument<8192> doc;
-    static char jsonBuffer[8192];
+    static StaticJsonDocument<16384> doc;
+    static char jsonBuffer[16384];
 
     // ==================== MQTT DISCONNECT EMERGENCY STOP ====================
     void triggerMqttDisconnectEmergencyStop() {
@@ -186,7 +186,7 @@ namespace HardwareManager {
     // ==================== DISCOVER SENSORS ====================
     String discoverSensors() {
         initI2C(Config::PIN_I2C_SDA, Config::PIN_I2C_SCL);
-        StaticJsonDocument<1024> ddoc;
+        StaticJsonDocument<2048> ddoc;
         JsonArray i2cDevices = ddoc.createNestedArray("i2c");
         
         for (uint8_t address = 1; address < 127; address++) {
@@ -349,10 +349,18 @@ namespace HardwareManager {
             }
             
             // Publish via MQTT
-            memset(jsonBuffer, 0, sizeof(jsonBuffer));
-            serializeJson(doc, jsonBuffer, sizeof(jsonBuffer) - 1);
+            String serialized;
+            size_t telemetrySize = measureJson(doc);
+            if (telemetrySize >= sizeof(jsonBuffer)) {
+                Logger::hardware("Telemetry JSON too large (%u bytes), using dynamic String fallback", telemetrySize);
+                serializeJson(doc, serialized);
+            } else {
+                memset(jsonBuffer, 0, sizeof(jsonBuffer));
+                serializeJson(doc, jsonBuffer, sizeof(jsonBuffer) - 1);
+                serialized = String(jsonBuffer);
+            }
             if (telemetryMutex && xSemaphoreTake(telemetryMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
-                latestTelemetryJson = String(jsonBuffer);
+                latestTelemetryJson = serialized;
                 xSemaphoreGive(telemetryMutex);
             }
             
