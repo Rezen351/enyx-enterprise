@@ -4,16 +4,10 @@
     "fw_version": "1.0.0",
     "description": "Node Control and Sensor Acquisition"
   },
-  "security": {
-    "admin_user": "admin",
-    "admin_pass": "admin123"
-  },
   "protocols": {
     "wifi": {
       "ssid": "eduroam",
-      "auto_reconnect": true,
-      "eap_identity": "13322006@mahasiswa.itb.ac.id",
-      "eap_password": ""
+      "auto_reconnect": true
     },
     "mqtt": {
       "server": "167.205.44.103",

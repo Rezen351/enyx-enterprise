@@ -1,6 +1,6 @@
-# Firmware Specification — Aeroponic Node
+# Firmware Specification — IoT Node
 
-**Board:** ESP32  
+**Board:** ESP32 DevKit S3  
 **Framework:** Arduino / PlatformIO  
 **Filesystem:** LittleFS (`config.json`)  
 **Primary Transport:** MQTT over TCP/TLS  
@@ -9,7 +9,7 @@
 
 ## 1. Purpose
 
-Aeroponic Node adalah firmware untuk node sensor dan aktuator di lingkungan hydroponik/aeroponik. Setiap node bertugas:
+IoT Node firmware untuk perangkat edge yang mengakuisisi data sensor dan mengontrol aktuator. Setiap node bertugas:
 
 - Membaca sensor lokal sesuai konfigurasi
 - Mempublikasikan data telemetry ke MQTT broker
@@ -20,13 +20,15 @@ Aeroponic Node adalah firmware untuk node sensor dan aktuator di lingkungan hydr
 
 ## 2. Boot Sequence
 
-1. Inisialisasi sistem (watchdog, logging)
+1. Inisialisasi sistem (watchdog, logging, FreeRTOS task)
 2. Mount LittleFS
 3. Load `config.json`
-4. Jika `admin_pass` kosong → generate password acak 12-digit hex dan tampilkan di serial
-5. Inisialisasi WiFi, MQTT, Hardware Manager
-6. Start telemetry task dan MQTT task
-7. Jalankan Captive Portal AP untuk konfigurasi awal
+4. Inisialisasi NVS namespace `creds` dan load kredensial jika ada
+5. Jika tidak ada kredensial di NVS, gunakan `config.json` sebagai fallback lalu migrasi ke NVS
+6. Jika `admin_pass` kosong → generate password acak 12-digit hex dan tampilkan di serial
+7. Inisialisasi WiFi (Station + SoftAP), MQTT, Hardware Manager
+8. Start telemetry task dan MQTT task
+9. Jalankan Captive Portal AP untuk konfigurasi awal
 
 ---
 
@@ -35,14 +37,15 @@ Aeroponic Node adalah firmware untuk node sensor dan aktuator di lingkungan hydr
 ### WiFi
 
 - Mode: Station + SoftAP (Captive Portal)
-- SSID dan password disimpan di `config.json`
-- Mendukung WPA2-Enterprise (`eap_identity`, `eap_password`)
+- SSID dan password disimpan di NVS namespace `creds`
+- Mendukung WPA2-Enterprise (SSID, Identity, Password) — disimpan di NVS
 - Auto reconnect
+- Hotspot tidak dimatikan saat terhubung ke WiFi
 
 ### MQTT
 
 - Broker, port, prefix, username, password, interval, dan TLS dikonfigurasi via web UI
-- Topik default: `smartfarm/<node_id>/...`
+- Topik default: `<prefix>/<node_id>/...`
 - LWT (Last Will Testament) untuk status online/offline
 - Discovery signal bisa dipicu manual dari UI
 
@@ -78,7 +81,7 @@ Semua topik mengikuti format: `<prefix>/<node_id>/<kategori>`
   "node_id": "8C94DF6BCDFC",
   "fw_version": "1.0.0",
   "network": {
-    "ssid": "PAU Hotspot",
+    "ssid": "WiFi SSID",
     "ip_address": "10.18.128.31",
     "wifi_rssi": -62
   },
@@ -109,7 +112,7 @@ Semua topik mengikuti format: `<prefix>/<node_id>/<kategori>`
 
 | Protocol | Jenis Sensor / Aktuator | Keterangan |
 |----------|--------------|-----------|
-| GPIO (Digital/Analog) | Sensor digital, analog, sensor tanah, level air | Pull-up/down, invert logic, debounce |
+| GPIO (Digital/Analog) | Sensor digital, analog | Pull-up/down, invert logic, debounce |
 | GPIO_OUT | Relay, solenoid, pompa, indikator LED | Direct ESP32 pin (Digital / PWM) |
 | PCF8575_OUT | Relay single/multi channel via I2C | 16-channel expander (P0-P15), Active-LOW / Active-HIGH |
 | PCF8575_IN | Digital switch, pelampung air, limit switch | 16-channel expander (P0-P15), quasi-bidirectional input |
@@ -191,7 +194,7 @@ Semua sensor didefinisikan di `config.json` bagian `hardware`:
 Nilai 32-bit (FLOAT32, INT32, UINT32) dipecah ke dua register dengan urutan **big-endian (Motorola)**:
 
 - Register pertama (alamat N) = **High Word**
-- Register kedua (alamat N+1) = **Low Word
+- Register kedua (alamat N+1) = **Low Word**
 
 Contoh: High Word `0x47C3` + Low Word `0x5000` digabung menjadi `0x47C35000` = float32 **100000.0**.
 
@@ -256,9 +259,12 @@ Web UI diakses melalui Captive Portal atau IP lokal. Semua teks antarmuka dalam 
 ## 9. Security
 
 - **Admin Auth**: Token-based Bearer authentication
-- **Credential Storage**: Plaintext di `config.json`
-- **Config Export**: Menyertakan credential
-- **Config Import**: Validasi dan import via web UI
+- **Credential Storage**: 9 field kredensial disimpan di NVS namespace `creds`:
+  - `admin_user`, `admin_pass`, `auth_token`
+  - `wifi_ssid`, `wifi_pass`, `wifi_eap_identity`, `wifi_eap_password`
+  - `mqtt_user`, `mqtt_pass`
+- **Config Export**: Hanya menyertakan konfigurasi non-kredensial; semua field credential dikecualikan dari file yang diunduh
+- **Config Import**: Validasi dan import via web UI; kredensial dimigrasikan ke NVS secara otomatis
 - **MQTT Auth**: Optional username/password
 - **TLS**: Optional (`use_tls` flag, field sertifikat tersedia di config)
 
@@ -274,23 +280,14 @@ File: `config.json` di LittleFS
     "node_id": "8C94DF6BCDFC",
     "fw_version": "1.0.0"
   },
-  "security": {
-    "admin_user": "admin",
-    "admin_pass": "password_anda"
-  },
   "protocols": {
     "wifi": {
-      "ssid": "Aeroponik 1",
-      "password": "wifi_password",
-      "eap_identity": "",
-      "eap_password": ""
+      "ssid": "WiFi SSID"
     },
     "mqtt": {
       "server": "192.168.1.103",
       "port": 1883,
       "topic_prefix": "smartfarm",
-      "user": "",
-      "pass": "",
       "use_tls": false,
       "telemetry_interval_ms": 5000,
       "mqtt_disconnect_emergency_stop": true
@@ -304,6 +301,8 @@ File: `config.json` di LittleFS
   }
 }
 ```
+
+> **Catatan**: Kredensial sensitif (`admin_user`, `admin_pass`, `auth_token`, WiFi password, MQTT credentials) disimpan di NVS namespace `creds`, bukan di `config.json`. File `config.json` hanya berisi konfigurasi non-kredensial untuk keperluan export/import.
 
 ---
 
@@ -348,13 +347,13 @@ File: `config.json` di LittleFS
 
 ```bash
 # Build
-pio run -d firmware/aeroponic-node
+pio run -d firmware/node
 
 # Upload firmware
-pio run -d firmware/aeroponic-node --target upload
+pio run -d firmware/node --target upload
 
 # Upload filesystem (LittleFS)
-pio run -d firmware/aeroponic-node --target uploadfs
+pio run -d firmware/node --target uploadfs
 ```
 
 ---

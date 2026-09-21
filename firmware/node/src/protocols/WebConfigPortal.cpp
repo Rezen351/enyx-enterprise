@@ -1,5 +1,6 @@
 #include "WebConfigPortal.h"
 #include "../core/ConfigManager.h"
+#include "../core/CredentialManager.h"
 #include "../core/HardwareManager.h"
 #include "../../include/Config.h"
 #include "../../include/Logger.h"
@@ -36,23 +37,16 @@ static bool saveFullConfig() {
     
     JsonObject security = doc.createNestedObject("security");
     security["credentials_encrypted"] = false;
-    security["auth_token"] = Config::AUTH_TOKEN;
-    security["admin_user"] = Config::ADMIN_USER;
-    security["admin_pass"] = Config::ADMIN_PASS;
     
     JsonObject protocols = doc.createNestedObject("protocols");
     JsonObject wifi = protocols.createNestedObject("wifi");
     wifi["ssid"]         = Config::WIFI_SSID;
-    wifi["password"]     = Config::WIFI_PASS;
-    wifi["eap_identity"] = Config::WIFI_EAP_IDENTITY;
-    wifi["eap_password"] = Config::WIFI_EAP_PASSWORD;
+    wifi["auto_reconnect"] = true;
     
     JsonObject mqtt = protocols.createNestedObject("mqtt");
     mqtt["server"]               = Config::MQTT_SERVER;
     mqtt["port"]                 = Config::MQTT_PORT;
     mqtt["topic_prefix"]         = Config::MQTT_TOPIC_PREFIX;
-    mqtt["user"]                 = Config::MQTT_USER;
-    mqtt["pass"]                 = Config::MQTT_PASS;
     mqtt["use_tls"]              = Config::MQTT_USE_TLS;
     mqtt["telemetry_interval_ms"]= Config::MQTT_PUBLISH_INTERVAL;
     mqtt["mqtt_disconnect_emergency_stop"] = Config::MQTT_DISCONNECT_EMERGENCY_STOP;
@@ -253,7 +247,7 @@ void WebConfigPortal::handleApiLogin() {
         }
         
         Config::AUTH_TOKEN = generateToken();
-        saveFullConfig();
+        CredentialManager::setAuthToken(Config::AUTH_TOKEN);
         
         server.send(200, "application/json", "{\"token\":\"" + Config::AUTH_TOKEN + "\"}");
     } else {
@@ -314,19 +308,19 @@ void WebConfigPortal::handleApiFullConfigGet() {
     doc["device"]["node_id"]    = Config::NODE_ID;
     doc["device"]["fw_version"] = Config::FW_VERSION;
     
-    // Security — kirim tanpa admin_pass untuk keamanan
-    doc["security"]["admin_user"] = Config::ADMIN_USER;
+    // Security — do not expose sensitive credentials to the browser
+    // admin_user, admin_pass, and auth_token are intentionally omitted
     
-    // WiFi — gunakan struktur sama dengan loadConfig
+    // WiFi — only non-sensitive fields
     doc["protocols"]["wifi"]["ssid"]         = Config::WIFI_SSID;
     doc["protocols"]["wifi"]["eap_identity"] = Config::WIFI_EAP_IDENTITY;
-    // password & eap_password tidak dikirim ke browser (security)
+    // password, eap_password, and eap_identity are intentionally omitted for security
     
-    // MQTT
+    // MQTT — do not expose mqtt_user
     doc["protocols"]["mqtt"]["server"]                = Config::MQTT_SERVER;
     doc["protocols"]["mqtt"]["port"]                  = Config::MQTT_PORT;
     doc["protocols"]["mqtt"]["topic_prefix"]          = Config::MQTT_TOPIC_PREFIX;
-    doc["protocols"]["mqtt"]["user"]                  = Config::MQTT_USER;
+    // mqtt_user is intentionally omitted for security
     doc["protocols"]["mqtt"]["use_tls"]               = Config::MQTT_USE_TLS;
     doc["protocols"]["mqtt"]["telemetry_interval_ms"] = Config::MQTT_PUBLISH_INTERVAL;
     doc["protocols"]["mqtt"]["mqtt_disconnect_emergency_stop"] = Config::MQTT_DISCONNECT_EMERGENCY_STOP;
@@ -432,6 +426,11 @@ void WebConfigPortal::handleApiWifiPost() {
     if (server.hasArg("eap_identity")) { Config::WIFI_EAP_IDENTITY = server.arg("eap_identity"); Config::WIFI_EAP_IDENTITY.trim(); }
     if (server.hasArg("eap_password")) { Config::WIFI_EAP_PASSWORD = server.arg("eap_password"); Config::WIFI_EAP_PASSWORD.trim(); }
     
+    CredentialManager::setWifiSsid(Config::WIFI_SSID);
+    CredentialManager::setWifiPass(Config::WIFI_PASS);
+    CredentialManager::setWifiEapIdentity(Config::WIFI_EAP_IDENTITY);
+    CredentialManager::setWifiEapPassword(Config::WIFI_EAP_PASSWORD);
+    
     if (saveFullConfig()) {
         server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true}");
         ESP.restart();
@@ -450,6 +449,9 @@ void WebConfigPortal::handleApiMqttPost() {
     if (server.hasArg("telemetry_interval_ms")) Config::MQTT_PUBLISH_INTERVAL = server.arg("telemetry_interval_ms").toInt();
     if (server.hasArg("use_tls")) Config::MQTT_USE_TLS = server.arg("use_tls") == "true";
     if (server.hasArg("mqtt_disconnect_emergency_stop")) Config::MQTT_DISCONNECT_EMERGENCY_STOP = server.arg("mqtt_disconnect_emergency_stop") == "true";
+    
+    CredentialManager::setMqttUser(Config::MQTT_USER);
+    CredentialManager::setMqttPass(Config::MQTT_PASS);
     
     if (saveFullConfig()) {
         server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true,\"message\":\"Rebooting to apply\"}");
@@ -697,6 +699,10 @@ void WebConfigPortal::handleApiAccountPost() {
     if (server.hasArg("pass")) { Config::ADMIN_PASS = server.arg("pass"); Config::ADMIN_PASS.trim(); }
     Config::AUTH_TOKEN = ""; // Force re-login
     
+    CredentialManager::setAdminUser(Config::ADMIN_USER);
+    CredentialManager::setAdminPass(Config::ADMIN_PASS);
+    CredentialManager::setAuthToken(Config::AUTH_TOKEN);
+    
     if (saveFullConfig()) {
         server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true,\"message\":\"Account updated. Rebooting...\"}");
         ESP.restart();
@@ -771,24 +777,8 @@ void WebConfigPortal::handleApiConfigExport() {
     String contents = file.readString();
     file.close();
 
-    DynamicJsonDocument doc(8192);
-    DeserializationError err = deserializeJson(doc, contents);
-    if (err) {
-        server.send(500, "application/json", "{\"error\":\"Failed to parse config.json\"}");
-        return;
-    }
-
-    doc["security"].remove("admin_pass");
-    doc["security"].remove("auth_token");
-    doc["protocols"]["wifi"].remove("password");
-    doc["protocols"]["wifi"].remove("eap_password");
-    doc["protocols"]["mqtt"].remove("pass");
-    doc["protocols"]["mqtt"].remove("user");
-
-    String out;
-    serializeJson(doc, out);
     server.sendHeader("Content-Disposition", "attachment; filename=config.json");
-    server.send(200, "application/json", out);
+    server.send(200, "application/json", contents);
 }
 
 void WebConfigPortal::handleApiConfigImport() {
@@ -809,8 +799,49 @@ void WebConfigPortal::handleApiConfigImport() {
         return;
     }
 
-    if (ConfigManager::saveConfig(payload)) {
+    // Extract credentials from payload before stripping them
+    String importedAdminUser = doc["security"]["admin_user"] | "";
+    String importedAdminPass = doc["security"]["admin_pass"] | "";
+    String importedAuthToken = doc["security"]["auth_token"] | "";
+    String importedWifiSsid = doc["protocols"]["wifi"]["ssid"] | "";
+    String importedWifiPass = doc["protocols"]["wifi"]["password"] | "";
+    String importedWifiEapIdentity = doc["protocols"]["wifi"]["eap_identity"] | "";
+    String importedWifiEapPassword = doc["protocols"]["wifi"]["eap_password"] | "";
+    String importedMqttUser = doc["protocols"]["mqtt"]["user"] | "";
+    String importedMqttPass = doc["protocols"]["mqtt"]["pass"] | "";
+
+    // Strip credentials from payload so config.json stays clean
+    if (doc.containsKey("security")) {
+        doc["security"].remove("admin_user");
+        doc["security"].remove("admin_pass");
+        doc["security"].remove("auth_token");
+    }
+    if (doc.containsKey("protocols") && doc["protocols"].containsKey("wifi")) {
+        doc["protocols"]["wifi"].remove("password");
+        doc["protocols"]["wifi"].remove("eap_password");
+    }
+    if (doc.containsKey("protocols") && doc["protocols"].containsKey("mqtt")) {
+        doc["protocols"]["mqtt"].remove("user");
+        doc["protocols"]["mqtt"].remove("pass");
+    }
+
+    String filteredPayload;
+    serializeJson(doc, filteredPayload);
+
+    if (ConfigManager::saveConfig(filteredPayload)) {
         ConfigManager::loadConfig();
+        
+        // Save imported credentials to NVS
+        if (importedAdminUser.length() > 0) CredentialManager::setAdminUser(importedAdminUser);
+        if (importedAdminPass.length() > 0) CredentialManager::setAdminPass(importedAdminPass);
+        if (importedAuthToken.length() > 0) CredentialManager::setAuthToken(importedAuthToken);
+        if (importedWifiSsid.length() > 0) CredentialManager::setWifiSsid(importedWifiSsid);
+        if (importedWifiPass.length() > 0) CredentialManager::setWifiPass(importedWifiPass);
+        if (importedWifiEapIdentity.length() > 0) CredentialManager::setWifiEapIdentity(importedWifiEapIdentity);
+        if (importedWifiEapPassword.length() > 0) CredentialManager::setWifiEapPassword(importedWifiEapPassword);
+        if (importedMqttUser.length() > 0) CredentialManager::setMqttUser(importedMqttUser);
+        if (importedMqttPass.length() > 0) CredentialManager::setMqttPass(importedMqttPass);
+        
         HardwareManager::reloadConfiguration();
         server.send(200, "application/json", "{\"status\":\"success\",\"reboot\":false,\"message\":\"Configuration imported successfully and hot-swapped!\"}");
     } else {

@@ -5,6 +5,7 @@
 #include <LittleFS.h>
 #include <WiFi.h>
 #include "esp_partition.h"
+#include "CredentialManager.h"
 
 void ConfigManager::init() {
     Logger::config("Mounting LittleFS...");
@@ -28,9 +29,14 @@ void ConfigManager::init() {
 
     Logger::config("LittleFS mounted successfully.");
 
-    if (!loadConfig()) {
-        Logger::config("Failed to load config.json. Using default compiled configs.");
+    CredentialManager::init();
+    if (CredentialManager::hasCredentials()) {
+        Logger::config("Found credentials in NVS. Loading from NVS...");
+        CredentialManager::loadCredentials();
+    } else if (!loadConfig()) {
+        Logger::config("Failed to load config.json and no NVS credentials. Using default compiled configs.");
     }
+
     Logger::config("Loaded admin user: %s", Config::ADMIN_USER.c_str());
     Logger::config("Loaded admin pass: %s", Config::ADMIN_PASS.c_str());
 }
@@ -52,34 +58,22 @@ bool ConfigManager::loadConfig() {
 
     Logger::config("config.json loaded successfully. Applying core configurations...");
 
-    // Device Metadata
-    if (doc["device"]["node_id"]) {
-        Config::NODE_ID = doc["device"]["node_id"].as<String>();
-        Config::NODE_ID.trim();
-    }
-    if (doc["device"]["fw_version"]) {
-        Config::FW_VERSION = doc["device"]["fw_version"].as<String>();
-        Config::FW_VERSION.trim();
-    }
-    
-    if (Config::NODE_ID == "" || Config::NODE_ID == "node-01") {
-        String mac = WiFi.macAddress();
-        mac.replace(":", "");
-        Config::NODE_ID = mac;
-    }
+    bool useNvsCredentials = CredentialManager::hasCredentials();
 
     // Security
-    if (doc["security"]["admin_user"]) {
-        Config::ADMIN_USER = doc["security"]["admin_user"].as<String>();
-        Config::ADMIN_USER.trim();
-    }
-    if (doc["security"]["admin_pass"]) {
-        Config::ADMIN_PASS = doc["security"]["admin_pass"].as<String>();
-        Config::ADMIN_PASS.trim();
-    }
-    if (doc["security"]["auth_token"]) {
-        Config::AUTH_TOKEN = doc["security"]["auth_token"].as<String>();
-        Config::AUTH_TOKEN.trim();
+    if (!useNvsCredentials) {
+        if (doc["security"]["admin_user"]) {
+            Config::ADMIN_USER = doc["security"]["admin_user"].as<String>();
+            Config::ADMIN_USER.trim();
+        }
+        if (doc["security"]["admin_pass"]) {
+            Config::ADMIN_PASS = doc["security"]["admin_pass"].as<String>();
+            Config::ADMIN_PASS.trim();
+        }
+        if (doc["security"]["auth_token"]) {
+            Config::AUTH_TOKEN = doc["security"]["auth_token"].as<String>();
+            Config::AUTH_TOKEN.trim();
+        }
     }
 
     // Use fixed defaults if not set in config.json.
@@ -100,23 +94,25 @@ bool ConfigManager::loadConfig() {
     }
 
     // Protocols - WiFi
-    if (doc["protocols"]["wifi"].is<JsonObject>()) {
-        JsonObject wifi = doc["protocols"]["wifi"].as<JsonObject>();
-        if (wifi.containsKey("ssid")) {
-            Config::WIFI_SSID = wifi["ssid"].as<String>();
-            Config::WIFI_SSID.trim();
-        }
-        if (wifi.containsKey("password")) {
-            Config::WIFI_PASS = wifi["password"].as<String>();
-            Config::WIFI_PASS.trim();
-        }
-        if (wifi.containsKey("eap_identity")) {
-            Config::WIFI_EAP_IDENTITY = wifi["eap_identity"].as<String>();
-            Config::WIFI_EAP_IDENTITY.trim();
-        }
-        if (wifi.containsKey("eap_password")) {
-            Config::WIFI_EAP_PASSWORD = wifi["eap_password"].as<String>();
-            Config::WIFI_EAP_PASSWORD.trim();
+    if (!useNvsCredentials) {
+        if (doc["protocols"]["wifi"].is<JsonObject>()) {
+            JsonObject wifi = doc["protocols"]["wifi"].as<JsonObject>();
+            if (wifi.containsKey("ssid")) {
+                Config::WIFI_SSID = wifi["ssid"].as<String>();
+                Config::WIFI_SSID.trim();
+            }
+            if (wifi.containsKey("password")) {
+                Config::WIFI_PASS = wifi["password"].as<String>();
+                Config::WIFI_PASS.trim();
+            }
+            if (wifi.containsKey("eap_identity")) {
+                Config::WIFI_EAP_IDENTITY = wifi["eap_identity"].as<String>();
+                Config::WIFI_EAP_IDENTITY.trim();
+            }
+            if (wifi.containsKey("eap_password")) {
+                Config::WIFI_EAP_PASSWORD = wifi["eap_password"].as<String>();
+                Config::WIFI_EAP_PASSWORD.trim();
+            }
         }
     }
 
@@ -132,13 +128,15 @@ bool ConfigManager::loadConfig() {
         Config::MQTT_TOPIC_PREFIX = doc["protocols"]["mqtt"]["topic_prefix"].as<String>();
         Config::MQTT_TOPIC_PREFIX.trim();
     }
-    if (doc["protocols"]["mqtt"]["user"]) {
-        Config::MQTT_USER = doc["protocols"]["mqtt"]["user"].as<String>();
-        Config::MQTT_USER.trim();
-    }
-    if (doc["protocols"]["mqtt"]["pass"]) {
-        Config::MQTT_PASS = doc["protocols"]["mqtt"]["pass"].as<String>();
-        Config::MQTT_PASS.trim();
+    if (!useNvsCredentials) {
+        if (doc["protocols"]["mqtt"]["user"]) {
+            Config::MQTT_USER = doc["protocols"]["mqtt"]["user"].as<String>();
+            Config::MQTT_USER.trim();
+        }
+        if (doc["protocols"]["mqtt"]["pass"]) {
+            Config::MQTT_PASS = doc["protocols"]["mqtt"]["pass"].as<String>();
+            Config::MQTT_PASS.trim();
+        }
     }
     if (doc["protocols"]["mqtt"]["telemetry_interval_ms"]) {
         Config::MQTT_PUBLISH_INTERVAL = doc["protocols"]["mqtt"]["telemetry_interval_ms"].as<uint32_t>();
@@ -150,6 +148,11 @@ bool ConfigManager::loadConfig() {
     }
     if (doc["protocols"]["mqtt"]["mqtt_disconnect_emergency_stop"]) {
         Config::MQTT_DISCONNECT_EMERGENCY_STOP = doc["protocols"]["mqtt"]["mqtt_disconnect_emergency_stop"].as<bool>();
+    }
+
+    // Migrate credentials to NVS if they came from config.json and NVS is empty
+    if (!useNvsCredentials) {
+        CredentialManager::saveCredentials();
     }
 
     // Updating dynamic topics based on potentially new NODE_ID and TOPIC_PREFIX
