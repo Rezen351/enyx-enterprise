@@ -47,8 +47,10 @@ async function api(path, method = 'GET', body = null) {
             return {
                 device: { node_id: 'node-01' },
                 security: { admin_user: 'admin' },
-                wifi: { ssid: 'MyWiFi', password: 'pass', eap_identity: '', eap_password: '' },
-                mqtt: { server: 'broker.emqx.io', port: 1883, topic_prefix: 'smartfarm', user: '', pass: '', telemetry_interval: 5000 },
+                protocols: {
+                    wifi: { ssid: 'MyWiFi', eap_identity: '', eap_username: '' },
+                    mqtt: { server: 'broker.emqx.io', port: 1883, topic_prefix: 'smartfarm', telemetry_interval_ms: 5000, mqtt_disconnect_emergency_stop: true }
+                },
                 hardware: {
                     inputs: [{ pin: 4, type: 'DIGITAL', pull: 'UP', name: 'Water Sensor' }],
                     outputs: [{ pin: 5, type: 'DIGITAL', name: 'Pump Relay' }],
@@ -99,11 +101,13 @@ function onWifiTypeChange() {
         enterpriseSection.style.display = 'none';
         document.getElementById('cfg_pass').value = '';
         document.getElementById('cfg_eap_id').value = '';
+        document.getElementById('cfg_eap_user').value = '';
         document.getElementById('cfg_eap_pass').value = '';
     } else if (type === 'wpa_personal') {
         passGroup.style.display = 'block';
         enterpriseSection.style.display = 'none';
         document.getElementById('cfg_eap_id').value = '';
+        document.getElementById('cfg_eap_user').value = '';
         document.getElementById('cfg_eap_pass').value = '';
     } else if (type === 'wpa_enterprise') {
         passGroup.style.display = 'none';
@@ -288,7 +292,7 @@ async function loadFullConfig() {
         if (document.getElementById('cfg_i2c_scl')) {
             document.getElementById('cfg_i2c_scl').value = (d.hardware && d.hardware.i2c_scl_pin != null) ? d.hardware.i2c_scl_pin : 22;
         }
-        document.getElementById('cfg_admin_u').value = d.security.admin_user || '';
+        document.getElementById('cfg_admin_u').value = (d.security && d.security.admin_user) || '';
 
         let wifiType = 'wpa_personal';
         if (wifi.eap_identity && wifi.eap_identity.trim() !== '') {
@@ -301,6 +305,7 @@ async function loadFullConfig() {
         document.getElementById('cfg_pass').value = '';
         document.getElementById('cfg_pass').placeholder = wifi.password ? PW_PLACEHOLDER : '';
         document.getElementById('cfg_eap_id').value = wifi.eap_identity || '';
+        document.getElementById('cfg_eap_user').value = wifi.eap_username || wifi.eap_identity || '';
         document.getElementById('cfg_eap_pass').value = '';
         document.getElementById('cfg_eap_pass').placeholder = wifi.eap_password ? PW_PLACEHOLDER : '';
         document.getElementById('cfg_mqtt_srv').value = mqtt.server || '';
@@ -822,7 +827,10 @@ async function saveHardware() {
     let payload = encodeURIComponent(JSON.stringify(hwPayload));
     let d = await api('/api/hardware', 'POST', `payload=${payload}`);
     setButtonLoading(btn, false, 'Save & Reboot');
-    if (d) triggerRebootSequence();
+    if (d) {
+        await loadFullConfig();
+        showMsg('Hardware configuration applied.');
+    }
 }
 
 async function saveDevice() {
@@ -860,11 +868,12 @@ async function saveWifi() {
 
     let body = `ssid=${encodeURIComponent(s)}`;
     if (type === 'open') {
-        body += `&pass=&eap_identity=&eap_password=`;
+        body += `&pass=&eap_identity=&eap_username=&eap_password=`;
     } else if (type === 'wpa_personal') {
-        body += `&pass=${encodeURIComponent(p)}&eap_identity=&eap_password=`;
+        body += `&pass=${encodeURIComponent(p)}&eap_identity=&eap_username=&eap_password=`;
     } else if (type === 'wpa_enterprise') {
-        body += `&pass=&eap_identity=${encodeURIComponent(ei)}&eap_password=${encodeURIComponent(ep)}`;
+        let eu = document.getElementById('cfg_eap_user').value;
+        body += `&pass=&eap_identity=${encodeURIComponent(ei)}&eap_username=${encodeURIComponent(eu)}&eap_password=${encodeURIComponent(ep)}`;
     }
 
     let d = await api('/api/wifi', 'POST', body);
@@ -881,7 +890,7 @@ async function saveMqtt() {
     let pre = document.getElementById('cfg_mqtt_pre').value;
     let u = document.getElementById('cfg_mqtt_u').value;
     let int = document.getElementById('cfg_mqtt_int').value;
-    let body = `server=${encodeURIComponent(s)}&port=${encodeURIComponent(p)}&topic_prefix=${encodeURIComponent(pre)}&user=${encodeURIComponent(u)}&telemetry_interval=${encodeURIComponent(int)}&mqtt_disconnect_emergency_stop=${document.getElementById('cfg_mqtt_emergency_stop').checked}`;
+    let body = `server=${encodeURIComponent(s)}&port=${encodeURIComponent(p)}&topic_prefix=${encodeURIComponent(pre)}&user=${encodeURIComponent(u)}&telemetry_interval_ms=${encodeURIComponent(int)}&mqtt_disconnect_emergency_stop=${document.getElementById('cfg_mqtt_emergency_stop').checked}`;
     if (pwDirty.cfg_mqtt_p) body += `&pass=${encodeURIComponent(document.getElementById('cfg_mqtt_p').value)}`;
     let d = await api('/api/mqtt', 'POST', body);
     setButtonLoading(btn, false, 'Save & Reboot');
@@ -895,7 +904,7 @@ async function saveAccount() {
     let u = document.getElementById('cfg_admin_u').value;
     let p = document.getElementById('cfg_admin_p').value;
     if (!u || !p) { showMsg('Cannot be empty', true); setButtonLoading(btn, false, 'Update Credentials & Reboot'); return; }
-    let d = await api('/api/account', 'POST', `user=${u}&pass=${p}`);
+    let d = await api('/api/account', 'POST', `user=${encodeURIComponent(u)}&pass=${encodeURIComponent(p)}`);
     setButtonLoading(btn, false, 'Update Credentials & Reboot');
     if (d) {
         logout();

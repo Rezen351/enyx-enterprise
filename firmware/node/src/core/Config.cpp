@@ -12,7 +12,9 @@ namespace Config {
     uint32_t LOGIN_BLOCK_TIME_MS = 30000;
 
     // --- Identitas Perangkat ---
-    String NODE_ID = "node-01";
+    // Default to empty so the runtime can derive a unique identity from the ESP32
+    // MAC address when no custom node_id is configured in the file or portal.
+    String NODE_ID = "";
     uint8_t PIN_LED_INDICATOR = 2;     // Built-in LED
 
     // --- Konfigurasi WiFi ---
@@ -21,6 +23,7 @@ namespace Config {
     String WIFI_SSID = "";
     String WIFI_PASS = "";
     String WIFI_EAP_IDENTITY = "";
+    String WIFI_EAP_USERNAME = "";
     String WIFI_EAP_PASSWORD = "";
 
     // --- Konfigurasi MQTT ---

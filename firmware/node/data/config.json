@@ -1,6 +1,6 @@
 {
   "device": {
-    "node_id": "node-01",
+    "node_id": "",
     "fw_version": "1.0.0",
     "description": "Node Control and Sensor Acquisition"
   },

@@ -2,6 +2,43 @@
 
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 
+### Perbaikan Persistence Konfigurasi Firmware (2026-09-21)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Analisis alur konfigurasi:** firmware `firmware/node` menggunakan `/config.json` di LittleFS; tidak ditemukan file `config.js`. Alur boot memuat file melalui `ConfigManager::init()` sebelum handler sensor/aktuator dibuat oleh `HardwareManager::init()`. |
+| 2 | ✅ | **Perbaikan reload field:** parsing boolean dan pin kini memeriksa keberadaan key, sehingga nilai `false` dan GPIO `0` tetap dimuat; `rs485_parity` yang sebelumnya hanya ditulis kini juga dibaca saat boot. |
+| 3 | ✅ | **Perbaikan penyimpanan:** `ConfigManager::saveConfig()` memvalidasi JSON, menulis ke file sementara, memeriksa jumlah byte, flush, lalu mengganti `/config.json` agar reboot tidak membaca file kosong/rusak akibat write parsial. |
+| 4 | ✅ | **Perbaikan kontrak UI/API:** field interval MQTT di `script.js` disamakan menjadi `telemetry_interval_ms`, sesuai handler backend. |
+| 5 | 🟡 | **Verifikasi perangkat:** PlatformIO 6.2.0 sudah tersedia melalui `python -m platformio`; target `upload` mencapai kompilasi/linking awal, sedangkan `uploadfs` masih menyiapkan toolchain ESP32 tambahan. Belum ada konfirmasi flashing serial atau uji Save/Reboot pada ESP32. |
+
+### Perbaikan Default Identity Hotspot ESP32-S3 (2026-09-22)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Root cause:** fallback MAC sebelumnya dijalankan setelah WiFi berhasil tersambung, sedangkan captive portal dimulai lebih dahulu sehingga SSID dan MQTT topics menggunakan `node_id` kosong. |
+| 2 | ✅ | **Perbaikan:** generate `NODE_ID` dari MAC sebelum portal dan topic initialization; custom `node_id` dari config tetap dipertahankan. |
+| 3 | 🟡 | **Verifikasi:** kompilasi target `esp32s3` mencapai `ConfigManager.cpp` dan `NetworkManager.cpp`; upload serta uji hardware masih menunggu koneksi serial board. |
+
+### Perbaikan WPA2-Enterprise Inner Username (2026-09-22)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | Menambahkan field `eap_username` terpisah dari outer `eap_identity`; konfigurasi lama tetap memakai identity lama sebagai fallback username. |
+| 2 | ✅ | Menyimpan dan memuat inner username melalui NVS, serta memasukkannya ke save/import/export config. |
+| 3 | ✅ | Memperbaiki pemanggilan `WiFi.begin()` agar outer identity, inner username, dan password tidak lagi memakai field yang sama. |
+| 4 | 🟡 | Pemeriksaan editor tidak menemukan error pada file yang diubah; upload dan uji autentikasi nyata ke jaringan WPA2-Enterprise masih diperlukan. |
+
+### Implementasi E2E Portal dan Persistence WiFi (2026-09-22)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | Memperbaiki frontend agar response `/api/fullconfig` tanpa object sensitif `security` tidak menghentikan rendering GPIO, Modbus, dan I2C. |
+| 2 | ✅ | Menyamakan mock response dengan struktur device (`protocols.wifi`, `protocols.mqtt`) dan menyegarkan portal setelah hardware hot-swap tanpa menunggu reboot palsu. |
+| 3 | ✅ | Memuat SSID dan identity WiFi non-sensitif dari LittleFS walaupun NVS berisi credential lain; password tetap dikelola NVS. |
+| 4 | ✅ | Menghapus field Enterprise yang stale saat beralih ke Open/WPA Personal dan memperbaiki URL encoding account credentials. |
+| 5 | 🟡 | Build ESP32-S3 menghasilkan artefak linker; upload board dan verifikasi WiFi/hardware fisik masih diperlukan. |
+
 ---
 
 ### Implementasi Modbus TCP + UI Transport Selector (2026-09-20)

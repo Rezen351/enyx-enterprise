@@ -44,6 +44,17 @@ void ConfigManager::init() {
         CredentialManager::loadCredentials();
     }
 
+    if (Config::NODE_ID == "") {
+        String mac = WiFi.macAddress();
+        mac.replace(":", "");
+        if (mac.length() > 0) {
+            Config::NODE_ID = mac;
+            Logger::config("NODE_ID auto-generated from MAC: %s", Config::NODE_ID.c_str());
+        } else {
+            Logger::error("Unable to read WiFi MAC during config initialization; retrying after WiFi startup.");
+        }
+    }
+
     Logger::config("Loaded admin user: %s", Config::ADMIN_USER.c_str());
     Logger::config("Loaded admin pass: %s", Config::ADMIN_PASS.c_str());
     Logger::config("Loaded node_id: %s", Config::NODE_ID.c_str());
@@ -94,21 +105,15 @@ bool ConfigManager::loadConfig() {
         }
     }
 
-    // Use fixed defaults if not set in config.json.
-    // GAP/SEC: never ship a hardcoded weak password. When no admin password is
-    // configured we generate a random one at first boot and surface it on the
-    // serial console so the operator can read & change it via the Web Portal.
+    // Default login credentials are intentionally stable for local provisioning.
+    // This avoids boot-time random passwords that are difficult to recover and
+    // makes the default admin/admin123 behavior explicit and consistent.
     if (Config::ADMIN_USER == "") {
         Config::ADMIN_USER = "admin";
     }
     if (Config::ADMIN_PASS == "") {
-        String generated = "";
-        for (int i = 0; i < 12; i++) {
-            generated += String(esp_random() % 16, HEX);
-        }
-        Config::ADMIN_PASS = generated;
-        Logger::config("No admin password in config.json. Generated random password.");
-        Logger::config("Change it via the Web Portal at your earliest convenience.");
+        Config::ADMIN_PASS = "admin123";
+        Logger::config("No admin password configured. Using default admin/admin123.");
     }
 
     // Device identity
@@ -127,21 +132,28 @@ bool ConfigManager::loadConfig() {
         Logger::config("No fw_version in config.json, using current/default: %s", Config::FW_VERSION.c_str());
     }
 
-    // Protocols - WiFi
-    if (!useNvsCredentials) {
-        if (doc["protocols"]["wifi"].is<JsonObject>()) {
-            JsonObject wifi = doc["protocols"]["wifi"].as<JsonObject>();
-            if (wifi.containsKey("ssid")) {
-                Config::WIFI_SSID = wifi["ssid"].as<String>();
-                Config::WIFI_SSID.trim();
-            }
+    // Protocols - WiFi. Non-sensitive identity fields belong to LittleFS;
+    // passwords remain in NVS and are loaded below by CredentialManager.
+    if (doc["protocols"]["wifi"].is<JsonObject>()) {
+        JsonObject wifi = doc["protocols"]["wifi"].as<JsonObject>();
+        if (wifi.containsKey("ssid")) {
+            Config::WIFI_SSID = wifi["ssid"].as<String>();
+            Config::WIFI_SSID.trim();
+        }
+        if (wifi.containsKey("eap_identity")) {
+            Config::WIFI_EAP_IDENTITY = wifi["eap_identity"].as<String>();
+            Config::WIFI_EAP_IDENTITY.trim();
+        }
+        if (wifi.containsKey("eap_username")) {
+            Config::WIFI_EAP_USERNAME = wifi["eap_username"].as<String>();
+            Config::WIFI_EAP_USERNAME.trim();
+        } else {
+            Config::WIFI_EAP_USERNAME = Config::WIFI_EAP_IDENTITY;
+        }
+        if (!useNvsCredentials) {
             if (wifi.containsKey("password")) {
                 Config::WIFI_PASS = wifi["password"].as<String>();
                 Config::WIFI_PASS.trim();
-            }
-            if (wifi.containsKey("eap_identity")) {
-                Config::WIFI_EAP_IDENTITY = wifi["eap_identity"].as<String>();
-                Config::WIFI_EAP_IDENTITY.trim();
             }
             if (wifi.containsKey("eap_password")) {
                 Config::WIFI_EAP_PASSWORD = wifi["eap_password"].as<String>();
@@ -155,7 +167,7 @@ bool ConfigManager::loadConfig() {
         Config::MQTT_SERVER = doc["protocols"]["mqtt"]["server"].as<String>();
         Config::MQTT_SERVER.trim();
     }
-    if (doc["protocols"]["mqtt"]["port"]) {
+    if (doc["protocols"]["mqtt"].containsKey("port")) {
         Config::MQTT_PORT = doc["protocols"]["mqtt"]["port"].as<int>();
     }
     if (doc["protocols"]["mqtt"]["topic_prefix"]) {
@@ -172,15 +184,15 @@ bool ConfigManager::loadConfig() {
             Config::MQTT_PASS.trim();
         }
     }
-    if (doc["protocols"]["mqtt"]["telemetry_interval_ms"]) {
+    if (doc["protocols"]["mqtt"].containsKey("telemetry_interval_ms")) {
         Config::MQTT_PUBLISH_INTERVAL = doc["protocols"]["mqtt"]["telemetry_interval_ms"].as<uint32_t>();
     }
 
     // MQTT TLS
-    if (doc["protocols"]["mqtt"]["use_tls"]) {
+    if (doc["protocols"]["mqtt"].containsKey("use_tls")) {
         Config::MQTT_USE_TLS = doc["protocols"]["mqtt"]["use_tls"].as<bool>();
     }
-    if (doc["protocols"]["mqtt"]["mqtt_disconnect_emergency_stop"]) {
+    if (doc["protocols"]["mqtt"].containsKey("mqtt_disconnect_emergency_stop")) {
         Config::MQTT_DISCONNECT_EMERGENCY_STOP = doc["protocols"]["mqtt"]["mqtt_disconnect_emergency_stop"].as<bool>();
     }
 
@@ -305,21 +317,24 @@ bool ConfigManager::loadConfig() {
     }
 
     // RS485 pins
-    if (doc["hardware"]["rs485_rx"]) {
+    if (doc["hardware"].containsKey("rs485_rx")) {
         Config::PIN_RS485_RX = doc["hardware"]["rs485_rx"].as<uint8_t>();
     }
-    if (doc["hardware"]["rs485_tx"]) {
+    if (doc["hardware"].containsKey("rs485_tx")) {
         Config::PIN_RS485_TX = doc["hardware"]["rs485_tx"].as<uint8_t>();
     }
-    if (doc["hardware"]["rs485_de"]) {
+    if (doc["hardware"].containsKey("rs485_de")) {
         Config::PIN_RS485_DE = doc["hardware"]["rs485_de"].as<uint8_t>();
+    }
+    if (doc["hardware"].containsKey("rs485_parity")) {
+        Config::PARITY = doc["hardware"]["rs485_parity"].as<uint8_t>();
     }
 
     // I2C pins (flat properties, same style as RS485)
-    if (doc["hardware"]["i2c_sda_pin"]) {
+    if (doc["hardware"].containsKey("i2c_sda_pin")) {
         Config::PIN_I2C_SDA = doc["hardware"]["i2c_sda_pin"].as<uint8_t>();
     }
-    if (doc["hardware"]["i2c_scl_pin"]) {
+    if (doc["hardware"].containsKey("i2c_scl_pin")) {
         Config::PIN_I2C_SCL = doc["hardware"]["i2c_scl_pin"].as<uint8_t>();
     }
 
@@ -333,14 +348,35 @@ bool ConfigManager::loadConfig() {
 }
 
 bool ConfigManager::saveConfig(String jsonPayload) {
-    File file = LittleFS.open("/config.json", "w");
-    if (!file) {
-        Logger::error("Failed to open config.json for writing");
+    DynamicJsonDocument doc(24576);
+    DeserializationError error = deserializeJson(doc, jsonPayload);
+    if (error) {
+        Logger::error("Refusing to save invalid config.json: %s", error.c_str());
         return false;
     }
-    
-    file.print(jsonPayload);
+
+    File file = LittleFS.open("/config.json.tmp", "w");
+    if (!file) {
+        Logger::error("Failed to open temporary config file for writing");
+        return false;
+    }
+
+    size_t written = file.print(jsonPayload);
+    file.flush();
     file.close();
-    Logger::config("config.json successfully saved!");
+
+    if (written != jsonPayload.length()) {
+        LittleFS.remove("/config.json.tmp");
+        Logger::error("Failed to write complete config.json (%u/%u bytes)", written, jsonPayload.length());
+        return false;
+    }
+
+    if (!LittleFS.rename("/config.json.tmp", "/config.json")) {
+        LittleFS.remove("/config.json.tmp");
+        Logger::error("Failed to replace config.json");
+        return false;
+    }
+
+    Logger::config("config.json successfully saved and validated!");
     return true;
 }

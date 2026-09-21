@@ -192,8 +192,10 @@
                             type="password" id="cfg_pass" autocomplete="current-password"></div>
 
                     <div id="wifi-enterprise-section" style="display:none; margin-top:24px;">
-                        <div class="form-group"><label>Identity (Email/Username)</label><input type="text"
-                                id="cfg_eap_id" placeholder="e.g. student@university.edu"></div>
+                        <div class="form-group"><label>Outer Identity (optional)</label><input type="text"
+                            id="cfg_eap_id" placeholder="e.g. anonymous@university.edu"></div>
+                        <div class="form-group"><label>Inner Username</label><input type="text"
+                            id="cfg_eap_user" placeholder="e.g. student@university.edu" autocomplete="username"></div>
                         <div class="form-group"><label>Enterprise Password</label><input type="password"
                                 id="cfg_eap_pass">
                         </div>

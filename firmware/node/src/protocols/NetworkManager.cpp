@@ -17,6 +17,15 @@ void NetworkManager::wifiTask(void* parameter) {
     WiFi.mode(WIFI_AP_STA);
     WiFi.setAutoReconnect(true);
     WiFi.persistent(true);
+
+    if (Config::NODE_ID == "") {
+        String mac = WiFi.macAddress();
+        mac.replace(":", "");
+        Config::NODE_ID = mac.length() > 0 ? mac : "unknown-node";
+        Logger::network("NODE_ID auto-generated from MAC: %s", Config::NODE_ID.c_str());
+    }
+    Config::TOPIC_TELEMETRY = Config::MQTT_TOPIC_PREFIX + "/" + Config::NODE_ID + "/telemetry";
+    Config::TOPIC_ACTUATOR = Config::MQTT_TOPIC_PREFIX + "/actuator/" + Config::NODE_ID;
     
     WebConfigPortal::startAP();
     portalActive = true;
@@ -37,13 +46,6 @@ void NetworkManager::wifiTask(void* parameter) {
                 wifiConnecting = false;
                 connectStart = 0;
                 Logger::network("WiFi Connected! IP: %s", WiFi.localIP().toString().c_str());
-                
-                if (Config::NODE_ID == "" || Config::NODE_ID == "node-01") {
-                    String mac = WiFi.macAddress();
-                    mac.replace(":", "");
-                    Config::NODE_ID = mac;
-                    Logger::network("NODE_ID updated: %s", Config::NODE_ID.c_str());
-                }
             }
             wasConnected = true;
         } else {
@@ -58,11 +60,14 @@ void NetworkManager::wifiTask(void* parameter) {
                 lastReconnectAttempt = millis();
                 Logger::network("Reconnecting to WiFi: %s", Config::WIFI_SSID.c_str());
                 
-                if (Config::WIFI_EAP_IDENTITY.length() > 0) {
+                if (Config::WIFI_EAP_IDENTITY.length() > 0 || Config::WIFI_EAP_USERNAME.length() > 0) {
                     WiFi.disconnect();
                     delay(100);
                     Logger::network("Attempting WPA2-Enterprise (PEAP) connection...");
-                    WiFi.begin(Config::WIFI_SSID, WPA2_AUTH_PEAP, Config::WIFI_EAP_IDENTITY, Config::WIFI_EAP_IDENTITY, Config::WIFI_EAP_PASSWORD);
+                    WiFi.begin(Config::WIFI_SSID, WPA2_AUTH_PEAP,
+                               Config::WIFI_EAP_IDENTITY,
+                               Config::WIFI_EAP_USERNAME,
+                               Config::WIFI_EAP_PASSWORD);
                 } else if (Config::WIFI_PASS.length() > 0) {
                     WiFi.disconnect();
                     delay(100);
