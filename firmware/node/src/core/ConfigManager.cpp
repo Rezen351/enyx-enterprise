@@ -36,15 +36,26 @@ void ConfigManager::init() {
                    MemoryHelper::getFreePsram() / 1024);
 
     CredentialManager::init();
+    if (!loadConfig()) {
+        Logger::config("Failed to load config.json. Using default compiled configs.");
+    }
     if (CredentialManager::hasCredentials()) {
-        Logger::config("Found credentials in NVS. Loading from NVS...");
+        Logger::config("Found credentials in NVS. Overriding credentials from NVS...");
         CredentialManager::loadCredentials();
-    } else if (!loadConfig()) {
-        Logger::config("Failed to load config.json and no NVS credentials. Using default compiled configs.");
     }
 
     Logger::config("Loaded admin user: %s", Config::ADMIN_USER.c_str());
     Logger::config("Loaded admin pass: %s", Config::ADMIN_PASS.c_str());
+    Logger::config("Loaded node_id: %s", Config::NODE_ID.c_str());
+    Logger::config("Loaded fw_version: %s", Config::FW_VERSION.c_str());
+    
+    // Updating dynamic topics based on potentially new NODE_ID and TOPIC_PREFIX
+    Config::TOPIC_TELEMETRY = Config::MQTT_TOPIC_PREFIX + "/" + Config::NODE_ID + "/telemetry";
+    Config::TOPIC_ACTUATOR  = Config::MQTT_TOPIC_PREFIX + "/actuator/" + Config::NODE_ID;
+
+    Logger::config("MQTT Topics:");
+    Logger::config("  Telemetry : %s", Config::TOPIC_TELEMETRY.c_str());
+    Logger::config("  Actuator  : %s", Config::TOPIC_ACTUATOR.c_str());
 }
 
 bool ConfigManager::loadConfig() {
@@ -98,6 +109,22 @@ bool ConfigManager::loadConfig() {
         Config::ADMIN_PASS = generated;
         Logger::config("No admin password in config.json. Generated random password.");
         Logger::config("Change it via the Web Portal at your earliest convenience.");
+    }
+
+    // Device identity
+    if (doc["device"]["node_id"]) {
+        Config::NODE_ID = doc["device"]["node_id"].as<String>();
+        Config::NODE_ID.trim();
+        Logger::config("Loaded node_id from config.json: %s", Config::NODE_ID.c_str());
+    } else {
+        Logger::config("No node_id in config.json, using current/default: %s", Config::NODE_ID.c_str());
+    }
+    if (doc["device"]["fw_version"]) {
+        Config::FW_VERSION = doc["device"]["fw_version"].as<String>();
+        Config::FW_VERSION.trim();
+        Logger::config("Loaded fw_version from config.json: %s", Config::FW_VERSION.c_str());
+    } else {
+        Logger::config("No fw_version in config.json, using current/default: %s", Config::FW_VERSION.c_str());
     }
 
     // Protocols - WiFi
