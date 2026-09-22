@@ -10,6 +10,7 @@ public:
 
 private:
     static void wifiTask(void* parameter);
+    static void initArduinoOTA();
     
     static TaskHandle_t wifiTaskHandle;
     static volatile bool wifiConnected;

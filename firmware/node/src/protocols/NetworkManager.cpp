@@ -4,6 +4,7 @@
 #include "../../include/Logger.h"
 #include "../core/TaskWatchdog.h"
 #include <WiFi.h>
+#include <ArduinoOTA.h>
 
 TaskHandle_t NetworkManager::wifiTaskHandle = NULL;
 volatile bool NetworkManager::wifiConnected = false;
@@ -12,6 +13,27 @@ volatile bool NetworkManager::portalActive = false;
 unsigned long NetworkManager::connectStart = 0;
 bool NetworkManager::wasConnected = false;
 unsigned long NetworkManager::lastReconnectAttempt = 0;
+
+void NetworkManager::initArduinoOTA() {
+    ArduinoOTA.setHostname(Config::NODE_ID.c_str());
+    ArduinoOTA.setPassword("enyx-ota");
+    
+    ArduinoOTA.onStart([]() {
+        Logger::network("ArduinoOTA: Update started");
+    });
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        Logger::network("ArduinoOTA: Progress %u%%", (progress / (total / 100)));
+    });
+    ArduinoOTA.onEnd([]() {
+        Logger::network("ArduinoOTA: Update finished, rebooting...");
+    });
+    ArduinoOTA.onError([](ota_error_t error) {
+        Logger::network("ArduinoOTA: Error[%u]", error);
+    });
+    
+    ArduinoOTA.begin();
+    Logger::network("ArduinoOTA initialized");
+}
 
 void NetworkManager::wifiTask(void* parameter) {
     WiFi.mode(WIFI_AP_STA);
@@ -46,6 +68,7 @@ void NetworkManager::wifiTask(void* parameter) {
                 wifiConnecting = false;
                 connectStart = 0;
                 Logger::network("WiFi Connected! IP: %s", WiFi.localIP().toString().c_str());
+                initArduinoOTA();
             }
             wasConnected = true;
         } else {
@@ -105,6 +128,8 @@ void NetworkManager::wifiTask(void* parameter) {
         if (portalActive) {
             WebConfigPortal::loop();
         }
+        
+        ArduinoOTA.handle();
         
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }

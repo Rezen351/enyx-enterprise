@@ -1,5 +1,46 @@
 let token = localStorage.getItem('token');
+function showFieldError(inputId, message) {
+    let input = document.getElementById(inputId);
+    if (!input) return;
+    let group = input.closest('.form-group');
+    if (!group) return;
+    let msgEl = group.querySelector('.validation-message');
+    if (!msgEl) {
+        msgEl = document.createElement('div');
+        msgEl.className = 'validation-message error';
+        group.appendChild(msgEl);
+    }
+    msgEl.textContent = message;
+    msgEl.className = 'validation-message error';
+    input.setAttribute('aria-invalid', 'true');
+    input.setAttribute('aria-describedby', msgEl.id || (msgEl.id = 'err-' + inputId));
+}
+
+function clearFieldError(inputId) {
+    let input = document.getElementById(inputId);
+    if (!input) return;
+    let group = input.closest('.form-group');
+    if (!group) return;
+    let msgEl = group.querySelector('.validation-message');
+    if (msgEl) msgEl.className = 'validation-message';
+    input.removeAttribute('aria-invalid');
+    input.removeAttribute('aria-describedby');
+}
+
+function validateRequired(inputId) {
+    let input = document.getElementById(inputId);
+    if (!input) return true;
+    let val = input.value.trim();
+    if (!val) {
+        showFieldError(inputId, 'This field is required');
+        return false;
+    }
+    clearFieldError(inputId);
+    return true;
+}
+
 let alertTimer;
+let modalResolve = null;
 
 // Lacak apakah field password benar-benar diubah user.
 // Backend sengaja TIDAK mengembalikan password (security), sehingga field kosong saat refresh.
@@ -14,7 +55,8 @@ const PW_PLACEHOLDER = '•••••••• (leave empty to keep current)';
 
 function showMsg(msg, isErr = false) {
     let box = document.getElementById('alert');
-    box.innerText = msg;
+    let icon = isErr ? '✕ ' : '✓ ';
+    box.innerText = icon + msg;
     box.className = 'alert-box ' + (isErr ? 'alert-error' : 'alert-success');
     box.style.display = 'block';
     clearTimeout(alertTimer);
@@ -31,6 +73,44 @@ function setButtonLoading(btn, loading, text) {
         btn.innerText = text || btn.dataset.originalText || 'Submit';
     }
 }
+
+function showModal(title, body) {
+    return new Promise(resolve => {
+        modalResolve = resolve;
+        document.getElementById('modal-title').innerText = title;
+        document.getElementById('modal-body').innerText = body;
+        document.getElementById('confirm-modal').classList.add('show');
+        document.getElementById('modal-confirm-btn').focus();
+    });
+}
+
+function closeModal() {
+    document.getElementById('confirm-modal').classList.remove('show');
+    let resolve = modalResolve;
+    modalResolve = null;
+    if (resolve) resolve(false);
+}
+
+function confirmModal() {
+    document.getElementById('confirm-modal').classList.remove('show');
+    let resolve = modalResolve;
+    modalResolve = null;
+    if (resolve) resolve(true);
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        let modal = document.getElementById('confirm-modal');
+        if (modal && modal.classList.contains('show')) {
+            closeModal();
+            return;
+        }
+        let sidebar = document.getElementById('sidebarMenu');
+        if (sidebar && sidebar.classList.contains('show')) {
+            toggleMobileMenu();
+        }
+    }
+});
 
 async function api(path, method = 'GET', body = null) {
     // Local testing bypass for UI preview without backend
@@ -145,9 +225,17 @@ function checkAuth() {
 }
 
 async function doLogin() {
-    let u = document.getElementById('login_user').value;
-    let p = document.getElementById('login_pass').value;
+    let u = document.getElementById('login_user').value.trim();
+    let p = document.getElementById('login_pass').value.trim();
     let btn = document.querySelector('#login-container button[type="submit"]');
+    
+    let valid = true;
+    if (!u) { showFieldError('login_user', 'Username is required'); valid = false; }
+    else { clearFieldError('login_user'); }
+    if (!p) { showFieldError('login_pass', 'Password is required'); valid = false; }
+    else { clearFieldError('login_pass'); }
+    if (!valid) return;
+    
     setButtonLoading(btn, true, 'Sign In');
     let d = await api('/api/login', 'POST', `user=${u}&pass=${p}`);
     if (d && d.token) {
@@ -162,7 +250,13 @@ async function doLogin() {
 function logout() { token = null; localStorage.removeItem('token'); checkAuth(); }
 
 function toggleMobileMenu() {
+    const header = document.querySelector('.mobile-header');
+    if (header) {
+        const height = header.offsetHeight;
+        document.documentElement.style.setProperty('--mobile-header-height', height + 'px');
+    }
     document.getElementById('sidebarMenu').classList.toggle('show');
+    document.getElementById('sidebar-backdrop').classList.toggle('show');
 }
 
 function switchView(id) {
@@ -171,6 +265,7 @@ function switchView(id) {
     document.getElementById('view-' + id).classList.add('active');
     event.currentTarget.classList.add('active');
     document.getElementById('sidebarMenu').classList.remove('show');
+    document.getElementById('sidebar-backdrop').classList.remove('show');
 
     if (statusTimer) clearInterval(statusTimer);
     if (id === 'status') {
@@ -235,7 +330,7 @@ async function loadStatus() {
         if (logsContainer && d.mqtt_logs) {
             let validLogs = d.mqtt_logs.filter(log => log !== null && log !== undefined);
             if (validLogs.length === 0) {
-                logsContainer.innerHTML = '<div style="color:var(--text-light); font-style:italic;">No logs captured yet. Send telemetry or toggle outputs to see activity here.</div>';
+                logsContainer.innerHTML = '<div class="text-muted italic">No logs captured yet. Send telemetry or toggle outputs to see activity here.</div>';
             } else {
                 logsContainer.innerHTML = validLogs.map(log => {
                     let color = "#10b981";
@@ -246,7 +341,7 @@ async function loadStatus() {
                     } else if (log.includes("Sub Recv:")) {
                         color = "#3b82f6";
                     }
-                    return `<div style="color:${color}; margin-bottom:4px;">${log}</div>`;
+                    return `<div class="log-entry" style="color:${color};">${log}</div>`;
                 }).join('');
                 logsContainer.scrollTop = logsContainer.scrollHeight;
             }
@@ -333,16 +428,16 @@ function renderEmptyStates() {
     let i2cRows = document.getElementById('i2c-rows');
 
     if (inputRows && hwInputs.length === 0 && editInputIdx === -1) {
-        inputRows.innerHTML = '<div style="color:var(--text-light); font-size:13px; padding:12px 0;">No inputs configured. Click "+ Add Input" to add one.</div>';
+        inputRows.innerHTML = '<div class="empty-state">No inputs configured. Click "+ Add Input" to add one.</div>';
     }
     if (outputRows && hwOutputs.length === 0 && editOutputIdx === -1) {
-        outputRows.innerHTML = '<div style="color:var(--text-light); font-size:13px; padding:12px 0;">No outputs configured. Click "+ Add Output" to add one.</div>';
+        outputRows.innerHTML = '<div class="empty-state">No outputs configured. Click "+ Add Output" to add one.</div>';
     }
     if (modbusRows && hwModbus.length === 0 && editModbusIdx === -1) {
-        modbusRows.innerHTML = '<div style="color:var(--text-light); font-size:13px; padding:12px 0;">No Modbus sensors configured. Click "+ Add Modbus Sensor" to add one.</div>';
+        modbusRows.innerHTML = '<div class="empty-state">No Modbus sensors configured. Click "+ Add Modbus Sensor" to add one.</div>';
     }
     if (i2cRows && hwI2C.length === 0 && editI2CIdx === -1) {
-        i2cRows.innerHTML = '<div style="color:var(--text-light); font-size:13px; padding:12px 0;">No I2C sensors configured. Click "+ Add I2C Sensor" to add one.</div>';
+        i2cRows.innerHTML = '<div class="empty-state">No I2C sensors configured. Click "+ Add I2C Sensor" to add one.</div>';
     }
 }
 
@@ -408,48 +503,48 @@ function drawInputs() {
         let isPcf = p.protocol === 'PCF8575_IN';
         if (editInputIdx === idx) {
             html += `
-            <div class="hw-row" style="flex-wrap:wrap; gap:8px;">
-                <div style="flex:1; min-width:140px;">
+            <div class="hw-row flex-wrap gap-8">
+                <div class="form-field form-field-lg">
                     <label>Interface / Protocol</label>
                     <select onchange="hwInputs[${idx}].protocol=this.value; if(this.value==='PCF8575_IN'){if(!hwInputs[${idx}].i2c_addr)hwInputs[${idx}].i2c_addr='0x20'; if(hwInputs[${idx}].pin>15)hwInputs[${idx}].pin=0;} refreshGpioViews();">
-                        <option value="GPIO" ${!isPcf ? 'selected' : ''}>Direct GPIO (ESP32)</option>
-                        <option value="PCF8575_IN" ${isPcf ? 'selected' : ''}>PCF8575 I2C Expander</option>
+                        <option value="GPIO" ${!isPcf ? 'selected' : ''}>Direct</option>
+                        <option value="PCF8575_IN" ${isPcf ? 'selected' : ''}>Expander</option>
                     </select>
                 </div>
                 ${isPcf ? `
-                <div style="flex:1; min-width:90px;">
+                <div class="form-field">
                     <label>PCF Pin</label>
                     <select onchange="hwInputs[${idx}].pin=parseInt(this.value)">
                         ${Array.from({ length: 16 }, (_, i) => `<option value="${i}" ${p.pin == i ? 'selected' : ''}>P${i}</option>`).join('')}
                     </select>
                 </div>
-                <div style="flex:1; min-width:100px;">
+                <div class="form-field form-field-sm">
                     <label>I2C Address</label>
                     <input type="text" value="${p.i2c_addr || '0x20'}" placeholder="0x20" onchange="hwInputs[${idx}].i2c_addr=this.value.trim()">
                 </div>
                 ` : `
-                <div style="flex:1; min-width:80px;">
+                <div class="form-field">
                     <label>GPIO Pin</label>
                     <select onchange="hwInputs[${idx}].pin=parseInt(this.value); refreshGpioViews();">
                         ${buildGpioPinOptions(p.pin, getUsedGpioPins())}
                     </select>
                 </div>
-                <div style="flex:1; min-width:120px;">
+                <div class="form-field form-field-md">
                     <label>Input Type</label>
                     <select onchange="hwInputs[${idx}].type=this.value">
                         <option value="DIGITAL" ${p.type === 'DIGITAL' ? 'selected' : ''}>DIGITAL</option>
-                        <option value="ANALOG" ${p.type === 'ANALOG' ? 'selected' : ''}>ANALOG (ADC)</option>
+                        <option value="ANALOG" ${p.type === 'ANALOG' ? 'selected' : ''}>ADC</option>
                     </select>
                 </div>
-                <div style="flex:1; min-width:120px;">
+                <div class="form-field form-field-md">
                     <label>Pull Resistor</label>
                     <select onchange="hwInputs[${idx}].pull=this.value">
                         <option value="NONE" ${p.pull === 'NONE' ? 'selected' : ''}>NONE</option>
-                        <option value="UP" ${p.pull === 'UP' ? 'selected' : ''}>PULL-UP</option>
-                        <option value="DOWN" ${p.pull === 'DOWN' ? 'selected' : ''}>PULL-DOWN</option>
+                        <option value="UP" ${p.pull === 'UP' ? 'selected' : ''}>UP</option>
+                        <option value="DOWN" ${p.pull === 'DOWN' ? 'selected' : ''}>DOWN</option>
                     </select>
                 </div>
-                <div style="flex:1; min-width:120px;">
+                <div class="form-field form-field-md">
                     <label>Interrupt Mode</label>
                     <select onchange="hwInputs[${idx}].interrupt=this.value">
                         <option value="NONE" ${(p.interrupt || 'NONE') === 'NONE' ? 'selected' : ''}>NONE</option>
@@ -458,23 +553,23 @@ function drawInputs() {
                         <option value="CHANGE" ${p.interrupt === 'CHANGE' ? 'selected' : ''}>CHANGE</option>
                     </select>
                 </div>
-                <div style="flex:1; min-width:100px;">
+                <div class="form-field form-field-sm">
                     <label>Debounce (ms)</label>
                     <input type="number" min="0" max="5000" value="${p.debounce_ms || 0}" onchange="hwInputs[${idx}].debounce_ms=parseInt(this.value)">
                 </div>
                 `}
-                <div style="flex:2; min-width:150px;">
+                <div class="form-field form-field-lg">
                     <label>Name Label</label>
                     <input type="text" value="${p.name}" placeholder="e.g. Water Sensor" onchange="hwInputs[${idx}].name=this.value">
                 </div>
-                <div style="flex:1; min-width:110px; display:flex; flex-direction:column; justify-content:flex-end;">
-                    <label style="margin-bottom:8px;">Invert Logic</label>
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal; margin:0;">
-                        <input type="checkbox" ${p.invert ? 'checked' : ''} onchange="hwInputs[${idx}].invert=this.checked" style="width:auto; margin:0;">
+                <div class="form-field form-field-sm flex-col justify-end">
+                    <label class="mb-8">Invert Logic</label>
+                    <label class="checkbox-label" style="margin:0;">
+                        <input type="checkbox" ${p.invert ? 'checked' : ''} onchange="hwInputs[${idx}].invert=this.checked" class="checkbox-input">
                         <span style="font-size:12px;">LOW = Active</span>
                     </label>
                 </div>
-                <button style="margin-top:24px; background:#10b981; border-color:#10b981; align-self:flex-end;" onclick="editInputIdx=-1; drawInputs();">Done</button>
+                <button class="btn-success" style="margin-top:24px; align-self:flex-end;" onclick="editInputIdx=-1; drawInputs();">Done</button>
             </div>
             `;
         } else {
@@ -488,8 +583,8 @@ function drawInputs() {
                     <span class="hw-meta">${metaDesc}</span>
                 </div>
                 <div class="hw-actions">
-                    <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editInputIdx=${idx}; drawInputs();">Edit</button>
-                    <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="if(confirm('Remove this input permanently?')){hwInputs.splice(${idx}, 1); if(editInputIdx==${idx}) editInputIdx=-1; else if(editInputIdx > ${idx}) editInputIdx--; drawInputs();}">Remove</button>
+                    <button class="outline btn-touch btn-sm" onclick="editInputIdx=${idx}; drawInputs();">Edit</button>
+                    <button class="danger btn-touch btn-sm" onclick="confirmRemove('Remove this input permanently?', () => { hwInputs.splice(${idx}, 1); if(editInputIdx==${idx}) editInputIdx=-1; else if(editInputIdx > ${idx}) editInputIdx--; drawInputs(); })">Remove</button>
                 </div>
             </div>
             `;
@@ -504,40 +599,40 @@ function drawOutputs() {
         let isPcf = p.protocol === 'PCF8575_OUT';
         if (editOutputIdx === idx) {
             html += `
-            <div class="hw-row" style="flex-wrap:wrap; gap:8px;">
-                <div style="flex:1; min-width:140px;">
+            <div class="hw-row flex-wrap gap-8">
+                <div class="form-field form-field-lg">
                     <label>Interface / Protocol</label>
                     <select onchange="hwOutputs[${idx}].protocol=this.value; if(this.value==='PCF8575_OUT'){if(!hwOutputs[${idx}].i2c_addr)hwOutputs[${idx}].i2c_addr='0x20'; if(hwOutputs[${idx}].pin>15)hwOutputs[${idx}].pin=0; if(hwOutputs[${idx}].active_low===undefined)hwOutputs[${idx}].active_low=true;} refreshGpioViews();">
-                        <option value="GPIO_OUT" ${!isPcf ? 'selected' : ''}>Direct GPIO (ESP32)</option>
-                        <option value="PCF8575_OUT" ${isPcf ? 'selected' : ''}>PCF8575 I2C Expander</option>
+                        <option value="GPIO_OUT" ${!isPcf ? 'selected' : ''}>Direct</option>
+                        <option value="PCF8575_OUT" ${isPcf ? 'selected' : ''}>Expander</option>
                     </select>
                 </div>
                 ${isPcf ? `
-                <div style="flex:1; min-width:90px;">
+                <div class="form-field">
                     <label>PCF Pin</label>
                     <select onchange="hwOutputs[${idx}].pin=parseInt(this.value)">
                         ${Array.from({ length: 16 }, (_, i) => `<option value="${i}" ${p.pin == i ? 'selected' : ''}>P${i}</option>`).join('')}
                     </select>
                 </div>
-                <div style="flex:1; min-width:100px;">
+                <div class="form-field form-field-sm">
                     <label>I2C Address</label>
                     <input type="text" value="${p.i2c_addr || '0x20'}" placeholder="0x20" onchange="hwOutputs[${idx}].i2c_addr=this.value.trim()">
                 </div>
-                <div style="flex:1; min-width:130px; display:flex; flex-direction:column; justify-content:flex-end;">
-                    <label style="margin-bottom:8px;">Relay Trigger Mode</label>
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal; margin:0;">
-                        <input type="checkbox" ${p.active_low !== false ? 'checked' : ''} onchange="hwOutputs[${idx}].active_low=this.checked" style="width:auto; margin:0;">
+                <div class="form-field form-field-lg flex-col justify-end">
+                    <label class="mb-8">Relay Trigger Mode</label>
+                    <label class="checkbox-label" style="margin:0;">
+                        <input type="checkbox" ${p.active_low !== false ? 'checked' : ''} onchange="hwOutputs[${idx}].active_low=this.checked" class="checkbox-input">
                         <span style="font-size:12px;">Active LOW (Relay)</span>
                     </label>
                 </div>
                 ` : `
-                <div style="flex:1; min-width:80px;">
+                <div class="form-field">
                     <label>GPIO Pin</label>
                     <select onchange="hwOutputs[${idx}].pin=parseInt(this.value); refreshGpioViews();">
                         ${buildGpioPinOptions(p.pin, getUsedGpioPins())}
                     </select>
                 </div>
-                <div style="flex:1; min-width:120px;">
+                <div class="form-field form-field-md">
                     <label>Output Type</label>
                     <select onchange="hwOutputs[${idx}].type=this.value">
                         <option value="DIGITAL" ${p.type === 'DIGITAL' ? 'selected' : ''}>DIGITAL</option>
@@ -545,11 +640,11 @@ function drawOutputs() {
                     </select>
                 </div>
                 `}
-                <div style="flex:2; min-width:150px;">
+                <div class="form-field form-field-lg">
                     <label>Name Label</label>
                     <input type="text" value="${p.name}" placeholder="e.g. Pump Relay" onchange="hwOutputs[${idx}].name=this.value">
                 </div>
-                <button style="margin-top:24px; background:#10b981; border-color:#10b981; align-self:flex-end;" onclick="editOutputIdx=-1; drawOutputs();">Done</button>
+                <button class="btn-success" style="margin-top:24px; align-self:flex-end;" onclick="editOutputIdx=-1; drawOutputs();">Done</button>
             </div>
             `;
         } else {
@@ -563,8 +658,8 @@ function drawOutputs() {
                     <span class="hw-meta">${metaDesc}</span>
                 </div>
                 <div class="hw-actions">
-                    <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editOutputIdx=${idx}; drawOutputs();">Edit</button>
-                    <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="if(confirm('Remove this output permanently?')){hwOutputs.splice(${idx}, 1); if(editOutputIdx==${idx}) editOutputIdx=-1; else if(editOutputIdx > ${idx}) editOutputIdx--; drawOutputs();}">Remove</button>
+                    <button class="outline btn-touch btn-sm" onclick="editOutputIdx=${idx}; drawOutputs();">Edit</button>
+                    <button class="danger btn-touch btn-sm" onclick="confirmRemove('Remove this output permanently?', () => { hwOutputs.splice(${idx}, 1); if(editOutputIdx==${idx}) editOutputIdx=-1; else if(editOutputIdx > ${idx}) editOutputIdx--; drawOutputs(); })">Remove</button>
                 </div>
             </div>
             `;
@@ -590,38 +685,38 @@ function drawModbus() {
     hwModbus.forEach((m, idx) => {
         if (editModbusIdx === idx) {
             let transport = (m.transport || 'RTU').toUpperCase();
-            html += `<div class="hw-row" style="flex-direction:column; gap:10px;">
-                <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                    <div style="flex:2; min-width:150px;"><label>Sensor Name</label><input type="text" value="${m.name}" onchange="hwModbus[${idx}].name=this.value"></div>
-                    <div style="flex:1; min-width:80px;"><label>Slave ID</label><input type="number" min="1" max="247" value="${m.slave_id}" onchange="hwModbus[${idx}].slave_id=parseInt(this.value)"></div>
-                    <div style="flex:1; min-width:100px;"><label>Transport</label><select onchange="hwModbus[${idx}].transport=this.value; drawModbus();"><option value="RTU" ${transport === 'RTU' ? 'selected' : ''}>RTU (RS485)</option><option value="TCP" ${transport === 'TCP' ? 'selected' : ''}>TCP</option></select></div>
+            html += `<div class="hw-row flex-col gap-10">
+                <div class="flex-wrap gap-10">
+                    <div class="form-field form-field-lg"><label>Sensor Name</label><input type="text" value="${m.name}" onchange="hwModbus[${idx}].name=this.value"></div>
+                    <div class="form-field"><label>Slave ID</label><input type="number" min="1" max="247" value="${m.slave_id}" onchange="hwModbus[${idx}].slave_id=parseInt(this.value)"></div>
+                    <div class="form-field form-field-md"><label>Transport</label><select onchange="hwModbus[${idx}].transport=this.value; drawModbus();"><option value="RTU" ${transport === 'RTU' ? 'selected' : ''}>RTU</option><option value="TCP" ${transport === 'TCP' ? 'selected' : ''}>TCP</option></select></div>
                 </div>
-                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:4px;">`;
+                <div class="flex-wrap gap-10 mt-10">`;
             if (transport === 'TCP') {
-                html += `<div style="flex:2; min-width:150px;"><label>IP Address</label><input type="text" value="${m.ip_address || ''}" onchange="hwModbus[${idx}].ip_address=this.value" placeholder="192.168.1.100"></div>
-                         <div style="flex:1; min-width:80px;"><label>Port</label><input type="number" min="1" max="65535" value="${m.port || 502}" onchange="hwModbus[${idx}].port=parseInt(this.value)"></div>`;
+                html += `<div class="form-field form-field-lg"><label>IP Address</label><input type="text" value="${m.ip_address || ''}" onchange="hwModbus[${idx}].ip_address=this.value" placeholder="192.168.1.100"></div>
+                         <div class="form-field"><label>Port</label><input type="number" min="1" max="65535" value="${m.port || 502}" onchange="hwModbus[${idx}].port=parseInt(this.value)"></div>`;
             } else {
-                html += `<div style="flex:1; min-width:100px;"><label>Baudrate</label><select onchange="hwModbus[${idx}].baudrate=parseInt(this.value)"><option value="4800" ${m.baudrate == 4800 ? 'selected' : ''}>4800</option><option value="9600" ${m.baudrate == 9600 ? 'selected' : ''}>9600</option><option value="19200" ${m.baudrate == 19200 ? 'selected' : ''}>19200</option></select></div>`;
+                html += `<div class="form-field form-field-md"><label>Baudrate</label><select onchange="hwModbus[${idx}].baudrate=parseInt(this.value)"><option value="4800" ${m.baudrate == 4800 ? 'selected' : ''}>4800</option><option value="9600" ${m.baudrate == 9600 ? 'selected' : ''}>9600</option><option value="19200" ${m.baudrate == 19200 ? 'selected' : ''}>19200</option></select></div>`;
             }
             html += `</div>
-                <div style="margin-top:10px; padding:10px; background:rgba(0,0,0,0.02); border-radius:4px;">
-                    <label style="margin-bottom:5px; display:block;">Registers to Read</label>`;
+                <div class="register-section mt-10">
+                    <label class="mb-5 d-block">Registers to Read</label>`;
 
             m.registers.forEach((r, ridx) => {
-                html += `<div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; background:#fff; padding:6px; border-radius:4px; border:1px solid #ddd; align-items:center;">
-                    <input type="number" placeholder="Register Address" value="${r.address}" onchange="hwModbus[${idx}].registers[${ridx}].address=parseInt(this.value)" style="flex:1; min-width:60px; font-size:12px; padding:6px; margin:0;">
-                    <select onchange="hwModbus[${idx}].registers[${ridx}].type=this.value" style="flex:1.5; min-width:85px; font-size:12px; padding:6px; margin:0;"><option value="HOLDING" ${r.type === 'HOLDING' ? 'selected' : ''}>HOLDING (03)</option><option value="INPUT" ${r.type === 'INPUT' ? 'selected' : ''}>INPUT (04)</option></select>
-                    <input type="text" placeholder="Register Name" value="${r.name}" onchange="hwModbus[${idx}].registers[${ridx}].name=this.value" style="flex:2; min-width:90px; font-size:12px; padding:6px; margin:0;">
-                    <select onchange="hwModbus[${idx}].registers[${ridx}].length=parseInt(this.value)" style="flex:1; min-width:65px; font-size:12px; padding:6px; margin:0;" title="Register Count"><option value="1" ${(r.length || 1) == 1 ? 'selected' : ''}>1 register</option><option value="2" ${(r.length || 1) == 2 ? 'selected' : ''}>2 registers</option></select>
-                    <select onchange="hwModbus[${idx}].registers[${ridx}].data_type=this.value" style="flex:1.5; min-width:90px; font-size:12px; padding:6px; margin:0;" title="Data Type"><option value="UINT16" ${(r.data_type || 'UINT16') === 'UINT16' ? 'selected' : ''}>UINT16</option><option value="INT16" ${(r.data_type || 'UINT16') === 'INT16' ? 'selected' : ''}>INT16</option><option value="FLOAT32" ${(r.data_type || 'UINT16') === 'FLOAT32' ? 'selected' : ''}>FLOAT32</option><option value="INT32" ${(r.data_type || 'UINT16') === 'INT32' ? 'selected' : ''}>INT32</option><option value="UINT32" ${(r.data_type || 'UINT16') === 'UINT32' ? 'selected' : ''}>UINT32</option></select>
-                    <input type="number" step="0.01" placeholder="Multiplier" value="${r.multiplier}" onchange="hwModbus[${idx}].registers[${ridx}].multiplier=parseFloat(this.value)" style="flex:1; min-width:55px; font-size:12px; padding:6px; margin:0;">
-                    <button class="danger" style="padding:6px 12px; font-size:12px; min-width:40px; text-align:center;" onclick="if(confirm('Remove this register?')){hwModbus[${idx}].registers.splice(${ridx}, 1); drawModbus();}">X</button>
+                html += `<div class="register-row">
+                    <input type="number" placeholder="Register Address" value="${r.address}" onchange="hwModbus[${idx}].registers[${ridx}].address=parseInt(this.value)" class="form-input-sm">
+                    <select onchange="hwModbus[${idx}].registers[${ridx}].type=this.value" class="form-select-sm"><option value="HOLDING" ${r.type === 'HOLDING' ? 'selected' : ''}>HOLDING (03)</option><option value="INPUT" ${r.type === 'INPUT' ? 'selected' : ''}>INPUT (04)</option></select>
+                    <input type="text" placeholder="Register Name" value="${r.name}" onchange="hwModbus[${idx}].registers[${ridx}].name=this.value" class="form-input-sm form-field-lg">
+                    <select onchange="hwModbus[${idx}].registers[${ridx}].length=parseInt(this.value)" class="form-select-sm form-field-xs" title="Register Count"><option value="1" ${(r.length || 1) == 1 ? 'selected' : ''}>1 reg</option><option value="2" ${(r.length || 1) == 2 ? 'selected' : ''}>2 reg</option></select>
+                    <select onchange="hwModbus[${idx}].registers[${ridx}].data_type=this.value" class="form-select-sm" style="flex:1.5; min-width:90px;" title="Data Type"><option value="UINT16" ${(r.data_type || 'UINT16') === 'UINT16' ? 'selected' : ''}>UINT16</option><option value="INT16" ${(r.data_type || 'UINT16') === 'INT16' ? 'selected' : ''}>INT16</option><option value="FLOAT32" ${(r.data_type || 'UINT16') === 'FLOAT32' ? 'selected' : ''}>FLOAT32</option><option value="INT32" ${(r.data_type || 'UINT32') === 'INT32' ? 'selected' : ''}>INT32</option><option value="UINT32" ${(r.data_type || 'UINT16') === 'UINT32' ? 'selected' : ''}>UINT32</option></select>
+                    <input type="number" step="0.01" placeholder="Multiplier" value="${r.multiplier}" onchange="hwModbus[${idx}].registers[${ridx}].multiplier=parseFloat(this.value)" class="form-input-sm form-field-xs">
+                    <button class="danger btn-touch btn-icon" onclick="confirmRemove('Remove this register?', () => { hwModbus[${idx}].registers.splice(${ridx}, 1); drawModbus(); })">X</button>
                 </div>`;
             });
 
-            html += `<button class="outline" style="font-size:12px; padding:4px 8px;" onclick="hwModbus[${idx}].registers.push({address:0, type:'HOLDING', name:'register_1', length:1, data_type:'UINT16', multiplier:1.0}); drawModbus();">+ Register</button>
+            html += `<button class="outline btn-touch btn-sm mt-10" onclick="hwModbus[${idx}].registers.push({address:0, type:'HOLDING', name:'register_1', length:1, data_type:'UINT16', multiplier:1.0}); drawModbus();">+ Register</button>
                 </div>
-                <button style="margin-top:10px; background:#10b981; border-color:#10b981;" onclick="editModbusIdx=-1; drawModbus();">Done</button>
+                <button class="btn-success mt-10" onclick="editModbusIdx=-1; drawModbus();">Done</button>
             </div>`;
         } else {
             let transport = (m.transport || 'RTU').toUpperCase();
@@ -638,8 +733,8 @@ function drawModbus() {
                     <span class="hw-meta">${meta}</span>
                 </div>
                 <div class="hw-actions">
-                    <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editModbusIdx=${idx}; drawModbus();">Edit</button>
-                    <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="if(confirm('Remove this Modbus sensor permanently?')){hwModbus.splice(${idx}, 1); if(editModbusIdx==${idx}) editModbusIdx=-1; else if(editModbusIdx > ${idx}) editModbusIdx--; drawModbus();}">Remove</button>
+                    <button class="outline btn-touch btn-sm" onclick="editModbusIdx=${idx}; drawModbus();">Edit</button>
+                    <button class="danger btn-touch btn-sm" onclick="confirmRemove('Remove this Modbus sensor permanently?', () => { hwModbus.splice(${idx}, 1); if(editModbusIdx==${idx}) editModbusIdx=-1; else if(editModbusIdx > ${idx}) editModbusIdx--; drawModbus(); })">Remove</button>
                 </div>
             </div>`;
         }
@@ -658,12 +753,12 @@ function drawI2C() {
     hwI2C.forEach((s, idx) => {
         if (editI2CIdx === idx) {
             html += `
-            <div class="hw-row" style="flex-wrap:wrap; gap:8px;">
-                <div style="flex:1; min-width:120px;">
+            <div class="hw-row flex-wrap gap-8">
+                <div class="form-field">
                     <label>Sensor Name</label>
                     <input type="text" value="${s.name || ''}" onchange="hwI2C[${idx}].name=this.value">
                 </div>
-                <div style="flex:1; min-width:120px;">
+                <div class="form-field">
                     <label>Sensor Type</label>
                     <select onchange="hwI2C[${idx}].type=this.value">
                         <option value="INA219" ${(s.type || '') === 'INA219' ? 'selected' : ''}>INA219</option>
@@ -671,21 +766,21 @@ function drawI2C() {
                         <option value="DHT12" ${(s.type || '') === 'DHT12' ? 'selected' : ''}>DHT12</option>
                     </select>
                 </div>
-                <div style="flex:1; min-width:100px;">
+                <div class="form-field form-field-sm">
                     <label>I2C Address</label>
                     <input type="text" value="${s.address || '0x40'}" onchange="hwI2C[${idx}].address=this.value">
                 </div>
-                <div style="display:flex; gap:6px; margin-top:8px;">
-                    <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editI2CIdx=-1; drawI2C();">Done</button>
+                <div class="flex gap-6 mt-10">
+                    <button class="outline btn-touch btn-sm" onclick="editI2CIdx=-1; drawI2C();">Done</button>
                 </div>
             </div>`;
         } else {
             html += `
-            <div class="hw-row" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div class="hw-row flex-wrap gap-8">
                 <span class="hw-name">${s.name || 'Unnamed'} (${s.type || '?'}) @ ${s.address || '?'}</span>
-                <div style="display:flex; gap:6px;">
-                    <button class="outline" style="padding:6px 12px; font-size:12px;" onclick="editI2CIdx=${idx}; drawI2C();">Edit</button>
-                    <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="if(confirm('Remove this I2C sensor permanently?')){hwI2C.splice(${idx},1); if(editI2CIdx===${idx}) editI2CIdx=-1; else if(editI2CIdx>${idx}) editI2CIdx--; drawI2C();}">Remove</button>
+                <div class="flex gap-6">
+                    <button class="outline btn-touch btn-sm" onclick="editI2CIdx=${idx}; drawI2C();">Edit</button>
+                    <button class="danger btn-touch btn-sm" onclick="confirmRemove('Remove this I2C sensor permanently?', () => { hwI2C.splice(${idx},1); if(editI2CIdx===${idx}) editI2CIdx=-1; else if(editI2CIdx>${idx}) editI2CIdx--; drawI2C(); })">Remove</button>
                 </div>
             </div>`;
         }
@@ -707,7 +802,7 @@ async function startScanId() {
     let scanBtn = document.querySelector('button[onclick="startScanId()"]');
 
     if (bauds.length === 0) {
-        resDiv.innerHTML = "<div style='color:var(--danger);'>Please select at least one baudrate.</div>";
+            resDiv.innerHTML = `<div class="text-danger">Please select at least one baudrate.</div>`;
         return;
     }
 
@@ -725,7 +820,7 @@ async function startScanId() {
         });
 
         if (!res.ok) {
-            resDiv.innerHTML = "<div style='color:var(--danger);'>Failed to start scan or timeout occurred.</div>";
+            resDiv.innerHTML = "<div class='text-danger'>Failed to start scan or timeout occurred.</div>";
             setButtonLoading(scanBtn, false, 'Scan All IDs');
             return;
         }
@@ -734,13 +829,13 @@ async function startScanId() {
         if (data.status === "completed") {
             let ids = data.found_ids || [];
             if (ids.length > 0) {
-                resDiv.innerHTML = `<div style="color:var(--success);"><strong>Scan Complete. Found ${ids.length} devices:</strong><br>`;
+                resDiv.innerHTML = `<div class="text-success"><strong>Scan Complete. Found ${ids.length} devices:</strong><br>`;
                 ids.forEach(item => {
                     resDiv.innerHTML += `✅ Slave ID ${item.id} at ${item.baud} baud<br>`;
                 });
                 resDiv.innerHTML += "</div>";
             } else {
-                resDiv.innerHTML = `<div style="color:var(--warning);">Scan complete. No devices found.</div>`;
+                resDiv.innerHTML = `<div class="text-warning">Scan complete. No devices found.</div>`;
             }
         }
     } catch (e) {
@@ -761,7 +856,7 @@ async function cancelScanId() {
         });
 
         if (res.ok) {
-            document.getElementById('scan_results').innerHTML = "<div style='color:var(--warning);'>Scan cancelled by user.</div>";
+            document.getElementById('scan_results').innerHTML = "<div class='text-warning'>Scan cancelled by user.</div>";
         } else {
             document.getElementById('scan_results').innerHTML = "<div style='color:var(--danger);'>Failed to cancel scan.</div>";
         }
@@ -795,30 +890,30 @@ async function startScanReg() {
         });
 
         if (!res.ok) {
-            resDiv.innerHTML += "<div style='color:var(--danger);'>Failed to start batch scan.</div>";
+            resDiv.innerHTML += "<div class='text-danger'>Failed to start batch scan.</div>";
             return;
         }
 
         let data = await res.json();
         if (data.status === "completed" && data.results) {
             let foundAny = false;
-            data.results.forEach(item => {
-                if (item.success) {
-                    resDiv.innerHTML += `<div style="color:var(--success);">✅ Reg ${item.reg}: Value = ${item.val}</div>`;
-                    foundAny = true;
-                }
-            });
-            if (!foundAny) resDiv.innerHTML += "<div style='color:var(--danger);'>No valid registers found in range.</div>";
+        data.results.forEach(item => {
+                    if (item.success) {
+                        resDiv.innerHTML += `<div class="text-success">✅ Reg ${item.reg}: Value = ${item.val}</div>`;
+                        foundAny = true;
+                    }
+                });
+                if (!foundAny) resDiv.innerHTML += "<div class='text-danger'>No valid registers found in range.</div>";
         }
     } catch (e) {
-        resDiv.innerHTML += `<div style='color:var(--danger);'>Error: ${e.message}</div>`;
+        resDiv.innerHTML += `<div class='text-danger'>Error: ${e.message}</div>`;
     } finally {
         setButtonLoading(scanRegBtn, false, 'Scan Regs');
     }
 }
 
 async function saveHardware() {
-    if (!confirm('Save hardware config and reboot?')) return;
+    if (!await showModal('Confirm', 'Save hardware config and reboot?')) return;
     let btn = document.querySelector('#view-gpio button[type="submit"]');
     setButtonLoading(btn, true, 'Save & Reboot');
     let i2cSda = document.getElementById('cfg_i2c_sda') ? document.getElementById('cfg_i2c_sda').value : 21;
@@ -834,7 +929,7 @@ async function saveHardware() {
 }
 
 async function saveDevice() {
-    if (!confirm('Save device config and reboot?')) return;
+    if (!await showModal('Confirm', 'Save device config and reboot?')) return;
     let btn = document.querySelector('#view-device button[type="submit"]');
     setButtonLoading(btn, true, 'Save & Reboot');
     let v = document.getElementById('cfg_node_id').value;
@@ -844,7 +939,7 @@ async function saveDevice() {
 }
 
 async function saveRS485() {
-    if (!confirm('Save RS485 config and reboot?')) return;
+    if (!await showModal('Confirm', 'Save RS485 config and reboot?')) return;
     let btn = document.querySelector('#view-modbus button[type="submit"]');
     setButtonLoading(btn, true, 'Save & Reboot');
     let rx = document.getElementById('cfg_rs485_rx').value;
@@ -857,7 +952,7 @@ async function saveRS485() {
 }
 
 async function saveWifi() {
-    if (!confirm('Save WiFi config and reboot?')) return;
+    if (!await showModal('Confirm', 'Save WiFi config and reboot?')) return;
     let btn = document.querySelector('#view-wifi button[type="submit"]');
     setButtonLoading(btn, true, 'Save & Reboot');
     let s = document.getElementById('cfg_ssid').value;
@@ -882,7 +977,7 @@ async function saveWifi() {
 }
 
 async function saveMqtt() {
-    if (!confirm('Save MQTT config and reboot?')) return;
+    if (!await showModal('Confirm', 'Save MQTT config and reboot?')) return;
     let btn = document.querySelector('#view-mqtt button[type="submit"]');
     setButtonLoading(btn, true, 'Save & Reboot');
     let s = document.getElementById('cfg_mqtt_srv').value;
@@ -898,7 +993,7 @@ async function saveMqtt() {
 }
 
 async function saveAccount() {
-    if (!confirm('Update admin credentials and reboot?')) return;
+    if (!await showModal('Confirm', 'Update admin credentials and reboot?')) return;
     let btn = document.querySelector('#view-account button[type="submit"]');
     setButtonLoading(btn, true, 'Update Credentials & Reboot');
     let u = document.getElementById('cfg_admin_u').value;
@@ -910,6 +1005,18 @@ async function saveAccount() {
         logout();
         triggerRebootSequence();
     }
+}
+
+function confirmRemove(message, callback) {
+    showModal('Confirm', message).then(confirmed => {
+        if (confirmed) callback();
+    });
+}
+
+function confirmAction(message, callback) {
+    showModal('Confirm', message).then(confirmed => {
+        if (confirmed) callback();
+    });
 }
 
 // --- Reboot & Auto-Reconnect Sequence ---
@@ -1083,3 +1190,14 @@ async function importConfig() {
 }
 
 window.onload = checkAuth;
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        document.getElementById('sidebarMenu').classList.remove('show');
+        document.getElementById('sidebar-backdrop').classList.remove('show');
+        let modal = document.getElementById('confirm-modal');
+        if (modal && modal.classList.contains('show')) {
+            closeModal();
+        }
+    }
+});

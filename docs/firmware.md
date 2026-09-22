@@ -1,6 +1,6 @@
 # Firmware Aeroponic Node — Dokumentasi Teknis (Bab III & IV)
 
-> **Basis kode:** [`firmware/aeroponic-node/`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/)  
+> **Basis kode:** [`firmware/node/`](file:///home/almuzky/TA/Microservices/firmware/node/)  
 > **Platform:** ESP32 · **RTOS:** FreeRTOS · **Framework:** Arduino via PlatformIO  
 > **Lapisan SGAM:** Component Layer (T-1)
 
@@ -39,12 +39,12 @@ graph TB
 
 | Task | File Sumber | Core | Priority | Stack | Tanggung Jawab Utama |
 |------|-------------|------|----------|-------|----------------------|
-| `WatchdogTask` | [`TaskWatchdog.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/TaskWatchdog.cpp) | 0 | **2** | 4 KB | Monitor heartbeat tiap task; restart atau reboot jika timeout |
-| `WiFiTask` | [`NetworkManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/protocols/NetworkManager.cpp) | 0 | **2** | 8 KB | Manage koneksi WiFi (reconnect otomatis) + serve Captive Portal |
-| `MqttTask` | [`MqttManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/protocols/MqttManager.cpp) | **1** | **2** | 6 KB | Connect/reconnect broker MQTT; loop callback; serialize all MQTT publish operations |
-| `ControlTask` | [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/HardwareManager.cpp) | **1** | **3** | 4 KB | Consume bounded actuator commands, write outputs, emergency stop, queue ACK |
-| `SysMonitorTask` | [`SystemMonitor.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/SystemMonitor.cpp) | 0 | 1 | 4 KB | Pantau free heap; restart ESP32 jika < 10 KB |
-| `TelemetryTask` | [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/HardwareManager.cpp) | **1** | 1 | 8 KB | Baca sensor via `activeHandlers[]`; queue JSON telemetry |
+| `WatchdogTask` | [`TaskWatchdog.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/TaskWatchdog.cpp) | 0 | **2** | 4 KB | Monitor heartbeat tiap task; restart atau reboot jika timeout |
+| `WiFiTask` | [`NetworkManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/protocols/NetworkManager.cpp) | 0 | **2** | 8 KB | Manage koneksi WiFi (reconnect otomatis) + serve Captive Portal |
+| `MqttTask` | [`MqttManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/protocols/MqttManager.cpp) | **1** | **2** | 6 KB | Connect/reconnect broker MQTT; loop callback; serialize all MQTT publish operations |
+| `ControlTask` | [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/HardwareManager.cpp) | **1** | **3** | 4 KB | Consume bounded actuator commands, write outputs, emergency stop, queue ACK |
+| `SysMonitorTask` | [`SystemMonitor.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/SystemMonitor.cpp) | 0 | 1 | 4 KB | Pantau free heap; restart ESP32 jika < 10 KB |
+| `TelemetryTask` | [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/HardwareManager.cpp) | **1** | 1 | 8 KB | Baca sensor via `activeHandlers[]`; queue JSON telemetry |
 
 ### Mekanisme Sinkronisasi Antar-Task
 
@@ -101,7 +101,7 @@ flowchart TD
 
 ### 3.x.2.1 Konfigurasi config.json (Tidak Ada Hardcode)
 
-File [`data/config.json`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/data/config.json) adalah **satu-satunya tempat** mendaftarkan sensor dan aktuator.
+File [`data/config.json`](file:///home/almuzky/TA/Microservices/firmware/node/data/config.json) adalah **satu-satunya tempat** mendaftarkan sensor dan aktuator.
 
 ```json
 {
@@ -130,16 +130,13 @@ File [`data/config.json`](file:///home/almuzky/TA/Microservices/firmware/aeropon
       { "name": "dht12_akar",  "protocol": "I2C", "type": "DHT12",  "address": "0x5C", "sda_pin": "21", "scl_pin": "22" },
       { "name": "power_monitor", "protocol": "I2C", "type": "INA219", "address": "0x40", "sda_pin": "21", "scl_pin": "22" }
     ]
-  },
-  "local_control": [
-    { "name": "overheat_protection", "input_sensor": "bme280_atas_temp", "output_target": "cooling_fan", "threshold_high": 32.0, "threshold_low": 28.0, "enabled": true }
-  ]
+  }
 }
 ```
 
 ### 3.x.2.2 Kontrak ProtocolHandler (Interface Abstrak)
 
-[`ProtocolHandler.h`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/ProtocolHandler.h) mendefinisikan kontrak yang harus dipenuhi semua handler:
+[`ProtocolHandler.h`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/ProtocolHandler.h) mendefinisikan kontrak yang harus dipenuhi semua handler:
 
 ```cpp
 class ProtocolHandler {
@@ -155,7 +152,7 @@ public:
 
 ### 3.x.2.3 ProtocolRegistry — Factory Dinamis
 
-[`ProtocolHandler.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/ProtocolHandler.cpp) mengimplementasikan Factory Pattern menggunakan **singleton map**:
+[`ProtocolHandler.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/ProtocolHandler.cpp) mengimplementasikan Factory Pattern menggunakan **singleton map**:
 
 ```cpp
 typedef ProtocolHandler* (*ProtocolHandlerCreator)();
@@ -184,10 +181,13 @@ public:
 Pendaftaran protokol di `HardwareManager::init()` — dilakukan **satu kali** saat boot:
 
 ```cpp
-ProtocolRegistry::registerProtocol("GPIO",     []() -> ProtocolHandler* { return new GPIOInputHandler(); });
-ProtocolRegistry::registerProtocol("MODBUS",   []() -> ProtocolHandler* { return new ModbusHandler(); });
-ProtocolRegistry::registerProtocol("I2C",      []() -> ProtocolHandler* { return new I2CHandler(); });
-ProtocolRegistry::registerProtocol("GPIO_OUT", []() -> ProtocolHandler* { return new GpioOutputHandler(); });
+ProtocolRegistry::registerProtocol("GPIO",         []() -> ProtocolHandler* { return new GPIOInputHandler(); });
+ProtocolRegistry::registerProtocol("MODBUS",       []() -> ProtocolHandler* { return new ModbusHandler(); });
+ProtocolRegistry::registerProtocol("MODBUS_TCP",   []() -> ProtocolHandler* { return new ModbusTCPHandler(); });
+ProtocolRegistry::registerProtocol("I2C",          []() -> ProtocolHandler* { return new I2CHandler(); });
+ProtocolRegistry::registerProtocol("GPIO_OUT",     []() -> ProtocolHandler* { return new GpioOutputHandler(); });
+ProtocolRegistry::registerProtocol("PCF8575_OUT",  []() -> ProtocolHandler* { return new Pcf8575OutputHandler(); });
+ProtocolRegistry::registerProtocol("PCF8575_IN",   []() -> ProtocolHandler* { return new Pcf8575InputHandler(); });
 ```
 
 ### 3.x.2.4 Vector Registry activeHandlers
@@ -199,20 +199,17 @@ void HardwareManager::reloadConfiguration() {
     xSemaphoreTake(handlersMutex, portMAX_DELAY);
     for (auto h : activeHandlers) delete h;
     activeHandlers.clear();
-    for (const auto& hw : Config::HardwareInputs) {
-        // ... build JsonObject ...
-        ProtocolHandler* h = ProtocolRegistry::createHandler("GPIO", obj);
-        if (h) activeHandlers.push_back(h);
-    }
-    for (const auto& ms : Config::HardwareModbus) {
-        ProtocolHandler* h = ProtocolRegistry::createHandler("MODBUS", obj);
-        if (h) activeHandlers.push_back(h);
-    }
-    for (const auto& s : Config::HardwareSensors) {
-        ProtocolHandler* h = ProtocolRegistry::createHandler(s.protocol, obj);
-        if (h) activeHandlers.push_back(h);
-    }
+
+    for (auto& kv : activeOutputHandlers) delete kv.second;
+    activeOutputHandlers.clear();
+    outputStates.clear();
+    latestSensorValues.clear();
+
+    // ... rebuild outputs under outputMutex ...
+
     xSemaphoreGive(handlersMutex);
+    if (outputMutex) xSemaphoreGive(outputMutex);
+    Logger::hardware("Hardware Handlers Reloaded Successfully.");
 }
 ```
 
@@ -229,7 +226,7 @@ activeHandlers (std::vector<ProtocolHandler*>):
 
 ### 3.x.2.5 Implementasi Handler Nyata
 
-Semua implementasi ada di [`ProtocolHandlers.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/ProtocolHandlers.cpp):
+Semua implementasi ada di [`ProtocolHandlers.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/ProtocolHandlers.cpp):
 
 **GPIOInputHandler:**
 ```cpp
@@ -288,9 +285,9 @@ bool ModbusHandler::read(JsonObject& telemetry) {
 
 | Komponen | Peran |
 |----------|-------|
-| `WiFi.softAP()` | Menyalakan AP dengan SSID dinamis `SmartFarm-<node_id>` |
+| `WiFi.softAP()` | Menyalakan AP dengan SSID dinamis `ENYX-ENTERPRISE-<node_id>` |
 | `DNSServer` | DNS wildcard `*` → seluruh domain diarahkan ke IP ESP32 |
-| `WebServer` (port 80) | HTTP server yang melayani halaman UI dan 18 endpoint REST API |
+| `WebServer` (port 80) | HTTP server yang melayani halaman UI dan 19 endpoint REST API |
 | `LittleFS` | Filesystem flash internal ESP32 untuk menyimpan file HTML/JS/CSS dan `config.json` |
 | `checkAuthToken()` | Middleware Bearer token untuk memproteksi endpoint sensitif |
 
@@ -299,7 +296,7 @@ bool ModbusHandler::read(JsonObject& telemetry) {
 ```cpp
 void WebConfigPortal::startAP() {
     WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
-    String apName = "SmartFarm-" + Config::NODE_ID;
+    String apName = "ENYX-ENTERPRISE-" + Config::NODE_ID;
     WiFi.softAP(apName.c_str());
     dnsServer.start(DNS_PORT, "*", apIP);
     server.on("/",                         HTTP_GET,  handleRoot);
@@ -311,16 +308,16 @@ void WebConfigPortal::startAP() {
     server.on("/api/hardware",             HTTP_POST, handleApiHardwarePost);
     server.on("/api/hardware/discover",    HTTP_GET,  handleApiHardwareDiscover);
     server.on("/api/modbus/start_scan",    HTTP_POST, handleApiModbusStartScan);
+    server.on("/api/modbus/cancel_scan",   HTTP_POST, handleApiModbusCancelScan);
     server.on("/api/modbus/scan_reg",      HTTP_GET,  handleApiModbusScanReg);
+    server.on("/api/modbus/scan_reg_batch",HTTP_POST, handleApiModbusScanRegBatch);
     server.on("/api/account",              HTTP_POST, handleApiAccountPost);
     server.on("/api/status",               HTTP_GET,  handleApiStatusGet);
-    server.on("/api/ota",                  HTTP_POST, handleApiOtaUpdate);
+    server.on("/api/ota",                  HTTP_POST, handleApiOtaUpdate, handleApiOtaUpload);
     server.on("/api/publish_discovery",    HTTP_POST, handleApiPublishDiscovery);
     server.on("/api/config/export",        HTTP_GET,  handleApiConfigExport);
     server.on("/api/config/import",        HTTP_POST, handleApiConfigImport);
     server.on("/api/telemetry/latest",     HTTP_GET,  handleApiTelemetryLatest);
-    server.on("/api/local_control",        HTTP_POST, handleApiLocalControlPost);
-    server.on("/api/local_control",        HTTP_GET,  handleApiLocalControlGet);
     server.on("/api/root/health",          HTTP_GET,  handleHealth);
     server.begin();
 }
@@ -338,7 +335,9 @@ void WebConfigPortal::startAP() {
 | `/api/hardware` | POST | **Daftarkan sensor/aktuator baru** (inputs/outputs/modbus/sensors) |
 | `/api/hardware/discover` | GET | I2C scan → deteksi perangkat yang terhubung |
 | `/api/modbus/start_scan` | POST | Scan Modbus slave ID 1–247 |
+| `/api/modbus/cancel_scan` | POST | Cancel ongoing Modbus scan |
 | `/api/modbus/scan_reg` | GET | Baca satu register Modbus |
+| `/api/modbus/scan_reg_batch` | POST | Baca batch register Modbus |
 | `/api/account` | POST | Ganti admin username/password |
 | `/api/status` | GET | Status WiFi, MQTT, heap, uptime |
 | `/api/ota` | POST | Upload firmware baru (OTA) |
@@ -346,7 +345,6 @@ void WebConfigPortal::startAP() {
 | `/api/config/export` | GET | Download config.json |
 | `/api/config/import` | POST | Upload config.json |
 | `/api/telemetry/latest` | GET | Baca telemetry terakhir tanpa MQTT |
-| `/api/local_control` | GET/POST | Kelola aturan edge control |
 | `/api/root/health` | GET | Health check (liveness probe) |
 
 ### Cara Portal Menyimpan Sensor Baru
@@ -405,17 +403,25 @@ Alur eksekusi aktuator:
 4. `outputStates[target] = value` + `xTaskNotifyGive(telemetryTaskHandle)`
 5. `ControlTask` memasukkan ACK hasil aktual ke publish queue; hanya `MqttTask` menyentuh `PubSubClient`
 
-**`setOutput()` implementation** — [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/HardwareManager.cpp):
+**`setOutput()` implementation** — [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/HardwareManager.cpp):
 ```cpp
 OutputResult setOutputResult(String targetName, int value) {
+    if (!outputMutex) return OutputResult::Busy;
+    if (xSemaphoreTake(outputMutex, pdMS_TO_TICKS(50)) != pdTRUE) return OutputResult::Busy;
+
     auto it = activeOutputHandlers.find(targetName);
     if (it != activeOutputHandlers.end()) {
-        it->second->write(value);
+        bool written = it->second->write(value);
+        if (!written) {
+            xSemaphoreGive(outputMutex);
+            return OutputResult::HandlerFailed;
+        }
         outputStates[targetName] = value;
-        if (telemetryTaskHandle != NULL)
-            xTaskNotifyGive(telemetryTaskHandle);
+        xSemaphoreGive(outputMutex);
+        if (telemetryTaskHandle != NULL) xTaskNotifyGive(telemetryTaskHandle);
         return OutputResult::Success;
     }
+    xSemaphoreGive(outputMutex);
     return OutputResult::NotFound;
 }
 ```
@@ -436,8 +442,8 @@ OutputResult setOutputResult(String targetName, int value) {
 **Cara 1 — Edit file langsung (via kode editor):**
 
 ```diff
---- a/firmware/aeroponic-node/data/config.json
-+++ b/firmware/aeroponic-node/data/config.json
+--- a/firmware/node/data/config.json
++++ b/firmware/node/data/config.json
       "sensors": [
         { "name": "bme280_atas", "protocol": "I2C", "type": "BME280", "address": "0x76", "sda_pin": "21", "scl_pin": "22" },
         { "name": "dht12_akar",  "protocol": "I2C", "type": "DHT12",  "address": "0x5C", "sda_pin": "21", "scl_pin": "22" }
@@ -455,7 +461,7 @@ Lalu upload: `pio run --target uploadfs` → ESP32 restart.
 
 **Cara 2 — Via Captive Portal (zero-touch, tanpa kabel):**
 ```
-1. Hubungkan ke WiFi "SmartFarm-node-01"
+1. Hubungkan ke WiFi "ENYX-ENTERPRISE-<node_id>"
 2. Buka 192.133.22.6 di browser
 3. Login → Menu "I2C"
 4. Klik "+ Add I2C Sensor"
@@ -512,14 +518,14 @@ flowchart LR
 
 | Dokumen | Relevansi |
 |---------|-----------|
-| [`firmware/aeroponic-node/src/core/HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/HardwareManager.cpp) | `activeHandlers[]`, `activeOutputHandlers`, `reloadConfiguration()`, `setOutput()` |
-| [`firmware/aeroponic-node/src/core/ProtocolHandler.h`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/ProtocolHandler.h) | Kontrak abstrak `ProtocolHandler` (interface) |
-| [`firmware/aeroponic-node/src/core/ProtocolHandler.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/ProtocolHandler.cpp) | `ProtocolRegistry` factory singleton (std::map registry) |
-| [`firmware/aeroponic-node/src/core/ProtocolHandlers.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/ProtocolHandlers.cpp) | Implementasi handler: GPIO, Modbus, I2C, 1-Wire, SPI, GPIO_OUT |
-| [`firmware/aeroponic-node/src/core/ConfigManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/ConfigManager.cpp) | Parsing `config.json` → namespace `Config::` vectors |
-| [`firmware/aeroponic-node/src/protocols/MqttManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/protocols/MqttManager.cpp) | MQTT client, LWT, callback aktuator, publish telemetri |
-| [`firmware/aeroponic-node/src/protocols/NetworkManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/protocols/NetworkManager.cpp) | WiFiTask, reconnect, Captive Portal HTTP server |
-| [`firmware/aeroponic-node/src/core/WebConfigPortal.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/WebConfigPortal.cpp) | Captive Portal, 18 endpoint REST, `/api/hardware` |
-| [`firmware/aeroponic-node/data/config.json`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/data/config.json) | Konfigurasi hardware tunggal (inputs/outputs/modbus/sensors) |
+| [`firmware/node/src/core/HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/HardwareManager.cpp) | `activeHandlers[]`, `activeOutputHandlers`, `reloadConfiguration()`, `setOutput()` |
+| [`firmware/node/src/core/ProtocolHandler.h`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/ProtocolHandler.h) | Kontrak abstrak `ProtocolHandler` (interface) |
+| [`firmware/node/src/core/ProtocolHandler.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/ProtocolHandler.cpp) | `ProtocolRegistry` factory singleton (std::map registry) |
+| [`firmware/node/src/core/ProtocolHandlers.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/ProtocolHandlers.cpp) | Implementasi handler: GPIO, Modbus, I2C, 1-Wire, SPI, GPIO_OUT |
+| [`firmware/node/src/core/ConfigManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/ConfigManager.cpp) | Parsing `config.json` → namespace `Config::` vectors |
+| [`firmware/node/src/protocols/MqttManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/protocols/MqttManager.cpp) | MQTT client, LWT, callback aktuator, publish telemetri |
+| [`firmware/node/src/protocols/NetworkManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/protocols/NetworkManager.cpp) | WiFiTask, reconnect, Captive Portal HTTP server |
+| [`firmware/node/src/protocols/WebConfigPortal.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/protocols/WebConfigPortal.cpp) | Captive Portal, 19 endpoint REST, `/api/hardware` |
+| [`firmware/node/data/config.json`](file:///home/almuzky/TA/Microservices/firmware/node/data/config.json) | Konfigurasi hardware tunggal (inputs/outputs/modbus/sensors) |
 | [`docs/integration-guides/module.md`](file:///home/almuzky/TA/Microservices/docs/integration-guides/module.md) | Kontrak MQTT Module Service, NATS downstream subscription |
 | [`docs/integration-guides/control.md`](file:///home/almuzky/TA/Microservices/docs/integration-guides/control.md) | Payload perintah aktuator, format ACK, lifecycle perintah |

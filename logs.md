@@ -248,6 +248,21 @@
 
 ---
 
+### Implementasi ArduinoOTA untuk Upload Firmware Jarak Jauh (2026-09-22)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | Menambahkan library ArduinoOTA ke `platformio.ini` dan menginisialisasi OTA di `NetworkManager.cpp`. |
+| 2 | ✅ | Mengonfigurasi `platformio.ini` dengan `upload_protocol = espota` dan `upload_port` default ke IP device. |
+| 3 | ✅ | Build firmware ESP32 berhasil: Flash 91.7%, RAM 26.2%. |
+
+**Keputusan Teknis:**
+- ArduinoOTA dijalankan setelah WiFi terhubung (`wifiConnected` berubah true) agar hostname dan OTA siap tanpa blocking loop utama.
+- Password OTA default: `enyx-ota` diinisialisasi di `NetworkManager::initArduinoOTA()`.
+- Upload jarak jauh via PlatformIO: `python -m platformio run -e esp32dev --upload-port <IP_DEVICE>`.
+
+---
+
 ### Migrasi Kredensial ke NVS Namespace `creds` — Firmware Node (2026-09-21)
 
 | # | Status | Aktivitas |
