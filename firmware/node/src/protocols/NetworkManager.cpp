@@ -63,18 +63,31 @@ void NetworkManager::wifiTask(void* parameter) {
                 if (Config::WIFI_EAP_IDENTITY.length() > 0 || Config::WIFI_EAP_USERNAME.length() > 0) {
                     WiFi.disconnect();
                     delay(100);
-                    Logger::network("Attempting WPA2-Enterprise (PEAP) connection...");
-                    WiFi.begin(Config::WIFI_SSID, WPA2_AUTH_PEAP,
-                               Config::WIFI_EAP_IDENTITY,
-                               Config::WIFI_EAP_USERNAME,
-                               Config::WIFI_EAP_PASSWORD);
+                    Logger::network("WiFi auth mode: WPA2-Enterprise (identity=%s, username_set=%s)",
+                                    Config::WIFI_EAP_IDENTITY.length() > 0 ? "set" : "empty",
+                                    Config::WIFI_EAP_USERNAME.length() > 0 ? "yes" : "no");
+                    if (Config::WIFI_EAP_IDENTITY.length() == 0) {
+                        Logger::network("Attempting WPA2-Enterprise (PEAP) legacy username mode...");
+                        WiFi.begin(Config::WIFI_SSID, WPA2_AUTH_PEAP,
+                                   Config::WIFI_EAP_USERNAME,
+                                   "",
+                                   Config::WIFI_EAP_PASSWORD);
+                    } else {
+                        Logger::network("Attempting WPA2-Enterprise (PEAP) outer/inner identity mode...");
+                        WiFi.begin(Config::WIFI_SSID, WPA2_AUTH_PEAP,
+                                   Config::WIFI_EAP_IDENTITY,
+                                   Config::WIFI_EAP_USERNAME,
+                                   Config::WIFI_EAP_PASSWORD);
+                    }
                 } else if (Config::WIFI_PASS.length() > 0) {
                     WiFi.disconnect();
                     delay(100);
+                    Logger::network("WiFi auth mode: WPA/WPA2 Personal (password_set=yes)");
                     WiFi.begin(Config::WIFI_SSID.c_str(), Config::WIFI_PASS.c_str());
                 } else {
                     WiFi.disconnect();
                     delay(100);
+                    Logger::network("WiFi auth mode: Open (no password)");
                     WiFi.begin(Config::WIFI_SSID.c_str());
                 }
             }

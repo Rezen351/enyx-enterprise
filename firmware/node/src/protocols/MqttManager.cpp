@@ -7,10 +7,23 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
+#include <new>
 
 WiFiClient espClientPlain;
 WiFiClientSecure espClientSecure;
 PubSubClient* mqttClient = nullptr;
+
+namespace {
+    constexpr size_t MQTT_QUEUE_TOPIC_SIZE = 128;
+    constexpr size_t MQTT_QUEUE_PAYLOAD_SIZE = 8192;
+
+    struct PublishMessage {
+        char topic[MQTT_QUEUE_TOPIC_SIZE];
+        char payload[MQTT_QUEUE_PAYLOAD_SIZE];
+    };
+
+    QueueHandle_t publishQueue = NULL;
+}
 
 // GAP #16: Circular buffer with fixed char array (no heap fragmentation)
 #define MAX_LOG_ENTRIES 10
@@ -53,6 +66,7 @@ std::vector<String> MqttManager::getLogs() {
 
 void MqttManager::init() {
     logMutex = xSemaphoreCreateMutex();
+    publishQueue = xQueueCreate(4, sizeof(PublishMessage*));
     
     if (Config::MQTT_USE_TLS) {
         if (Config::MQTT_CA_CERT.length() > 0) {
@@ -95,19 +109,50 @@ bool MqttManager::isConnected() {
 }
 
 bool MqttManager::publish(String topic, String payload) {
-    if (isConnected()) {
-        if (mqttClient->publish(topic.c_str(), payload.c_str())) {
-            String logMsg = "Pub to " + topic.substring(0, 30);
-            Logger::mqtt("%s", logMsg.c_str());
-            addLog(logMsg.c_str());
-            return true;
-        } else {
-            Logger::mqtt("Pub FAILED");
-            addLog("Pub FAILED");
-            return false;
+    return queuePublish(topic, payload);
+}
+
+bool MqttManager::queuePublish(String topic, String payload) {
+    if (!publishQueue || topic.length() >= MQTT_QUEUE_TOPIC_SIZE ||
+        payload.length() >= MQTT_QUEUE_PAYLOAD_SIZE) {
+        return false;
+    }
+
+    PublishMessage* message = new (std::nothrow) PublishMessage{};
+    if (!message) return false;
+
+    topic.toCharArray(message->topic, sizeof(message->topic));
+    payload.toCharArray(message->payload, sizeof(message->payload));
+    if (xQueueSend(publishQueue, &message, 0) != pdTRUE) {
+        delete message;
+        return false;
+    }
+    return true;
+}
+
+bool MqttManager::publishNow(const char* topic, const char* payload) {
+    if (!mqttClient || !mqttClient->connected()) return false;
+    if (mqttClient->publish(topic, payload)) {
+        String logMsg = "Pub to " + String(topic).substring(0, 30);
+        Logger::mqtt("%s", logMsg.c_str());
+        addLog(logMsg.c_str());
+        return true;
+    }
+    Logger::mqtt("Pub FAILED");
+    addLog("Pub FAILED");
+    return false;
+}
+
+void MqttManager::drainPublishQueue() {
+    if (!isConnected()) return;
+
+    PublishMessage* message = nullptr;
+    while (xQueueReceive(publishQueue, &message, 0) == pdTRUE) {
+        if (message) {
+            publishNow(message->topic, message->payload);
+            delete message;
         }
     }
-    return false;
 }
 
 void MqttManager::publishDiscovery() {
@@ -119,9 +164,7 @@ void MqttManager::publishDiscovery() {
             "\", \"ip\": \"" + WiFi.localIP().toString() + 
             "\", \"fw_version\": \"" + Config::FW_VERSION +
             "\", \"status\": \"online\"}";
-        mqttClient->publish(discoveryTopic.c_str(), discoveryPayload.c_str());
-        Logger::mqtt("Discovery published");
-        addLog("Discovery published");
+        queuePublish(discoveryTopic, discoveryPayload);
     } else {
         Logger::mqtt("Discovery FAILED: MQTT disconnected");
         addLog("Discovery FAILED: MQTT disconnected");
@@ -195,6 +238,7 @@ void MqttManager::mqttTask(void* parameter) {
                 }
             } else {
                 mqttClient->loop();
+                drainPublishQueue();
                 
                 if (millis() - lastDiscovery >= 60000) {
                     lastDiscovery = millis();
@@ -210,6 +254,12 @@ void MqttManager::mqttTask(void* parameter) {
 }
 
 void MqttManager::mqttCallback(char* topic, byte* payload, unsigned int length) {
+    if (length > 4096) {
+        Logger::mqtt("Actuator command rejected: payload too large");
+        addLog("Actuator command rejected: payload too large");
+        return;
+    }
+
     String msg;
     for (unsigned int i = 0; i < length; i++) {
         msg += (char)payload[i];
@@ -228,16 +278,11 @@ void MqttManager::mqttCallback(char* topic, byte* payload, unsigned int length) 
             int value = doc["value"] | 0;
             
             if (action == "set_output" && target.length() > 0) {
-                HardwareManager::setOutput(target, value);
-            }
-            
-            // Kirim konfirmasi balik
-            if (doc.containsKey("req_id")) {
-                String confirmTopic = Config::MQTT_TOPIC_PREFIX + "/" + Config::NODE_ID + "/confirm";
-                String confirmPayload = "{\"req_id\":\"" + doc["req_id"].as<String>() + 
-                    "\",\"target\":\"" + target + 
-                    "\",\"value\":" + String(value) + ",\"status\":\"executed\"}";
-                mqttClient->publish(confirmTopic.c_str(), confirmPayload.c_str());
+                String requestId = doc["req_id"] | "";
+                if (!HardwareManager::enqueueOutputCommand(target, value, requestId)) {
+                    Logger::mqtt("Actuator command queue full");
+                    addLog("Actuator command queue full");
+                }
             }
         } else {
             Logger::mqtt("Actuator: JSON parse error");

@@ -39,6 +39,34 @@
 | 4 | ✅ | Menghapus field Enterprise yang stale saat beralih ke Open/WPA Personal dan memperbaiki URL encoding account credentials. |
 | 5 | 🟡 | Build ESP32-S3 menghasilkan artefak linker; upload board dan verifikasi WiFi/hardware fisik masih diperlukan. |
 
+### Implementasi Control Priority dan MQTT Serialization (2026-09-22)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | Menambahkan `ControlTask` priority 3 dengan bounded actuator command queue; MQTT callback tidak lagi menulis GPIO/relay secara langsung. |
+| 2 | ✅ | Memisahkan `outputMutex` dari `handlersMutex` sensor sehingga pembacaan Modbus/I2C tidak menahan jalur actuator sampai 4 detik. |
+| 3 | ✅ | Memindahkan ACK actuator dan telemetry ke publish queue; hanya `MqttTask` yang memanggil `PubSubClient`. |
+| 4 | ✅ | Emergency stop MQTT disconnect sekarang masuk ke ControlTask dan mencoba mematikan seluruh output dengan batas lock 50 ms. |
+| 5 | ✅ | ACK command membedakan `executed`, `output_not_found`, `output_busy`, dan `handler_failed`. |
+| 6 | 🟡 | Editor diagnostics bersih dan ESP32-S3 berhasil mengompilasi file control/MQTT; stress test latency dan upload hardware masih diperlukan. |
+
+### Diagnosis WiFi ITB Hotspot Status 4 (2026-09-22)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | `WL_CONNECT_FAILED` pada `ITB Hotspot` ditelusuri sebagai kegagalan autentikasi/association, bukan SSID tidak ditemukan. Runtime SSID berasal dari NVS, sehingga dapat berbeda dari template `config.json`. |
+| 2 | ✅ | Menambahkan pembersihan password Enterprise stale ketika portal mengirim identity/username kosong untuk mode personal atau open. |
+| 3 | ✅ | Menambahkan log mode WiFi yang aman tanpa password: Enterprise, Personal, atau Open; ESP32-S3 compile untuk `NetworkManager.cpp` dan `WebConfigPortal.cpp` bersih. |
+| 4 | 🟡 | Flash firmware + filesystem dan uji ulang diperlukan untuk memastikan `ITB Hotspot` memakai mode personal serta password NVS terbaru. |
+
+### Perbaikan MqttTask Stack Canary (2026-09-22)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | Panic `Stack canary watchpoint triggered (MqttTask)` ditelusuri ke `PublishMessage` dengan payload 8192 byte yang dibuat sebagai local variable pada task stack 6144 byte. |
+| 2 | ✅ | Publish queue diubah menjadi bounded queue berisi pointer heap; message dibebaskan setelah diproses oleh `MqttTask`, sehingga payload besar tidak memakai stack task. |
+| 3 | 🟡 | `MqttManager.cpp` berhasil dikompilasi dan linking ESP32-S3 menghasilkan `firmware.elf`; perlu upload dan uji koneksi MQTT/telemetry pada board. |
+
 ---
 
 ### Implementasi Modbus TCP + UI Transport Selector (2026-09-20)

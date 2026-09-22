@@ -20,8 +20,19 @@ namespace HardwareManager {
     
     SemaphoreHandle_t modbusMutex;
     SemaphoreHandle_t handlersMutex = NULL;
+    SemaphoreHandle_t outputMutex = NULL;
     SemaphoreHandle_t telemetryMutex = NULL;
     TaskHandle_t telemetryTaskHandle = NULL;
+    QueueHandle_t controlQueue = NULL;
+
+    namespace {
+        struct OutputCommand {
+            char target[64];
+            char requestId[64];
+            int value;
+            bool emergencyStop;
+        };
+    }
     
     std::map<String, float> latestSensorValues;
     String latestTelemetryJson = "{}";
@@ -30,9 +41,6 @@ namespace HardwareManager {
     
     // State terakhir output
     std::map<String, int> outputStates;
-    
-    // MQTT disconnect emergency stop flag
-    volatile bool mqttDisconnectEmergencyTriggered = false;
     
     // Connection stats
     struct {
@@ -46,7 +54,7 @@ namespace HardwareManager {
 
     // ==================== MQTT DISCONNECT EMERGENCY STOP ====================
     void triggerMqttDisconnectEmergencyStop() {
-        mqttDisconnectEmergencyTriggered = true;
+        requestEmergencyStop();
     }
 
     // ==================== SCAN CANCEL ====================
@@ -59,6 +67,10 @@ namespace HardwareManager {
         if (!handlersMutex) return;
         if (xSemaphoreTake(handlersMutex, portMAX_DELAY) == pdTRUE) {
             Logger::hardware("Reloading Hardware Handlers (Hot-Swap)...");
+
+            if (outputMutex) {
+                xSemaphoreTake(outputMutex, portMAX_DELAY);
+            }
 
             // Delete old handlers
             for (auto h : activeHandlers) {
@@ -179,6 +191,9 @@ namespace HardwareManager {
             }
 
             xSemaphoreGive(handlersMutex);
+            if (outputMutex) {
+                xSemaphoreGive(outputMutex);
+            }
             Logger::hardware("Hardware Handlers Reloaded Successfully.");
         }
     }
@@ -250,6 +265,8 @@ namespace HardwareManager {
 
         // Create Handlers Mutex
         handlersMutex = xSemaphoreCreateMutex();
+        outputMutex = xSemaphoreCreateMutex();
+        controlQueue = xQueueCreate(12, sizeof(OutputCommand));
 
         // Create Telemetry Mutex
         telemetryMutex = xSemaphoreCreateMutex();
@@ -275,6 +292,57 @@ namespace HardwareManager {
             &telemetryTaskHandle, 
             1
         );
+
+        xTaskCreatePinnedToCore(
+            controlTask,
+            "ControlTask",
+            4096,
+            NULL,
+            3,
+            NULL,
+            1
+        );
+    }
+
+    void controlTask(void* parameter) {
+        OutputCommand command{};
+        while (true) {
+            TaskWatchdog::heartbeat("ControlTask");
+            if (xQueueReceive(controlQueue, &command, portMAX_DELAY) != pdTRUE) {
+                continue;
+            }
+
+            if (command.emergencyStop) {
+                if (outputMutex && xSemaphoreTake(outputMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                    for (auto& kv : activeOutputHandlers) {
+                        if (kv.second->write(0)) {
+                            outputStates[kv.first] = 0;
+                        }
+                    }
+                    xSemaphoreGive(outputMutex);
+                    Logger::emergency("All actuator outputs set to safe OFF state.");
+                } else {
+                    Logger::emergency("Emergency stop could not acquire output lock.");
+                }
+                continue;
+            }
+
+            OutputResult result = setOutputResult(command.target, command.value);
+            String confirmTopic = Config::MQTT_TOPIC_PREFIX + "/" + Config::NODE_ID + "/confirm";
+            String status = result == OutputResult::Success ? "executed" : "failed";
+            String error = result == OutputResult::NotFound ? "output_not_found" :
+                           result == OutputResult::Busy ? "output_busy" :
+                           result == OutputResult::HandlerFailed ? "handler_failed" : "";
+            String confirmPayload = "{\"req_id\":\"" + String(command.requestId) +
+                "\",\"target\":\"" + String(command.target) +
+                "\",\"value\":" + String(command.value) +
+                ",\"status\":\"" + status + "\"";
+            if (error.length() > 0) {
+                confirmPayload += ",\"error\":\"" + error + "\"";
+            }
+            confirmPayload += "}";
+            MqttManager::queuePublish(confirmTopic, confirmPayload);
+        }
     }
 
     // ==================== TELEMETRY TASK ====================
@@ -291,15 +359,6 @@ namespace HardwareManager {
             }
             
             // MQTT disconnect emergency stop
-            if (mqttDisconnectEmergencyTriggered) {
-                mqttDisconnectEmergencyTriggered = false;
-                Logger::emergency("Actuator emergency stop triggered by MQTT disconnect!");
-                
-                for (const auto& hw : Config::HardwareOutputs) {
-                    setOutput(hw.name, 0);
-                }
-            }
-            
             doc.clear();
             
             // System Info
@@ -330,10 +389,10 @@ namespace HardwareManager {
             // Outputs telemetry - copy under mutex to avoid race with reloadConfiguration/setOutput
             std::vector<Config::OutputPin> hwOutputsSnapshot;
             std::map<String, int> outputStatesSnapshot;
-            if (handlersMutex && xSemaphoreTake(handlersMutex, pdMS_TO_TICKS(4000)) == pdTRUE) {
+            if (outputMutex && xSemaphoreTake(outputMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
                 hwOutputsSnapshot = Config::HardwareOutputs;
                 outputStatesSnapshot = outputStates;
-                xSemaphoreGive(handlersMutex);
+                xSemaphoreGive(outputMutex);
             }
             JsonObject outputsObj = telemetry.createNestedObject("outputs");
             for (const auto& hw : hwOutputsSnapshot) {
@@ -410,25 +469,52 @@ namespace HardwareManager {
     }
     
     // ==================== SET OUTPUT ====================
-    bool setOutput(String targetName, int value) {
-        if (!handlersMutex) return false;
-        if (xSemaphoreTake(handlersMutex, pdMS_TO_TICKS(4000)) != pdTRUE) return false;
+    OutputResult setOutputResult(String targetName, int value) {
+        if (!outputMutex) return OutputResult::Busy;
+        if (xSemaphoreTake(outputMutex, pdMS_TO_TICKS(50)) != pdTRUE) return OutputResult::Busy;
         
         auto it = activeOutputHandlers.find(targetName);
         if (it != activeOutputHandlers.end()) {
-            it->second->write(value);
+            bool written = it->second->write(value);
+            if (!written) {
+                xSemaphoreGive(outputMutex);
+                return OutputResult::HandlerFailed;
+            }
             outputStates[targetName] = value;
             Logger::actuator("%s -> %d (via %s handler)",
                 targetName.c_str(), value, it->second->getProtocolName().c_str());
-            xSemaphoreGive(handlersMutex);
+            xSemaphoreGive(outputMutex);
             if (telemetryTaskHandle != NULL) {
                 xTaskNotifyGive(telemetryTaskHandle);
             }
-            return true;
+            return OutputResult::Success;
         }
-        xSemaphoreGive(handlersMutex);
+        xSemaphoreGive(outputMutex);
         Logger::actuator("Target '%s' not found in Output Configuration.", targetName.c_str());
-        return false;
+        return OutputResult::NotFound;
+    }
+
+    bool setOutput(String targetName, int value) {
+        return setOutputResult(targetName, value) == OutputResult::Success;
+    }
+
+    bool enqueueOutputCommand(const String& targetName, int value, const String& requestId) {
+        if (!controlQueue || targetName.length() == 0 || targetName.length() >= 64 || requestId.length() >= 64) {
+            return false;
+        }
+        OutputCommand command{};
+        targetName.toCharArray(command.target, sizeof(command.target));
+        requestId.toCharArray(command.requestId, sizeof(command.requestId));
+        command.value = value;
+        command.emergencyStop = false;
+        return xQueueSend(controlQueue, &command, 0) == pdTRUE;
+    }
+
+    void requestEmergencyStop() {
+        if (!controlQueue) return;
+        OutputCommand command{};
+        command.emergencyStop = true;
+        xQueueSend(controlQueue, &command, 0);
     }
 
     // ==================== MODBUS SCAN (GAP #6: dengan watchdog feed) ====================

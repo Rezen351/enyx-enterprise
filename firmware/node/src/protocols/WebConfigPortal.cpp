@@ -430,6 +430,13 @@ void WebConfigPortal::handleApiWifiPost() {
     if (server.hasArg("eap_identity")) { Config::WIFI_EAP_IDENTITY = server.arg("eap_identity"); Config::WIFI_EAP_IDENTITY.trim(); }
     if (server.hasArg("eap_username")) { Config::WIFI_EAP_USERNAME = server.arg("eap_username"); Config::WIFI_EAP_USERNAME.trim(); }
     if (server.hasArg("eap_password")) { Config::WIFI_EAP_PASSWORD = server.arg("eap_password"); Config::WIFI_EAP_PASSWORD.trim(); }
+
+    // Older portal bundles did not submit eap_username for personal/open WiFi.
+    // An empty identity therefore explicitly clears stale Enterprise credentials.
+    if (server.hasArg("eap_identity") && Config::WIFI_EAP_IDENTITY.length() == 0 &&
+        Config::WIFI_EAP_USERNAME.length() == 0) {
+        Config::WIFI_EAP_PASSWORD = "";
+    }
     
     CredentialManager::setWifiSsid(Config::WIFI_SSID);
     CredentialManager::setWifiPass(Config::WIFI_PASS);

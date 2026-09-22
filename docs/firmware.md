@@ -16,32 +16,35 @@ graph TB
         direction TB
         WD["WatchdogTask\nPrio: 2 | Stack: 4 KB\nMonitor heartbeat → restart/reboot"]
         WIFI["WiFiTask\nPrio: 2 | Stack: 8 KB\nWiFi.begin() + reconnect\nWebConfigPortal::loop()"]
-        MQTT["MqttTask\nPrio: 2 | Stack: 6 KB\nConnect/reconnect broker\nmqttClient->loop()"]
+        MQTT["MqttTask\nPrio: 2 | Stack: 6 KB\nConnect/reconnect broker\nmqttClient->loop()\nserialized publish"]
         SYS["SysMonitorTask\nPrio: 1 | Stack: 4 KB\nPantau free heap\n→ restart jika < 10 KB"]
     end
     subgraph CORE1["CORE 1 — Application Core"]
         direction TB
-        TELE["TelemetryTask\nPrio: 1 | Stack: 8 KB\nfor handler in activeHandlers:\n  handler->read()\n→ evaluateLocalControl()\n→ serializeJson()\n→ MqttManager::publish()"]
+        CTRL["ControlTask\nPrio: 3 | Stack: 4 KB\nqueue command\n→ write actuator\n→ queue ACK"]
+        TELE["TelemetryTask\nPrio: 1 | Stack: 8 KB\nfor handler in activeHandlers:\n  handler->read()\n→ serializeJson()\n→ queue telemetry"]
     end
     WD -. heartbeat check .-> WIFI
     WD -. heartbeat check .-> MQTT
     WD -. heartbeat check .-> TELE
-    MQTT <-->|publish / subscribe| TELE
+    MQTT <-->|loop + serialized publish| CTRL
+    MQTT -->|telemetry queue| TELE
     style CORE0 fill:#1e3a5f,color:#fff,stroke:#3b82f6
     style CORE1 fill:#14532d,color:#fff,stroke:#22c55e
 ```
 
 > **Alasan pemisahan core:** WiFi stack ESP32 berjalan di Core 0. TelemetryTask di Core 1 agar pembacaan sensor tidak terganggu oleh network interrupt.
 
-### Tabel Lima FreeRTOS Task
+### Tabel Enam FreeRTOS Task
 
 | Task | File Sumber | Core | Priority | Stack | Tanggung Jawab Utama |
 |------|-------------|------|----------|-------|----------------------|
 | `WatchdogTask` | [`TaskWatchdog.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/TaskWatchdog.cpp) | 0 | **2** | 4 KB | Monitor heartbeat tiap task; restart atau reboot jika timeout |
 | `WiFiTask` | [`NetworkManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/protocols/NetworkManager.cpp) | 0 | **2** | 8 KB | Manage koneksi WiFi (reconnect otomatis) + serve Captive Portal |
-| `MqttTask` | [`MqttManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/protocols/MqttManager.cpp) | 0 | **2** | 6 KB | Connect/reconnect broker MQTT; loop callback; publish discovery |
+| `MqttTask` | [`MqttManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/protocols/MqttManager.cpp) | **1** | **2** | 6 KB | Connect/reconnect broker MQTT; loop callback; serialize all MQTT publish operations |
+| `ControlTask` | [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/HardwareManager.cpp) | **1** | **3** | 4 KB | Consume bounded actuator commands, write outputs, emergency stop, queue ACK |
 | `SysMonitorTask` | [`SystemMonitor.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/SystemMonitor.cpp) | 0 | 1 | 4 KB | Pantau free heap; restart ESP32 jika < 10 KB |
-| `TelemetryTask` | [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/HardwareManager.cpp) | **1** | 1 | 8 KB | Baca sensor via `activeHandlers[]`; publish JSON telemetry; evaluasi local control |
+| `TelemetryTask` | [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/HardwareManager.cpp) | **1** | 1 | 8 KB | Baca sensor via `activeHandlers[]`; queue JSON telemetry |
 
 ### Mekanisme Sinkronisasi Antar-Task
 
@@ -49,10 +52,11 @@ graph TB
 flowchart LR
     subgraph MUTEX["🔒 Mutex Protection"]
         MM["modbusMutex\nMelindungi Serial2 RS485"]
-        HM["handlersMutex\nMelindungi activeHandlers[]"]
+        HM["handlersMutex\nMelindungi sensor registry"]
+        OM["outputMutex\nMelindungi actuator map/write"]
     end
     subgraph NOTIF["📢 Task Notification"]
-        SO["setOutput()"] -->|xTaskNotifyGive| TT["TelemetryTask"]
+        SO["ControlTask setOutput()"] -->|xTaskNotifyGive| TT["TelemetryTask"]
     end
     subgraph HB["💓 Heartbeat Watchdog"]
         TELE2["TelemetryTask"] -->|heartbeat| WDT["WatchdogTask\ncek setiap 5 detik"]
@@ -69,7 +73,7 @@ Firmware menggunakan **tiga lapisan abstraksi** agar sistem bisa dinamis:
 
 1. **Configuration** — `config.json` → `ConfigManager` → `Config:: namespace`
 2. **Factory/Registry** — `ProtocolRegistry` + `activeHandlers[]` + `activeOutputHandlers[]`
-3. **Consumer** — `TelemetryTask` (Core 1, sensor) dan `MqttCallback` (Core 0, aktuator)
+3. **Consumer** — `TelemetryTask` (Core 1, sensor) dan `ControlTask` (Core 1, aktuator)
 
 ```mermaid
 flowchart TD
@@ -82,8 +86,9 @@ flowchart TD
     VEC --> TT["TelemetryTask\nCore 1"]
     TT -->|"handler->read()"| SENSOR["Sensor Fisik"]
     TT -->|"publish"| BROKER["MQTT Broker"]
-    BROKER -->|"subscribe"| CB["MqttCallback\nCore 0"]
-    CB --> SO["setOutput(name, value)"]
+    BROKER -->|"subscribe"| CB["MqttCallback\nMqttTask context"]
+    CB --> CQ["bounded control queue"]
+    CQ --> SO["ControlTask\nPriority 3\nsetOutput(name, value)"]
     SO --> MAP
     MAP -->|"handler->write()"| ACT["Aktuator Fisik"]
 ```
@@ -92,7 +97,7 @@ flowchart TD
 |---------|----------|-------|
 | **Configuration** | `config.json` → `ConfigManager` → `Config:: namespace` | Semua hardware dideklarasi di JSON, diparsing ke vector in-memory. |
 | **Factory/Registry** | `ProtocolRegistry` + `activeHandlers[]` + `activeOutputHandlers[]` | Membuat instance handler sesuai protokol di config. Sensor di vector, aktuator di map. |
-| **Consumer** | `TelemetryTask` (Core 1, sensor) dan `MqttCallback` (Core 0, aktuator) | Keduanya tidak tahu tipe konkret handler. |
+| **Consumer** | `TelemetryTask` (Core 1, sensor) dan `ControlTask` (Core 1, aktuator) | Keduanya tidak tahu tipe konkret handler. |
 
 ### 3.x.2.1 Konfigurasi config.json (Tidak Ada Hardcode)
 
@@ -382,8 +387,9 @@ flowchart TD
     VEC --> TT["TelemetryTask\nCore 1"]
     TT -->|"handler->read()"| SENSOR["Sensor Fisik"]
     TT -->|"publish"| BROKER["MQTT Broker"]
-    BROKER -->|"subscribe"| CB["MqttCallback\nCore 0"]
-    CB --> SO["setOutput(name, value)"]
+    BROKER -->|"subscribe"| CB["MqttCallback\nMqttTask context"]
+    CB --> CQ["bounded control queue"]
+    CQ --> SO["ControlTask\nPriority 3\nsetOutput(name, value)"]
     SO --> MAP
     MAP -->|"handler->write()"| ACT["Aktuator Fisik"]
 ```
@@ -394,23 +400,23 @@ Aktuator menggunakan **map** karena `setOutput()` menerima `targetName` (string)
 
 Alur eksekusi aktuator:
 1. `MqttManager` subscribe `smartfarm/actuator/<node_id>`
-2. `mqttCallback` parse `{action, target, value}`
-3. `setOutput(target, value)` → `activeOutputHandlers.find(target)->write(value)`
+2. `mqttCallback` memvalidasi dan memasukkan `{action, target, value, req_id}` ke bounded queue
+3. `ControlTask` priority 3 memanggil `setOutput(target, value)` → `activeOutputHandlers.find(target)->write(value)`
 4. `outputStates[target] = value` + `xTaskNotifyGive(telemetryTaskHandle)`
-5. `TelemetryTask` publish feedback + confirm `status:"executed"`
+5. `ControlTask` memasukkan ACK hasil aktual ke publish queue; hanya `MqttTask` menyentuh `PubSubClient`
 
 **`setOutput()` implementation** — [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/aeroponic-node/src/core/HardwareManager.cpp):
 ```cpp
-bool setOutput(String targetName, int value) {
+OutputResult setOutputResult(String targetName, int value) {
     auto it = activeOutputHandlers.find(targetName);
     if (it != activeOutputHandlers.end()) {
         it->second->write(value);
         outputStates[targetName] = value;
         if (telemetryTaskHandle != NULL)
             xTaskNotifyGive(telemetryTaskHandle);
-        return true;
+        return OutputResult::Success;
     }
-    return false;
+    return OutputResult::NotFound;
 }
 ```
 
