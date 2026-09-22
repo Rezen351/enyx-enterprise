@@ -67,6 +67,16 @@
 | 2 | ✅ | Publish queue diubah menjadi bounded queue berisi pointer heap; message dibebaskan setelah diproses oleh `MqttTask`, sehingga payload besar tidak memakai stack task. |
 | 3 | 🟡 | `MqttManager.cpp` berhasil dikompilasi dan linking ESP32-S3 menghasilkan `firmware.elf`; perlu upload dan uji koneksi MQTT/telemetry pada board. |
 
+### Perbaikan Export/Import Config Portal (2026-09-22)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | Import sebelumnya mengirim JSON besar sebagai `application/x-www-form-urlencoded` (`payload=...`), sehingga parsing body rentan gagal pada ukuran/encoding tertentu. |
+| 2 | ✅ | Frontend kini mengirim raw `application/json`; backend menerima raw body melalui `plain` dan tetap menyediakan fallback field `payload` untuk bundle lama. |
+| 3 | ✅ | Export menampilkan status HTTP/401 dengan jelas, membersihkan object URL download, dan memaksa login ulang jika token kedaluwarsa. |
+| 4 | ✅ | Import melakukan persist LittleFS + NVS lalu reboot agar seluruh credential dan konfigurasi benar-benar aktif, bukan mengembalikan `reboot:false` setelah hanya hot-swap sebagian. |
+| 5 | 🟡 | Editor diagnostics bersih dan ESP32-S3 mengompilasi handler portal; upload firmware/filesystem serta uji portal nyata masih diperlukan. |
+
 ---
 
 ### Implementasi Modbus TCP + UI Transport Selector (2026-09-20)

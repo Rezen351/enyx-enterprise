@@ -801,13 +801,17 @@ void WebConfigPortal::handleApiConfigExport() {
 
 void WebConfigPortal::handleApiConfigImport() {
     if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
-    
-    if (!server.hasArg("payload")) {
+
+    // Prefer a raw application/json body. Keep the form field fallback for
+    // older portal bundles that still submit payload=<encoded JSON>.
+    String payload = server.arg("plain");
+    if (payload.length() == 0 && server.hasArg("payload")) {
+        payload = server.arg("payload");
+    }
+    if (payload.length() == 0) {
         server.send(400, "application/json", "{\"error\":\"Missing config payload\"}");
         return;
     }
-    
-    String payload = server.arg("payload");
     if (payload.length() > 24576) {
         server.send(413, "application/json", "{\"error\":\"Payload too large\"}");
         return;
@@ -866,8 +870,9 @@ void WebConfigPortal::handleApiConfigImport() {
         if (importedMqttUser.length() > 0) CredentialManager::setMqttUser(importedMqttUser);
         if (importedMqttPass.length() > 0) CredentialManager::setMqttPass(importedMqttPass);
         
-        HardwareManager::reloadConfiguration();
-        server.send(200, "application/json", "{\"status\":\"success\",\"reboot\":false,\"message\":\"Configuration imported successfully and hot-swapped!\"}");
+        server.send(200, "application/json", "{\"status\":\"success\",\"reboot\":true,\"message\":\"Configuration imported successfully. Rebooting to apply all settings.\"}");
+        delay(100);
+        ESP.restart();
     } else {
         server.send(500, "application/json", "{\"error\":\"Failed to save configuration\"}");
     }

@@ -1017,7 +1017,12 @@ async function exportConfig() {
         if (token) opts.headers['Authorization'] = 'Bearer ' + token;
         let res = await fetch('/api/config/export', opts);
         if (!res.ok) {
-            showMsg("Failed to download config file", true);
+            if (res.status === 401) {
+                showMsg("Session expired. Please sign in again.", true);
+                logout();
+            } else {
+                showMsg(`Failed to download config file (${res.status})`, true);
+            }
             return;
         }
         let blob = await res.blob();
@@ -1025,7 +1030,10 @@ async function exportConfig() {
         let a = document.createElement("a");
         a.href = url;
         a.download = "config.json";
+        document.body.appendChild(a);
         a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
     } catch (e) {
         showMsg("Network error during config export", true);
     }
@@ -1054,9 +1062,18 @@ async function importConfig() {
             return;
         }
 
-        let d = await api('/api/config/import', 'POST', `payload=${encodeURIComponent(contents)}`);
+        let opts = { method: 'POST', headers: { 'Content-Type': 'application/json' } };
+        if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+        let response = await fetch('/api/config/import', opts);
+        let d = await response.json();
+        if (!response.ok) {
+            showMsg(d.error || `Config import failed (${response.status})`, true);
+            setButtonLoading(btn, false, 'Upload & Restore');
+            if (response.status === 401) logout();
+            return;
+        }
         if (d && (d.status === "success" || d.success)) {
-            showMsg("Config imported successfully! Rebooting...");
+            showMsg("Config imported successfully!");
             setTimeout(() => triggerRebootSequence(true), 1000);
         } else {
             setButtonLoading(btn, false, 'Upload & Restore');
