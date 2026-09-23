@@ -13,12 +13,12 @@ static void applyBoardDefaultPins() {
     Logger::config("Detected chip: %s", chip.c_str());
 
     if (chip.indexOf("ESP32-S3") >= 0) {
-        Config::PIN_I2C_SDA = 40;
-        Config::PIN_I2C_SCL = 41;
-        Config::PIN_RS485_RX = 17;
-        Config::PIN_RS485_TX = 18;
-        Config::PIN_RS485_DE = 15;
-        Logger::config("Applied ESP32-S3 default pins: I2C=40/41, RS485=17/18/DE=15");
+        Config::PIN_I2C_SDA = 8;
+        Config::PIN_I2C_SCL = 9;
+        Config::PIN_RS485_RX = 16;
+        Config::PIN_RS485_TX = 15;
+        Config::PIN_RS485_DE = 17;
+        Logger::config("Applied ESP32-S3 default pins: I2C=8/9, RS485=16/15/DE=17");
     } else {
         Config::PIN_I2C_SDA = 21;
         Config::PIN_I2C_SCL = 22;
