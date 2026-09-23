@@ -32,9 +32,24 @@ namespace HardwareManager {
     uint16_t scanModbusReg(uint8_t id, uint32_t baud, uint16_t reg, String type, uint8_t length, bool& success);
     String scanModbusRegBatch(uint8_t id, uint32_t baud, uint16_t startReg, uint16_t endReg, String type, uint8_t length);
     
-    // Synchronous Scan ID
-    String runFullScanSync(const std::vector<uint32_t>& bauds);
-    void requestScanCancel();
+    // Async Modbus Scan ID (non-blocking background task)
+    struct ScanState {
+        bool scanning = false;
+        bool cancelRequested = false;
+        String scanId;
+        String resultsJson = "[]";
+        uint32_t startTimeMs = 0;
+        uint8_t currentBaudIndex = 0;
+        uint16_t currentId = 1;
+        std::vector<uint32_t> bauds;
+    };
+
+    extern ScanState scanState;
+
+    bool startScanAsync(const std::vector<uint32_t>& bauds, String& outScanId);
+    void cancelScanAsync();
+    String getScanStatus();
+    void scanTask(void* parameter);
 
     // Dynamic configuration and discovery
     void reloadConfiguration();

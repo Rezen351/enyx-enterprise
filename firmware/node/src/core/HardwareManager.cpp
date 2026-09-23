@@ -17,6 +17,7 @@ namespace HardwareManager {
     ModbusMaster node;
     uint32_t currentBaud = 0;
     volatile bool scanCancelRequested = false;
+    ScanState scanState;
     
     SemaphoreHandle_t modbusMutex;
     SemaphoreHandle_t handlersMutex = NULL;
@@ -690,5 +691,136 @@ namespace HardwareManager {
         }
         resultJson += "]";
         return resultJson;
+    }
+
+    // ==================== ASYNC MODBUS SCAN ====================
+    bool startScanAsync(const std::vector<uint32_t>& bauds, String& outScanId) {
+        if (scanState.scanning) return false;
+        if (bauds.empty()) return false;
+
+        scanState.bauds = bauds;
+        scanState.currentBaudIndex = 0;
+        scanState.currentId = 1;
+        scanState.resultsJson = "[";
+        scanState.cancelRequested = false;
+        scanState.scanning = true;
+        scanState.startTimeMs = millis();
+        scanState.scanId = String(millis(), HEX);
+
+        outScanId = scanState.scanId;
+
+        xTaskCreatePinnedToCore(
+            scanTask,
+            "ModbusScanTask",
+            4096,
+            NULL,
+            2,
+            NULL,
+            1
+        );
+
+        return true;
+    }
+
+    void cancelScanAsync() {
+        scanState.cancelRequested = true;
+    }
+
+    String getScanStatus() {
+        if (!scanState.scanning) {
+            return "{\"scanning\":false}";
+        }
+
+        unsigned long elapsed = millis() - scanState.startTimeMs;
+        String status = "{";
+        status += "\"scanning\":true,";
+        status += "\"scan_id\":\"" + scanState.scanId + "\",";
+        status += "\"elapsed_ms\":" + String(elapsed) + ",";
+        status += "\"current_baud_index\":" + String(scanState.currentBaudIndex) + ",";
+        status += "\"current_id\":" + String(scanState.currentId) + ",";
+        status += "\"results\":" + scanState.resultsJson;
+        if (scanState.cancelRequested) {
+            status += ",\"cancelling\":true";
+        }
+        status += "}";
+        return status;
+    }
+
+    void scanTask(void* parameter) {
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+
+        if (xSemaphoreTake(modbusMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+            scanState.scanning = false;
+            vTaskDelete(NULL);
+        }
+
+        bool firstFound = true;
+        for (size_t bi = 0; bi < scanState.bauds.size(); bi++) {
+            if (scanState.cancelRequested) break;
+
+            uint32_t baud = scanState.bauds[bi];
+            scanState.currentBaudIndex = bi;
+            scanState.currentId = 1;
+
+            Serial2.end();
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            Serial2.begin(baud, Config::parityToSerialConfig(Config::PARITY), Config::PIN_RS485_RX, Config::PIN_RS485_TX);
+            vTaskDelay(300 / portTICK_PERIOD_MS);
+            currentBaud = baud;
+
+            Logger::modbus("ASYNC SCAN: STARTING BAUD %d", baud);
+
+            for (uint16_t id = 1; id <= 247; id++) {
+                if (scanState.cancelRequested) {
+                    Logger::modbus("ASYNC SCAN: CANCELLED");
+                    break;
+                }
+
+                esp_task_wdt_reset();
+                TaskWatchdog::heartbeat("TelemetryTask");
+                scanState.currentId = id;
+
+                bool found = false;
+                for (int attempt = 0; attempt < 2 && !found; attempt++) {
+                    if (attempt > 0) {
+                        vTaskDelay(100 / portTICK_PERIOD_MS);
+                    }
+                    for (uint16_t reg = 0; reg <= 2 && !found; reg++) {
+                        node.begin(id, Serial2);
+                        uint8_t result = node.readHoldingRegisters(reg, 1);
+                        if (result == node.ku8MBSuccess || (result >= node.ku8MBIllegalFunction && result <= node.ku8MBSlaveDeviceFailure)) {
+                            found = true;
+                            break;
+                        }
+                        vTaskDelay(10 / portTICK_PERIOD_MS);
+                    }
+                    if (found) break;
+                    for (uint16_t reg = 0; reg <= 2 && !found; reg++) {
+                        node.begin(id, Serial2);
+                        uint8_t result = node.readInputRegisters(reg, 1);
+                        if (result == node.ku8MBSuccess || (result >= node.ku8MBIllegalFunction && result <= node.ku8MBSlaveDeviceFailure)) {
+                            found = true;
+                            break;
+                        }
+                        vTaskDelay(10 / portTICK_PERIOD_MS);
+                    }
+                }
+
+                if (found) {
+                    if (!firstFound) scanState.resultsJson += ",";
+                    scanState.resultsJson += "{\"id\":" + String(id) + ",\"baud\":" + String(baud) + "}";
+                    firstFound = false;
+                }
+
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+            }
+
+            Logger::modbus("ASYNC SCAN: COMPLETED BAUD %d", baud);
+        }
+
+        scanState.resultsJson += "]";
+        scanState.scanning = false;
+        xSemaphoreGive(modbusMutex);
+        vTaskDelete(NULL);
     }
 }

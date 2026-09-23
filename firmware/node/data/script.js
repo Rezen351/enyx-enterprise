@@ -806,19 +806,28 @@ function addI2CSensor() {
 }
 
 // Scanner logic
+let scanPollTimer = null;
+
 async function startScanId() {
     let baudChecks = document.querySelectorAll('input[id^="scan_baud_"]:checked');
     let bauds = Array.from(baudChecks).map(cb => cb.value);
     let resDiv = document.getElementById('scan_results');
     let scanBtn = document.querySelector('button[onclick="startScanId()"]');
+    let cancelBtn = document.getElementById('btn_cancel_scan');
 
     if (bauds.length === 0) {
-            resDiv.innerHTML = `<div class="text-danger">Please select at least one baudrate.</div>`;
+        resDiv.innerHTML = `<div class="text-danger">Please select at least one baudrate.</div>`;
         return;
     }
 
-    setButtonLoading(scanBtn, true, 'Scan All IDs');
-    resDiv.innerHTML = `<div style="color:var(--primary);">Scanning ID 1-247 on ${bauds.join(', ')} baud... Please wait (this may take a few minutes).</div>`;
+    if (scanPollTimer) {
+        clearInterval(scanPollTimer);
+        scanPollTimer = null;
+    }
+
+    setButtonLoading(scanBtn, true, 'Scanning...');
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    resDiv.innerHTML = `<div style="color:var(--primary);">Starting scan on ${bauds.join(', ')} baud...</div>`;
 
     try {
         let res = await fetch('/api/modbus/start_scan', {
@@ -831,32 +840,73 @@ async function startScanId() {
         });
 
         if (!res.ok) {
-            resDiv.innerHTML = "<div class='text-danger'>Failed to start scan or timeout occurred.</div>";
+            let err = await res.json().catch(() => ({}));
+            resDiv.innerHTML = `<div class='text-danger'>Failed to start scan: ${escapeHtml(err.error || 'Unknown error')}</div>`;
             setButtonLoading(scanBtn, false, 'Scan All IDs');
             return;
         }
 
         let data = await res.json();
-        if (data.status === "completed") {
-            let ids = data.found_ids || [];
-            if (ids.length > 0) {
-                resDiv.innerHTML = `<div class="text-success"><strong>Scan Complete. Found ${ids.length} devices:</strong><br>`;
-                ids.forEach(item => {
-                    resDiv.innerHTML += `✅ Slave ID ${escapeHtml(item.id)} at ${escapeHtml(item.baud)} baud<br>`;
-                });
-                resDiv.innerHTML += "</div>";
-            } else {
-                resDiv.innerHTML = `<div class="text-warning">Scan complete. No devices found.</div>`;
-            }
+        if (data.status !== "started") {
+            resDiv.innerHTML = `<div class='text-danger'>Scan did not start: ${escapeHtml(data.error || 'Unknown')}</div>`;
+            setButtonLoading(scanBtn, false, 'Scan All IDs');
+            return;
         }
+
+        if (cancelBtn) cancelBtn.style.display = 'block';
+        resDiv.innerHTML = `<div style="color:var(--primary);">Scanning ID 1-247 on ${bauds.join(', ')} baud... <span id="scan_elapsed">0s</span></div>`;
+
+        scanPollTimer = setInterval(async () => {
+            try {
+                let statusRes = await fetch('/api/modbus/scan_status', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (!statusRes.ok) return;
+                let status = await statusRes.json();
+
+                let elapsed = status.elapsed_ms ? Math.floor(status.elapsed_ms / 1000) : 0;
+                let elapsedEl = document.getElementById('scan_elapsed');
+                if (elapsedEl) elapsedEl.textContent = elapsed + 's';
+
+                if (status.scanning === false || status.cancelling === true) {
+                    clearInterval(scanPollTimer);
+                    scanPollTimer = null;
+                    if (cancelBtn) cancelBtn.style.display = 'none';
+                    setButtonLoading(scanBtn, false, 'Scan All IDs');
+
+                    let results = [];
+                    try { results = JSON.parse(status.results || "[]"); } catch (e) { results = []; }
+
+                    if (results.length > 0) {
+                        resDiv.innerHTML = `<div class="text-success"><strong>Scan Complete. Found ${results.length} devices:</strong><br>`;
+                        results.forEach(item => {
+                            resDiv.innerHTML += `✅ Slave ID ${escapeHtml(item.id)} at ${escapeHtml(item.baud)} baud<br>`;
+                        });
+                        resDiv.innerHTML += "</div>";
+                    } else if (status.cancelling) {
+                        resDiv.innerHTML = `<div class='text-warning'>Scan cancelled by user.</div>`;
+                    } else {
+                        resDiv.innerHTML = `<div class="text-warning">Scan complete. No devices found.</div>`;
+                    }
+                }
+            } catch (e) {
+                // network error during poll, keep trying
+            }
+        }, 500);
+
     } catch (e) {
-        resDiv.innerHTML = `<div style='color:var(--danger);'>Network error or timeout. Error: ${e.message}</div>`;
-    } finally {
+        resDiv.innerHTML = `<div style='color:var(--danger);'>Network error. Error: ${escapeHtml(e.message)}</div>`;
         setButtonLoading(scanBtn, false, 'Scan All IDs');
+        if (cancelBtn) cancelBtn.style.display = 'none';
     }
 }
 
 async function cancelScanId() {
+    let cancelBtn = document.getElementById('btn_cancel_scan');
+    let scanBtn = document.querySelector('button[onclick="startScanId()"]');
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    if (scanBtn) setButtonLoading(scanBtn, false, 'Scan All IDs');
+
     try {
         let res = await fetch('/api/modbus/cancel_scan', {
             method: 'POST',
@@ -866,13 +916,11 @@ async function cancelScanId() {
             }
         });
 
-        if (res.ok) {
-            document.getElementById('scan_results').innerHTML = "<div class='text-warning'>Scan cancelled by user.</div>";
-        } else {
-            document.getElementById('scan_results').innerHTML = "<div style='color:var(--danger);'>Failed to cancel scan.</div>";
+        if (!res.ok) {
+            document.getElementById('scan_results').innerHTML = "<div style='color:var(--danger);'>Failed to send cancel.</div>";
         }
     } catch (e) {
-        document.getElementById('scan_results').innerHTML = `<div style='color:var(--danger);'>Network error. Error: ${e.message}</div>`;
+        document.getElementById('scan_results').innerHTML = `<div style='color:var(--danger);'>Network error. Error: ${escapeHtml(e.message)}</div>`;
     }
 }
 

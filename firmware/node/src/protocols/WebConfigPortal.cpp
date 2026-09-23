@@ -176,6 +176,7 @@ void WebConfigPortal::startAP() {
     server.on("/api/hardware/discover", HTTP_GET, handleApiHardwareDiscover);
     server.on("/api/modbus/start_scan", HTTP_POST, handleApiModbusStartScan);
     server.on("/api/modbus/cancel_scan", HTTP_POST, handleApiModbusCancelScan);
+    server.on("/api/modbus/scan_status", HTTP_GET, handleApiModbusScanStatus);
     server.on("/api/modbus/scan_reg", HTTP_GET, handleApiModbusScanReg);
     server.on("/api/modbus/scan_reg_batch", HTTP_POST, handleApiModbusScanRegBatch);
     server.on("/api/account", HTTP_POST, handleApiAccountPost);
@@ -659,16 +660,26 @@ void WebConfigPortal::handleApiModbusStartScan() {
         server.send(400, "application/json", "{\"error\":\"Missing baud/bauds\"}");
         return;
     }
-    
-    String jsonResult = HardwareManager::runFullScanSync(bauds);
-    String response = "{\"status\":\"completed\",\"found_ids\":" + jsonResult + "}";
-    return server.send(200, "application/json", response);
+
+    String scanId;
+    if (HardwareManager::startScanAsync(bauds, scanId)) {
+        String response = "{\"status\":\"started\",\"scan_id\":\"" + scanId + "\",\"total_ids\":247,\"bauds\":" + String(bauds.size()) + "}";
+        return server.send(200, "application/json", response);
+    } else {
+        server.send(409, "application/json", "{\"error\":\"Scan already in progress\"}");
+    }
 }
 
 void WebConfigPortal::handleApiModbusCancelScan() {
     if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
-    HardwareManager::requestScanCancel();
-    server.send(200, "application/json", "{\"status\":\"cancelled\"}");
+    HardwareManager::cancelScanAsync();
+    server.send(200, "application/json", "{\"status\":\"cancelling\"}");
+}
+
+void WebConfigPortal::handleApiModbusScanStatus() {
+    if (!checkAuthToken()) return server.send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+    String status = HardwareManager::getScanStatus();
+    return server.send(200, "application/json", status);
 }
 
 void WebConfigPortal::handleApiModbusScanReg() {
