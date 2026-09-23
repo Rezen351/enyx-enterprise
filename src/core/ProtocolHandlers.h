@@ -1,0 +1,183 @@
+#ifndef PROTOCOL_HANDLERS_H
+#define PROTOCOL_HANDLERS_H
+
+#include "ProtocolHandler.h"
+#include <Wire.h>
+#include <Adafruit_INA219.h>
+#include <WiFiClient.h>
+
+// Light weight Bosch BME280 driver
+class LightBME280 {
+public:
+    uint8_t addr;
+    // Calibration parameters
+    uint16_t dig_T1;
+    int16_t  dig_T2;
+    int16_t  dig_T3;
+    uint16_t dig_P1;
+    int16_t  dig_P2;
+    int16_t  dig_P3;
+    int16_t  dig_P4;
+    int16_t  dig_P5;
+    int16_t  dig_P6;
+    int16_t  dig_P7;
+    int16_t  dig_P8;
+    int16_t  dig_P9;
+    uint8_t  dig_H1;
+    int16_t  dig_H2;
+    uint8_t  dig_H3;
+    int16_t  dig_H4;
+    int16_t  dig_H5;
+    int8_t   dig_H6;
+    int32_t  t_fine;
+
+    LightBME280(uint8_t address = 0x76);
+    bool begin();
+    void writeRegister(uint8_t reg, uint8_t val);
+    void readCalibration();
+    void readRegisters(uint8_t reg, uint8_t* buf, uint8_t len);
+    float readTemperature();
+    float getTemperature();
+    float getHumidity();
+};
+
+// GPIO Input Handler
+class GPIOInputHandler : public ProtocolHandler {
+private:
+    uint8_t pin;
+    String type;
+    String pull;
+    String name;
+    bool invert;
+    uint16_t debounce_ms;
+    String interrupt;
+    uint16_t analog_min;
+    uint16_t analog_max;
+public:
+    bool init(const JsonObject& config) override;
+    bool read(JsonObject& telemetry) override;
+    String getProtocolName() override { return "GPIO"; }
+    String getSensorName() override { return name; }
+};
+
+// GpioOutputHandler (Actuator) — output via ProtocolHandler abstraction
+class GpioOutputHandler : public ProtocolHandler {
+private:
+    uint8_t pin;
+    String type;
+    String name;
+public:
+    bool init(const JsonObject& config) override;
+    bool read(JsonObject& telemetry) override;
+    bool write(int value) override;
+    String getProtocolName() override { return "GPIO_OUT"; }
+    String getSensorName()  override { return name; }
+};
+
+// Modbus RTU Handler
+class ModbusHandler : public ProtocolHandler {
+private:
+    String name;
+    uint8_t slave_id;
+    uint32_t baudrate;
+    struct RegisterConfig {
+        uint16_t address;
+        String name;
+        float multiplier;
+        String type;
+        uint8_t length;
+        String data_type;
+    };
+    std::vector<RegisterConfig> registers;
+public:
+    bool init(const JsonObject& config) override;
+    bool read(JsonObject& telemetry) override;
+    String getProtocolName() override { return "MODBUS"; }
+    String getSensorName() override { return name; }
+};
+
+// Modbus TCP Handler
+class ModbusTCPHandler : public ProtocolHandler {
+private:
+    String name;
+    uint8_t slave_id;
+    String ip_address;
+    uint16_t port;
+    struct RegisterConfig {
+        uint16_t address;
+        String name;
+        float multiplier;
+        String type;
+        uint8_t length;
+        String data_type;
+    };
+    std::vector<RegisterConfig> registers;
+    WiFiClient client;
+public:
+    bool init(const JsonObject& config) override;
+    bool read(JsonObject& telemetry) override;
+    String getProtocolName() override { return "MODBUS_TCP"; }
+    String getSensorName() override { return name; }
+};
+
+// I2C Handler (DHT12, BME280)
+class I2CHandler : public ProtocolHandler {
+private:
+    String name;
+    String type;
+    uint8_t address;
+    bool initialized;
+    LightBME280* bme;
+    Adafruit_INA219* ina219;
+public:
+    I2CHandler();
+    ~I2CHandler();
+    bool init(const JsonObject& config) override;
+    bool read(JsonObject& telemetry) override;
+    String getProtocolName() override { return "I2C"; }
+    String getSensorName() override { return name; }
+};
+
+// I2C bus initializer helper
+void initI2C(uint8_t sda, uint8_t scl);
+
+// ==================== PCF8575 I2C Expander Driver ====================
+namespace Pcf8575Bus {
+    bool writePort(uint8_t addr, uint16_t state);
+    uint16_t readPort(uint8_t addr, bool& success);
+    bool setPin(uint8_t addr, uint8_t pin, bool levelHigh);
+    bool readPin(uint8_t addr, uint8_t pin, bool& levelHigh);
+    void markAsInput(uint8_t addr, uint8_t pin);
+    uint16_t getState(uint8_t addr);
+}
+
+// PCF8575 Output Handler (Relay / Actuator)
+class Pcf8575OutputHandler : public ProtocolHandler {
+private:
+    uint8_t pin;
+    uint8_t i2c_addr;
+    bool active_low;
+    String name;
+public:
+    bool init(const JsonObject& config) override;
+    bool read(JsonObject& telemetry) override;
+    bool write(int value) override;
+    String getProtocolName() override { return "PCF8575_OUT"; }
+    String getSensorName()  override { return name; }
+};
+
+// PCF8575 Input Handler (Sensor / Switch / Float)
+class Pcf8575InputHandler : public ProtocolHandler {
+private:
+    uint8_t pin;
+    uint8_t i2c_addr;
+    bool invert;
+    String name;
+public:
+    bool init(const JsonObject& config) override;
+    bool read(JsonObject& telemetry) override;
+    String getProtocolName() override { return "PCF8575_IN"; }
+    String getSensorName()  override { return name; }
+};
+
+#endif // PROTOCOL_HANDLERS_H
