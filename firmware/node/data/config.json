@@ -6,13 +6,13 @@
   },
   "protocols": {
     "wifi": {
-      "ssid": "eduroam",
+      "ssid": "SMARTGRID AP",
       "auto_reconnect": true
     },
     "mqtt": {
       "server": "167.205.44.103",
       "port": 1883,
-      "topic_prefix": "smartfarm",
+      "topic_prefix": "smartgrid",
       "use_tls": false,
       "telemetry_interval_ms": 5000
     }
