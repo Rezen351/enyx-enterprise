@@ -2,6 +2,15 @@
 
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 
+### Auto-Deteksi Pin I2C/RS485 Berdasarkan Board (2026-09-23)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | Menambahkan `applyBoardDefaultPins()` di `ConfigManager::init()` yang mendeteksi chip via `ESP.getChipModel()` dan menerapkan default pin sesuai board sebelum `loadConfig()`. |
+| 2 | ✅ | ESP32-S3 default: I2C=8/9, RS485 RX=16/TX=15/DE=17; ESP32 default tetap I2C=21/22 dan RS485=16/17/DE=255. |
+| 3 | ✅ | Memperbarui validasi I2C di `loadConfig()` agar batas maksimal GPIO menyesuaikan chip (`47` untuk S3, `39` untuk ESP32) dan fallback default ikut board. |
+| 4 | ✅ | Build ESP32-S3 berhasil; commit `6842627` untuk update default pin ESP32-S3. |
+
 ### Backward Compatibility NVS Keys WPA2-Enterprise (2026-09-23)
 
 | # | Status | Aktivitas |
