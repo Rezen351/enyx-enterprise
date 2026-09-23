@@ -27,6 +27,12 @@ bool CredentialManager::loadCredentials() {
     String storedEapId = readString("wifi_eap_identity", "");
     String storedEapUsername = readString("wifi_eap_username", "");
     String storedEapPass = readString("wifi_eap_password", "");
+    if (storedEapId.length() == 0) {
+        storedEapId = readString("wifi_eap_id", "");
+    }
+    if (storedEapPass.length() == 0) {
+        storedEapPass = readString("wifi_eap_pw", "");
+    }
     String storedMqttUser = readString("mqtt_user", "");
     String storedMqttPass = readString("mqtt_pass", "");
 
@@ -108,6 +114,8 @@ bool CredentialManager::hasCredentials() {
            prefs.getString("wifi_eap_identity", "").length() > 0 ||
            prefs.getString("wifi_eap_username", "").length() > 0 ||
            prefs.getString("wifi_eap_password", "").length() > 0 ||
+           prefs.getString("wifi_eap_id", "").length() > 0 ||
+           prefs.getString("wifi_eap_pw", "").length() > 0 ||
            prefs.getString("mqtt_user", "").length() > 0 ||
            prefs.getString("mqtt_pass", "").length() > 0;
 }
@@ -130,6 +138,8 @@ void CredentialManager::clearCredentials() {
     removeKey("wifi_eap_identity");
     removeKey("wifi_eap_username");
     removeKey("wifi_eap_password");
+    removeKey("wifi_eap_id");
+    removeKey("wifi_eap_pw");
     removeKey("mqtt_user");
     removeKey("mqtt_pass");
     prefs.remove("has_creds");
