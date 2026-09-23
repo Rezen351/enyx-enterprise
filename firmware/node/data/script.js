@@ -1,4 +1,15 @@
 let token = localStorage.getItem('token');
+
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 function showFieldError(inputId, message) {
     let input = document.getElementById(inputId);
     if (!input) return;
@@ -259,7 +270,7 @@ function toggleMobileMenu() {
     document.getElementById('sidebar-backdrop').classList.toggle('show');
 }
 
-function switchView(id) {
+function switchView(event, id) {
     document.querySelectorAll('.view-section').forEach(e => e.classList.remove('active'));
     document.querySelectorAll('.menu-item').forEach(e => e.classList.remove('active'));
     document.getElementById('view-' + id).classList.add('active');
@@ -341,7 +352,7 @@ async function loadStatus() {
                     } else if (log.includes("Sub Recv:")) {
                         color = "#3b82f6";
                     }
-                    return `<div class="log-entry" style="color:${color};">${log}</div>`;
+                    return `<div class="log-entry" style="color:${color};">${escapeHtml(log)}</div>`;
                 }).join('');
                 logsContainer.scrollTop = logsContainer.scrollHeight;
             }
@@ -520,7 +531,7 @@ function drawInputs() {
                 </div>
                 <div class="form-field form-field-sm">
                     <label>I2C Address</label>
-                    <input type="text" value="${p.i2c_addr || '0x20'}" placeholder="0x20" onchange="hwInputs[${idx}].i2c_addr=this.value.trim()">
+                    <input type="text" value="${escapeHtml(p.i2c_addr || '0x20')}" placeholder="0x20" onchange="hwInputs[${idx}].i2c_addr=this.value.trim()">
                 </div>
                 ` : `
                 <div class="form-field">
@@ -560,7 +571,7 @@ function drawInputs() {
                 `}
                 <div class="form-field form-field-lg">
                     <label>Name Label</label>
-                    <input type="text" value="${p.name}" placeholder="e.g. Water Sensor" onchange="hwInputs[${idx}].name=this.value">
+                    <input type="text" value="${escapeHtml(p.name)}" placeholder="e.g. Water Sensor" onchange="hwInputs[${idx}].name=this.value">
                 </div>
                 <div class="form-field form-field-sm flex-col justify-end">
                     <label class="mb-8">Invert Logic</label>
@@ -569,22 +580,22 @@ function drawInputs() {
                         <span style="font-size:12px;">LOW = Active</span>
                     </label>
                 </div>
-                <button class="btn-success" style="margin-top:24px; align-self:flex-end;" onclick="editInputIdx=-1; drawInputs();">Done</button>
+                <button type="button" class="btn-success" style="margin-top:24px; align-self:flex-end;" onclick="editInputIdx=-1; drawInputs();">Done</button>
             </div>
             `;
         } else {
             let metaDesc = isPcf
-                ? `PCF8575 (${p.i2c_addr || '0x20'}) Pin P${p.pin}${p.invert ? ' | ⇄ Inverted' : ''}`
+                ? `PCF8575 (${escapeHtml(p.i2c_addr || '0x20')}) Pin P${p.pin}${p.invert ? ' | ⇄ Inverted' : ''}`
                 : `GPIO ${p.pin} | ${p.type} | Pull: ${p.pull} | IRQ: ${p.interrupt || 'NONE'} | Debounce: ${p.debounce_ms || 0}ms${p.invert ? ' | ⇄ Inverted' : ''}`;
             html += `
             <div class="hw-list-item">
                 <div class="hw-info">
-                    <span class="hw-name">${p.name || 'Unnamed Input'}</span>
+                    <span class="hw-name">${escapeHtml(p.name || 'Unnamed Input')}</span>
                     <span class="hw-meta">${metaDesc}</span>
                 </div>
                 <div class="hw-actions">
-                    <button class="outline btn-touch btn-sm" onclick="editInputIdx=${idx}; drawInputs();">Edit</button>
-                    <button class="danger btn-touch btn-sm" onclick="confirmRemove('Remove this input permanently?', () => { hwInputs.splice(${idx}, 1); if(editInputIdx==${idx}) editInputIdx=-1; else if(editInputIdx > ${idx}) editInputIdx--; drawInputs(); })">Remove</button>
+                    <button type="button" class="outline btn-touch btn-sm" onclick="editInputIdx=${idx}; drawInputs();">Edit</button>
+                    <button type="button" class="danger btn-touch btn-sm" onclick="confirmRemove('Remove this input permanently?', () => { hwInputs.splice(${idx}, 1); if(editInputIdx==${idx}) editInputIdx=-1; else if(editInputIdx > ${idx}) editInputIdx--; drawInputs(); })">Remove</button>
                 </div>
             </div>
             `;
@@ -616,7 +627,7 @@ function drawOutputs() {
                 </div>
                 <div class="form-field form-field-sm">
                     <label>I2C Address</label>
-                    <input type="text" value="${p.i2c_addr || '0x20'}" placeholder="0x20" onchange="hwOutputs[${idx}].i2c_addr=this.value.trim()">
+                    <input type="text" value="${escapeHtml(p.i2c_addr || '0x20')}" placeholder="0x20" onchange="hwOutputs[${idx}].i2c_addr=this.value.trim()">
                 </div>
                 <div class="form-field form-field-lg flex-col justify-end">
                     <label class="mb-8">Relay Trigger Mode</label>
@@ -642,24 +653,24 @@ function drawOutputs() {
                 `}
                 <div class="form-field form-field-lg">
                     <label>Name Label</label>
-                    <input type="text" value="${p.name}" placeholder="e.g. Pump Relay" onchange="hwOutputs[${idx}].name=this.value">
+                    <input type="text" value="${escapeHtml(p.name)}" placeholder="e.g. Pump Relay" onchange="hwOutputs[${idx}].name=this.value">
                 </div>
-                <button class="btn-success" style="margin-top:24px; align-self:flex-end;" onclick="editOutputIdx=-1; drawOutputs();">Done</button>
+                <button type="button" class="btn-success" style="margin-top:24px; align-self:flex-end;" onclick="editOutputIdx=-1; drawOutputs();">Done</button>
             </div>
             `;
         } else {
             let metaDesc = isPcf
-                ? `PCF8575 (${p.i2c_addr || '0x20'}) Pin P${p.pin} | Relay ${p.active_low !== false ? 'Active-LOW' : 'Active-HIGH'}`
+                ? `PCF8575 (${escapeHtml(p.i2c_addr || '0x20')}) Pin P${p.pin} | Relay ${p.active_low !== false ? 'Active-LOW' : 'Active-HIGH'}`
                 : `GPIO ${p.pin} | ${p.type}`;
             html += `
             <div class="hw-list-item">
                 <div class="hw-info">
-                    <span class="hw-name">${p.name || 'Unnamed Output'}</span>
+                    <span class="hw-name">${escapeHtml(p.name || 'Unnamed Output')}</span>
                     <span class="hw-meta">${metaDesc}</span>
                 </div>
                 <div class="hw-actions">
-                    <button class="outline btn-touch btn-sm" onclick="editOutputIdx=${idx}; drawOutputs();">Edit</button>
-                    <button class="danger btn-touch btn-sm" onclick="confirmRemove('Remove this output permanently?', () => { hwOutputs.splice(${idx}, 1); if(editOutputIdx==${idx}) editOutputIdx=-1; else if(editOutputIdx > ${idx}) editOutputIdx--; drawOutputs(); })">Remove</button>
+                    <button type="button" class="outline btn-touch btn-sm" onclick="editOutputIdx=${idx}; drawOutputs();">Edit</button>
+                    <button type="button" class="danger btn-touch btn-sm" onclick="confirmRemove('Remove this output permanently?', () => { hwOutputs.splice(${idx}, 1); if(editOutputIdx==${idx}) editOutputIdx=-1; else if(editOutputIdx > ${idx}) editOutputIdx--; drawOutputs(); })">Remove</button>
                 </div>
             </div>
             `;
@@ -687,13 +698,13 @@ function drawModbus() {
             let transport = (m.transport || 'RTU').toUpperCase();
             html += `<div class="hw-row flex-col gap-10">
                 <div class="flex-wrap gap-10">
-                    <div class="form-field form-field-lg"><label>Sensor Name</label><input type="text" value="${m.name}" onchange="hwModbus[${idx}].name=this.value"></div>
+                    <div class="form-field form-field-lg"><label>Sensor Name</label><input type="text" value="${escapeHtml(m.name)}" onchange="hwModbus[${idx}].name=this.value"></div>
                     <div class="form-field"><label>Slave ID</label><input type="number" min="1" max="247" value="${m.slave_id}" onchange="hwModbus[${idx}].slave_id=parseInt(this.value)"></div>
                     <div class="form-field form-field-md"><label>Transport</label><select onchange="hwModbus[${idx}].transport=this.value; drawModbus();"><option value="RTU" ${transport === 'RTU' ? 'selected' : ''}>RTU</option><option value="TCP" ${transport === 'TCP' ? 'selected' : ''}>TCP</option></select></div>
                 </div>
                 <div class="flex-wrap gap-10 mt-10">`;
             if (transport === 'TCP') {
-                html += `<div class="form-field form-field-lg"><label>IP Address</label><input type="text" value="${m.ip_address || ''}" onchange="hwModbus[${idx}].ip_address=this.value" placeholder="192.168.1.100"></div>
+                html += `<div class="form-field form-field-lg"><label>IP Address</label><input type="text" value="${escapeHtml(m.ip_address || '')}" onchange="hwModbus[${idx}].ip_address=this.value" placeholder="192.168.1.100"></div>
                          <div class="form-field"><label>Port</label><input type="number" min="1" max="65535" value="${m.port || 502}" onchange="hwModbus[${idx}].port=parseInt(this.value)"></div>`;
             } else {
                 html += `<div class="form-field form-field-md"><label>Baudrate</label><select onchange="hwModbus[${idx}].baudrate=parseInt(this.value)"><option value="4800" ${m.baudrate == 4800 ? 'selected' : ''}>4800</option><option value="9600" ${m.baudrate == 9600 ? 'selected' : ''}>9600</option><option value="19200" ${m.baudrate == 19200 ? 'selected' : ''}>19200</option></select></div>`;
@@ -706,35 +717,35 @@ function drawModbus() {
                 html += `<div class="register-row">
                     <input type="number" placeholder="Register Address" value="${r.address}" onchange="hwModbus[${idx}].registers[${ridx}].address=parseInt(this.value)" class="form-input-sm">
                     <select onchange="hwModbus[${idx}].registers[${ridx}].type=this.value" class="form-select-sm"><option value="HOLDING" ${r.type === 'HOLDING' ? 'selected' : ''}>HOLDING (03)</option><option value="INPUT" ${r.type === 'INPUT' ? 'selected' : ''}>INPUT (04)</option></select>
-                    <input type="text" placeholder="Register Name" value="${r.name}" onchange="hwModbus[${idx}].registers[${ridx}].name=this.value" class="form-input-sm form-field-lg">
+                    <input type="text" placeholder="Register Name" value="${escapeHtml(r.name)}" onchange="hwModbus[${idx}].registers[${ridx}].name=this.value" class="form-input-sm form-field-lg">
                     <select onchange="hwModbus[${idx}].registers[${ridx}].length=parseInt(this.value)" class="form-select-sm form-field-xs" title="Register Count"><option value="1" ${(r.length || 1) == 1 ? 'selected' : ''}>1 reg</option><option value="2" ${(r.length || 1) == 2 ? 'selected' : ''}>2 reg</option></select>
                     <select onchange="hwModbus[${idx}].registers[${ridx}].data_type=this.value" class="form-select-sm" style="flex:1.5; min-width:90px;" title="Data Type"><option value="UINT16" ${(r.data_type || 'UINT16') === 'UINT16' ? 'selected' : ''}>UINT16</option><option value="INT16" ${(r.data_type || 'UINT16') === 'INT16' ? 'selected' : ''}>INT16</option><option value="FLOAT32" ${(r.data_type || 'UINT16') === 'FLOAT32' ? 'selected' : ''}>FLOAT32</option><option value="INT32" ${(r.data_type || 'UINT32') === 'INT32' ? 'selected' : ''}>INT32</option><option value="UINT32" ${(r.data_type || 'UINT16') === 'UINT32' ? 'selected' : ''}>UINT32</option></select>
                     <input type="number" step="0.01" placeholder="Multiplier" value="${r.multiplier}" onchange="hwModbus[${idx}].registers[${ridx}].multiplier=parseFloat(this.value)" class="form-input-sm form-field-xs">
-                    <button class="danger btn-touch btn-icon" onclick="confirmRemove('Remove this register?', () => { hwModbus[${idx}].registers.splice(${ridx}, 1); drawModbus(); })">X</button>
+                    <button type="button" class="danger btn-touch btn-icon" onclick="confirmRemove('Remove this register?', () => { hwModbus[${idx}].registers.splice(${ridx}, 1); drawModbus(); })">X</button>
                 </div>`;
             });
 
-            html += `<button class="outline btn-touch btn-sm mt-10" onclick="hwModbus[${idx}].registers.push({address:0, type:'HOLDING', name:'register_1', length:1, data_type:'UINT16', multiplier:1.0}); drawModbus();">+ Register</button>
+            html += `<button type="button" class="outline btn-touch btn-sm mt-10" onclick="hwModbus[${idx}].registers.push({address:0, type:'HOLDING', name:'register_1', length:1, data_type:'UINT16', multiplier:1.0}); drawModbus();">+ Register</button>
                 </div>
-                <button class="btn-success mt-10" onclick="editModbusIdx=-1; drawModbus();">Done</button>
+                <button type="button" class="btn-success mt-10" onclick="editModbusIdx=-1; drawModbus();">Done</button>
             </div>`;
         } else {
             let transport = (m.transport || 'RTU').toUpperCase();
             let meta = `ID: ${m.slave_id}`;
             if (transport === 'TCP') {
-                meta += ` | ${m.ip_address || '?'}:${m.port || 502}`;
+                meta += ` | ${escapeHtml(m.ip_address || '?')}:${m.port || 502}`;
             } else {
                 meta += ` | Baud: ${m.baudrate}`;
             }
             meta += ` | Regs: ${m.registers.length}`;
             html += `<div class="hw-list-item">
                 <div class="hw-info">
-                    <span class="hw-name">${m.name || 'Unnamed Sensor'}</span>
+                    <span class="hw-name">${escapeHtml(m.name || 'Unnamed Sensor')}</span>
                     <span class="hw-meta">${meta}</span>
                 </div>
                 <div class="hw-actions">
-                    <button class="outline btn-touch btn-sm" onclick="editModbusIdx=${idx}; drawModbus();">Edit</button>
-                    <button class="danger btn-touch btn-sm" onclick="confirmRemove('Remove this Modbus sensor permanently?', () => { hwModbus.splice(${idx}, 1); if(editModbusIdx==${idx}) editModbusIdx=-1; else if(editModbusIdx > ${idx}) editModbusIdx--; drawModbus(); })">Remove</button>
+                    <button type="button" class="outline btn-touch btn-sm" onclick="editModbusIdx=${idx}; drawModbus();">Edit</button>
+                    <button type="button" class="danger btn-touch btn-sm" onclick="confirmRemove('Remove this Modbus sensor permanently?', () => { hwModbus.splice(${idx}, 1); if(editModbusIdx==${idx}) editModbusIdx=-1; else if(editModbusIdx > ${idx}) editModbusIdx--; drawModbus(); })">Remove</button>
                 </div>
             </div>`;
         }
@@ -756,7 +767,7 @@ function drawI2C() {
             <div class="hw-row flex-wrap gap-8">
                 <div class="form-field">
                     <label>Sensor Name</label>
-                    <input type="text" value="${s.name || ''}" onchange="hwI2C[${idx}].name=this.value">
+                    <input type="text" value="${escapeHtml(s.name || '')}" onchange="hwI2C[${idx}].name=this.value">
                 </div>
                 <div class="form-field">
                     <label>Sensor Type</label>
@@ -768,19 +779,19 @@ function drawI2C() {
                 </div>
                 <div class="form-field form-field-sm">
                     <label>I2C Address</label>
-                    <input type="text" value="${s.address || '0x40'}" onchange="hwI2C[${idx}].address=this.value">
+                    <input type="text" value="${escapeHtml(s.address || '0x40')}" onchange="hwI2C[${idx}].address=this.value">
                 </div>
                 <div class="flex gap-6 mt-10">
-                    <button class="outline btn-touch btn-sm" onclick="editI2CIdx=-1; drawI2C();">Done</button>
+                    <button type="button" class="outline btn-touch btn-sm" onclick="editI2CIdx=-1; drawI2C();">Done</button>
                 </div>
             </div>`;
         } else {
             html += `
             <div class="hw-row flex-wrap gap-8">
-                <span class="hw-name">${s.name || 'Unnamed'} (${s.type || '?'}) @ ${s.address || '?'}</span>
+                <span class="hw-name">${escapeHtml(s.name || 'Unnamed')} (${escapeHtml(s.type || '?')}) @ ${escapeHtml(s.address || '?')}</span>
                 <div class="flex gap-6">
-                    <button class="outline btn-touch btn-sm" onclick="editI2CIdx=${idx}; drawI2C();">Edit</button>
-                    <button class="danger btn-touch btn-sm" onclick="confirmRemove('Remove this I2C sensor permanently?', () => { hwI2C.splice(${idx},1); if(editI2CIdx===${idx}) editI2CIdx=-1; else if(editI2CIdx>${idx}) editI2CIdx--; drawI2C(); })">Remove</button>
+                    <button type="button" class="outline btn-touch btn-sm" onclick="editI2CIdx=${idx}; drawI2C();">Edit</button>
+                    <button type="button" class="danger btn-touch btn-sm" onclick="confirmRemove('Remove this I2C sensor permanently?', () => { hwI2C.splice(${idx},1); if(editI2CIdx===${idx}) editI2CIdx=-1; else if(editI2CIdx>${idx}) editI2CIdx--; drawI2C(); })">Remove</button>
                 </div>
             </div>`;
         }
@@ -831,7 +842,7 @@ async function startScanId() {
             if (ids.length > 0) {
                 resDiv.innerHTML = `<div class="text-success"><strong>Scan Complete. Found ${ids.length} devices:</strong><br>`;
                 ids.forEach(item => {
-                    resDiv.innerHTML += `✅ Slave ID ${item.id} at ${item.baud} baud<br>`;
+                    resDiv.innerHTML += `✅ Slave ID ${escapeHtml(item.id)} at ${escapeHtml(item.baud)} baud<br>`;
                 });
                 resDiv.innerHTML += "</div>";
             } else {
@@ -899,7 +910,7 @@ async function startScanReg() {
             let foundAny = false;
         data.results.forEach(item => {
                     if (item.success) {
-                        resDiv.innerHTML += `<div class="text-success">✅ Reg ${item.reg}: Value = ${item.val}</div>`;
+                        resDiv.innerHTML += `<div class="text-success">✅ Reg ${escapeHtml(item.reg)}: Value = ${escapeHtml(item.val)}</div>`;
                         foundAny = true;
                     }
                 });

@@ -2,6 +2,27 @@
 
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 
+### Frontend XSS Hardening — `firmware/node/data/script.js` & `index.html` (2026-09-22)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | Menambahkan helper `escapeHtml(str)` di `script.js` yang mengonversi `& < > " '` ke HTML entity dan mengembalikan string yang aman. |
+| 2 | ✅ | Memperbaiki XSS di `loadStatus()` — log MQTT yang dirender ke `innerHTML` kini di-wrap dengan `escapeHtml(log)` agar string berbahaya dari backend tidak dieksekksi. |
+| 3 | ✅ | Memperbaiki XSS di `startScanId()` — `item.id` dan `item.baud` dari hasil scan Modbus kini di-escape sebelum di-append ke `innerHTML`. |
+| 4 | ✅ | Memperbaiki XSS di `startScanReg()` — `item.reg` dan `item.val` dari hasil batch scan register kini di-escape sebelum di-append ke `innerHTML`. |
+| 5 | ✅ | Memperbaiki XSS di `drawInputs()` dan `drawOutputs()` — field `p.name`, `p.i2c_addr` di value attribute dan visible text kini di-escape. |
+| 6 | ✅ | Memperbaiki XSS di `drawModbus()` — field `m.name`, `m.ip_address`, `r.name` di value attribute dan visible text kini di-escape. |
+| 7 | ✅ | Memperbaiki XSS di `drawI2C()` — field `s.name`, `s.address`, `s.type` di value attribute dan visible text kini di-escape. |
+| 8 | ✅ | Memperbaiki deprecated global `event` di `switchView()` — signature diubah ke `switchView(event, id)` dan semua inline `onclick="switchView('...')"` di `index.html` diubah ke `onclick="switchView(event, '...')"`. |
+| 9 | ✅ | Mock API bypass (`localhost`/`127.0.0.1`/`file:`), `localStorage` token storage, dan `pwDirty` password-tracking logic dibiarkan tidak diubah sesuai permintaan. |
+
+**Keputusan Teknis:**
+- `escapeHtml()` digunakan untuk semua user-controlled/backend-controlled string yang di-inject ke `innerHTML` atau `value="..."` attribute.
+- Escape diterapkan sebelum string interpolation untuk mencegah quote-breaking dan attribute escape.
+- Inline event handlers tetap dipakai (bukan diganti `addEventListener`) agar konsisten dengan arsitektur firmware yang ada; hanya `switchView` yang diubah untuk menerima `event` eksplisit.
+
+---
+
 ### Perbaikan Persistence Konfigurasi Firmware (2026-09-21)
 
 | # | Status | Aktivitas |
