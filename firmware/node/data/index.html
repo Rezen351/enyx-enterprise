@@ -177,23 +177,12 @@
                         <select id="cfg_wifi_type" onchange="onWifiTypeChange()">
                             <option value="open">Open</option>
                             <option value="wpa_personal" selected>WPA/WPA2 Personal</option>
-                            <option value="wpa_enterprise">WPA2-Enterprise</option>
                         </select>
                     </div>
                     <div class="form-group"><label for="cfg_ssid">SSID</label><input type="text" id="cfg_ssid" required
                             autocomplete="username"></div>
                     <div class="form-group hidden" id="wifi-pass-group"><label for="cfg_pass">Password</label><input
                             type="password" id="cfg_pass" autocomplete="current-password"></div>
-
-                    <div id="wifi-enterprise-section" class="hidden mt-24">
-                        <div class="form-group"><label for="cfg_eap_id">Outer Identity (optional)</label><input type="text"
-                            id="cfg_eap_id" placeholder="e.g. anonymous@university.edu"></div>
-                        <div class="form-group"><label for="cfg_eap_user">Inner Username</label><input type="text"
-                            id="cfg_eap_user" placeholder="e.g. student@university.edu" autocomplete="username"></div>
-                        <div class="form-group"><label for="cfg_eap_pass">Enterprise Password</label><input type="password"
-                                id="cfg_eap_pass">
-                        </div>
-                    </div>
 
                     <button type="submit" class="mt-10">Save & Reboot</button>
                 </form>

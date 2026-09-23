@@ -24,15 +24,6 @@ bool CredentialManager::loadCredentials() {
     String storedPass = readString("admin_pass", "");
     String storedWifiSsid = readString("wifi_ssid", "");
     String storedWifiPass = readString("wifi_pass", "");
-    String storedEapId = readString("wifi_eap_identity", "");
-    String storedEapUsername = readString("wifi_eap_username", "");
-    String storedEapPass = readString("wifi_eap_password", "");
-    if (storedEapId.length() == 0) {
-        storedEapId = readString("wifi_eap_id", "");
-    }
-    if (storedEapPass.length() == 0) {
-        storedEapPass = readString("wifi_eap_pw", "");
-    }
     String storedMqttUser = readString("mqtt_user", "");
     String storedMqttPass = readString("mqtt_pass", "");
 
@@ -47,17 +38,6 @@ bool CredentialManager::loadCredentials() {
     }
     if (storedWifiPass.length() > 0) {
         Config::WIFI_PASS = storedWifiPass;
-    }
-    if (storedEapId.length() > 0) {
-        Config::WIFI_EAP_IDENTITY = storedEapId;
-    }
-    if (storedEapUsername.length() > 0) {
-        Config::WIFI_EAP_USERNAME = storedEapUsername;
-    } else if (storedEapId.length() > 0) {
-        Config::WIFI_EAP_USERNAME = storedEapId;
-    }
-    if (storedEapPass.length() > 0) {
-        Config::WIFI_EAP_PASSWORD = storedEapPass;
     }
     if (storedMqttUser.length() > 0) {
         Config::MQTT_USER = storedMqttUser;
@@ -82,9 +62,6 @@ bool CredentialManager::saveCredentials() {
     writeString("auth_token", Config::AUTH_TOKEN);
     writeString("wifi_ssid", Config::WIFI_SSID);
     writeString("wifi_pass", Config::WIFI_PASS);
-    writeString("wifi_eap_identity", Config::WIFI_EAP_IDENTITY);
-    writeString("wifi_eap_username", Config::WIFI_EAP_USERNAME);
-    writeString("wifi_eap_password", Config::WIFI_EAP_PASSWORD);
     writeString("mqtt_user", Config::MQTT_USER);
     writeString("mqtt_pass", Config::MQTT_PASS);
 
@@ -111,11 +88,6 @@ bool CredentialManager::hasCredentials() {
            prefs.getString("admin_pass", "").length() > 0 ||
            prefs.getString("wifi_ssid", "").length() > 0 ||
            prefs.getString("wifi_pass", "").length() > 0 ||
-           prefs.getString("wifi_eap_identity", "").length() > 0 ||
-           prefs.getString("wifi_eap_username", "").length() > 0 ||
-           prefs.getString("wifi_eap_password", "").length() > 0 ||
-           prefs.getString("wifi_eap_id", "").length() > 0 ||
-           prefs.getString("wifi_eap_pw", "").length() > 0 ||
            prefs.getString("mqtt_user", "").length() > 0 ||
            prefs.getString("mqtt_pass", "").length() > 0;
 }
@@ -135,11 +107,6 @@ void CredentialManager::clearCredentials() {
     removeKey("auth_token");
     removeKey("wifi_ssid");
     removeKey("wifi_pass");
-    removeKey("wifi_eap_identity");
-    removeKey("wifi_eap_username");
-    removeKey("wifi_eap_password");
-    removeKey("wifi_eap_id");
-    removeKey("wifi_eap_pw");
     removeKey("mqtt_user");
     removeKey("mqtt_pass");
     prefs.remove("has_creds");
@@ -165,14 +132,6 @@ String CredentialManager::getWifiSsid() {
 
 String CredentialManager::getWifiPass() {
     return readString("wifi_pass", "");
-}
-
-String CredentialManager::getWifiEapIdentity() {
-    return readString("wifi_eap_identity", "");
-}
-
-String CredentialManager::getWifiEapPassword() {
-    return readString("wifi_eap_password", "");
 }
 
 String CredentialManager::getMqttUser() {
@@ -201,18 +160,6 @@ void CredentialManager::setWifiSsid(const String& value) {
 
 void CredentialManager::setWifiPass(const String& value) {
     writeString("wifi_pass", value);
-}
-
-void CredentialManager::setWifiEapIdentity(const String& value) {
-    writeString("wifi_eap_identity", value);
-}
-
-void CredentialManager::setWifiEapUsername(const String& value) {
-    writeString("wifi_eap_username", value);
-}
-
-void CredentialManager::setWifiEapPassword(const String& value) {
-    writeString("wifi_eap_password", value);
 }
 
 void CredentialManager::setMqttUser(const String& value) {

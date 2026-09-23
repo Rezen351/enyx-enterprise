@@ -2,6 +2,18 @@
 
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 
+### Remove WPA2-Enterprise WiFi Configuration (2026-09-23)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | **Remove enterprise config:** removed all `WIFI_EAP_*` declarations from `Config.h`, `Config.cpp`, and `ConfigManager.cpp`. |
+| 2 | ✅ | **Remove enterprise NVS keys:** removed EAP getters/setters and NVS key persistence from `CredentialManager.cpp` and `CredentialManager.h`. |
+| 3 | ✅ | **Remove enterprise WiFi logic:** removed `applyEnterpriseWifiConfig()` and `clearEnterpriseWifiConfig()` from `NetworkManager.cpp`; WiFi now only supports Open and WPA/WPA2 Personal. |
+| 4 | ✅ | **Remove enterprise API routes:** removed `/api/wifi/eap_method`, `/api/wifi/eap_ca_cert`, and enterprise validation from `WebConfigPortal.cpp` and `WebConfigPortal.h`. |
+| 5 | ✅ | **Remove enterprise UI:** removed Enterprise dropdown option and all EAP fields from `data/index.html` and `data/script.js`. |
+| 6 | ✅ | **Remove SDK config:** deleted `sdkconfig.defaults` WPA2-Enterprise flag. |
+| 7 | ✅ | **Update docs:** updated `firmware.md` to remove WPA2-Enterprise references. |
+
 ### Auto-Deteksi Pin I2C/RS485 Berdasarkan Board (2026-09-23)
 
 | # | Status | Aktivitas |

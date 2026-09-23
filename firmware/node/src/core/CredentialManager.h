@@ -16,8 +16,6 @@ public:
     static String getAuthToken();
     static String getWifiSsid();
     static String getWifiPass();
-    static String getWifiEapIdentity();
-    static String getWifiEapPassword();
     static String getMqttUser();
     static String getMqttPass();
     
@@ -26,9 +24,6 @@ public:
     static void setAuthToken(const String& value);
     static void setWifiSsid(const String& value);
     static void setWifiPass(const String& value);
-    static void setWifiEapIdentity(const String& value);
-    static void setWifiEapUsername(const String& value);
-    static void setWifiEapPassword(const String& value);
     static void setMqttUser(const String& value);
     static void setMqttPass(const String& value);
 

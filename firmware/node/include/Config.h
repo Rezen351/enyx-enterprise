@@ -73,9 +73,6 @@ namespace Config {
     // ==================== KONFIGURASI WIFI ====================
     extern String WIFI_SSID;
     extern String WIFI_PASS;
-    extern String WIFI_EAP_IDENTITY;
-    extern String WIFI_EAP_USERNAME;
-    extern String WIFI_EAP_PASSWORD;
 
     // ==================== KONFIGURASI MQTT + TLS ====================
     extern String MQTT_SERVER;

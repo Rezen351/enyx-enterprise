@@ -45,8 +45,8 @@ let modalResolve = null;
 // Lacak apakah field password benar-benar diubah user.
 // Backend sengaja TIDAK mengembalikan password (security), sehingga field kosong saat refresh.
 // Jika tidak dilacak, menyimpan form akan mengirim password kosong & menimpa password tersimpan.
-let pwDirty = { cfg_pass: false, cfg_eap_pass: false, cfg_mqtt_p: false };
-['cfg_pass', 'cfg_eap_pass', 'cfg_mqtt_p'].forEach(id => {
+let pwDirty = { cfg_pass: false, cfg_mqtt_p: false };
+['cfg_pass', 'cfg_mqtt_p'].forEach(id => {
     let el = document.getElementById(id);
     if (el) el.addEventListener('input', () => { pwDirty[id] = true; });
 });
@@ -128,7 +128,7 @@ async function api(path, method = 'GET', body = null) {
                 device: { node_id: 'node-01' },
                 security: { admin_user: 'admin' },
                 protocols: {
-                    wifi: { ssid: 'MyWiFi', eap_identity: '', eap_username: '' },
+                    wifi: { ssid: 'MyWiFi' },
                     mqtt: { server: 'broker.emqx.io', port: 1883, topic_prefix: 'smartfarm', telemetry_interval_ms: 5000, mqtt_disconnect_emergency_stop: true }
                 },
                 hardware: {
@@ -174,28 +174,12 @@ async function api(path, method = 'GET', body = null) {
 function onWifiTypeChange() {
     let type = document.getElementById('cfg_wifi_type').value;
     let passGroup = document.getElementById('wifi-pass-group');
-    let enterpriseSection = document.getElementById('wifi-enterprise-section');
 
     if (type === 'open') {
         passGroup.style.display = 'none';
-        enterpriseSection.style.display = 'none';
         document.getElementById('cfg_pass').value = '';
-        document.getElementById('cfg_eap_id').value = '';
-        document.getElementById('cfg_eap_user').value = '';
-        document.getElementById('cfg_eap_pass').value = '';
     } else if (type === 'wpa_personal') {
         passGroup.style.display = 'block';
-        enterpriseSection.style.display = 'none';
-        document.getElementById('cfg_eap_id').value = '';
-        document.getElementById('cfg_eap_user').value = '';
-        document.getElementById('cfg_eap_pass').value = '';
-    } else if (type === 'wpa_enterprise') {
-        passGroup.style.display = 'none';
-        enterpriseSection.style.display = 'block';
-        enterpriseSection.style.borderTop = 'none';
-        enterpriseSection.style.paddingTop = '0';
-        document.getElementById('cfg_eap_id').value = '';
-        document.getElementById('cfg_pass').value = '';
     }
 }
 
@@ -390,19 +374,12 @@ async function loadFullConfig() {
         document.getElementById('cfg_admin_u').value = (d.security && d.security.admin_user) || '';
 
         let wifiType = 'wpa_personal';
-        if (wifi.eap_identity && wifi.eap_identity.trim() !== '') {
-            wifiType = 'wpa_enterprise';
-        }
         document.getElementById('cfg_wifi_type').value = wifiType;
         onWifiTypeChange();
 
         document.getElementById('cfg_ssid').value = wifi.ssid || '';
         document.getElementById('cfg_pass').value = '';
         document.getElementById('cfg_pass').placeholder = wifi.password ? PW_PLACEHOLDER : '';
-        document.getElementById('cfg_eap_id').value = wifi.eap_identity || '';
-        document.getElementById('cfg_eap_user').value = wifi.eap_username || wifi.eap_identity || '';
-        document.getElementById('cfg_eap_pass').value = '';
-        document.getElementById('cfg_eap_pass').placeholder = wifi.eap_password ? PW_PLACEHOLDER : '';
         document.getElementById('cfg_mqtt_srv').value = mqtt.server || '';
         document.getElementById('cfg_mqtt_port').value = mqtt.port || '';
         document.getElementById('cfg_mqtt_pre').value = mqtt.topic_prefix || '';
@@ -413,7 +390,6 @@ async function loadFullConfig() {
         document.getElementById('cfg_mqtt_emergency_stop').checked = !!mqtt.mqtt_disconnect_emergency_stop;
 
         pwDirty.cfg_pass = false;
-        pwDirty.cfg_eap_pass = false;
         pwDirty.cfg_mqtt_p = false;
 
         renderGpioRows(d.hardware || { inputs: [], outputs: [] });
@@ -958,17 +934,12 @@ async function saveWifi() {
     let s = document.getElementById('cfg_ssid').value;
     let type = document.getElementById('cfg_wifi_type').value;
     let p = document.getElementById('cfg_pass').value;
-    let ei = document.getElementById('cfg_eap_id').value;
-    let ep = document.getElementById('cfg_eap_pass').value;
 
     let body = `ssid=${encodeURIComponent(s)}`;
     if (type === 'open') {
-        body += `&pass=&eap_identity=&eap_username=&eap_password=`;
+        body += `&pass=`;
     } else if (type === 'wpa_personal') {
-        body += `&pass=${encodeURIComponent(p)}&eap_identity=&eap_username=&eap_password=`;
-    } else if (type === 'wpa_enterprise') {
-        let eu = document.getElementById('cfg_eap_user').value;
-        body += `&pass=&eap_identity=${encodeURIComponent(ei)}&eap_username=${encodeURIComponent(eu)}&eap_password=${encodeURIComponent(ep)}`;
+        body += `&pass=${encodeURIComponent(p)}`;
     }
 
     let d = await api('/api/wifi', 'POST', body);

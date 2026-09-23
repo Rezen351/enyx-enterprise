@@ -38,7 +38,6 @@ IoT Node firmware untuk perangkat edge yang mengakuisisi data sensor dan mengont
 
 - Mode: Station + SoftAP (Captive Portal)
 - SSID dan password disimpan di NVS namespace `creds`
-- Mendukung WPA2-Enterprise (SSID, Identity, Password) — disimpan di NVS
 - Auto reconnect
 - Hotspot tidak dimatikan saat terhubung ke WiFi
 
@@ -246,7 +245,7 @@ Web UI diakses melalui Captive Portal atau IP lokal. Semua teks antarmuka dalam 
 |---------|--------|
 | STATUS | Dashboard: status WiFi, MQTT, IP, RSSI, uptime, heap, live MQTT logs, informasi topic, discovery signal |
 | DEVICE | Node ID, backup/restore config |
-| WIFI | SSID, password, WPA2-Enterprise |
+| WIFI | SSID, password |
 | MQTT | Broker, port, prefix, auth, interval, TLS, emergency stop toggle |
 | GPIO | Konfigurasi input/output pin |
 | RS485 | Konfigurasi Modbus, scanner tool |
@@ -259,9 +258,9 @@ Web UI diakses melalui Captive Portal atau IP lokal. Semua teks antarmuka dalam 
 ## 9. Security
 
 - **Admin Auth**: Token-based Bearer authentication
-- **Credential Storage**: 9 field kredensial disimpan di NVS namespace `creds`:
+- **Credential Storage**: 8 field kredensial disimpan di NVS namespace `creds`:
   - `admin_user`, `admin_pass`, `auth_token`
-  - `wifi_ssid`, `wifi_pass`, `wifi_eap_identity`, `wifi_eap_password`
+  - `wifi_ssid`, `wifi_pass`
   - `mqtt_user`, `mqtt_pass`
 - **Config Export**: Hanya menyertakan konfigurasi non-kredensial; semua field credential dikecualikan dari file yang diunduh
 - **Config Import**: Validasi dan import via web UI; kredensial dimigrasikan ke NVS secara otomatis

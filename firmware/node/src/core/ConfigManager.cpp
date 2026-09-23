@@ -162,24 +162,10 @@ bool ConfigManager::loadConfig() {
             Config::WIFI_SSID = wifi["ssid"].as<String>();
             Config::WIFI_SSID.trim();
         }
-        if (wifi.containsKey("eap_identity")) {
-            Config::WIFI_EAP_IDENTITY = wifi["eap_identity"].as<String>();
-            Config::WIFI_EAP_IDENTITY.trim();
-        }
-        if (wifi.containsKey("eap_username")) {
-            Config::WIFI_EAP_USERNAME = wifi["eap_username"].as<String>();
-            Config::WIFI_EAP_USERNAME.trim();
-        } else {
-            Config::WIFI_EAP_USERNAME = Config::WIFI_EAP_IDENTITY;
-        }
         if (!useNvsCredentials) {
             if (wifi.containsKey("password")) {
                 Config::WIFI_PASS = wifi["password"].as<String>();
                 Config::WIFI_PASS.trim();
-            }
-            if (wifi.containsKey("eap_password")) {
-                Config::WIFI_EAP_PASSWORD = wifi["eap_password"].as<String>();
-                Config::WIFI_EAP_PASSWORD.trim();
             }
         }
     }
