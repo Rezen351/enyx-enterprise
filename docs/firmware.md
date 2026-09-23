@@ -43,9 +43,9 @@ graph TB
 | `WiFiTask` | [`NetworkManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/protocols/NetworkManager.cpp) | 0 | **2** | 8 KB | Manage koneksi WiFi (reconnect otomatis) + serve Captive Portal |
 | `MqttTask` | [`MqttManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/protocols/MqttManager.cpp) | **1** | **2** | 6 KB | Connect/reconnect broker MQTT; loop callback; serialize all MQTT publish operations |
 | `ControlTask` | [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/HardwareManager.cpp) | **1** | **3** | 4 KB | Consume bounded actuator commands, write outputs, emergency stop, queue ACK |
-| `SysMonitorTask` | [`SystemMonitor.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/SystemMonitor.cpp) | 0 | 1 | 4 KB | Pantau free heap; restart ESP32 jika < 10 KB |
+| `SysMonitorTask` | [`SystemMonitor.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/SystemMonitor.cpp) | 0 | 1 | 4 KB | Pantau free heap; restart ESP32 jika < 10000 bytes (~9.76 KB) |
 | `TelemetryTask` | [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/HardwareManager.cpp) | **1** | 1 | 8 KB | Baca sensor via `activeHandlers[]`; queue JSON telemetry |
-| `ModbusScanTask` | [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/HardwareManager.cpp) | **1** | 2 | 4 KB | Background async Modbus ID scan (dibuat/dihapus per request scan) |
+| `ModbusScanTask` | [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/HardwareManager.cpp) | **1** | 2 | 4 KB | Background async Modbus ID scan (dibuat/dihapus per request scan); `vTaskDelete(NULL)` saat selesai; feeds `TaskWatchdog::heartbeat("TelemetryTask")` |
 
 ### Mekanisme Sinkronisasi Antar-Task
 
@@ -323,11 +323,21 @@ bool ModbusTCPHandler::read(JsonObject& telemetry) {
 
 ```cpp
 void WebConfigPortal::startAP() {
+    Logger::portal("Starting Captive Portal Access Point...");
     WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
     String apName = "ENYX-ENTERPRISE-" + Config::NODE_ID;
     WiFi.softAP(apName.c_str());
     dnsServer.start(DNS_PORT, "*", apIP);
-    server.on("/",                         HTTP_GET,  handleRoot);
+
+    const char * headerKeys[] = {"Authorization"};
+    server.collectHeaders(headerKeys, 1);
+
+    server.on("/", HTTP_GET, handleRoot);
+    server.serveStatic("/style.css", LittleFS, "/style.css");
+    server.serveStatic("/script.js", LittleFS, "/script.js");
+    server.serveStatic("/logo.svg", LittleFS, "/logo.svg");
+    server.serveStatic("/favicon.svg", LittleFS, "/favicon.svg");
+
     server.on("/api/login",                HTTP_POST, handleApiLogin);
     server.on("/api/fullconfig",           HTTP_GET,  handleApiFullConfigGet);
     server.on("/api/wifi",                 HTTP_POST, handleApiWifiPost);
@@ -347,8 +357,16 @@ void WebConfigPortal::startAP() {
     server.on("/api/config/export",        HTTP_GET,  handleApiConfigExport);
     server.on("/api/config/import",        HTTP_POST, handleApiConfigImport);
     server.on("/api/telemetry/latest",     HTTP_GET,  handleApiTelemetryLatest);
-    server.on("/api/root/health",          HTTP_GET,  handleHealth);
+
+    server.on("/api/root/health", HTTP_GET, []() {
+        server.send(200, "application/json", "{\"status\":\"alive\",\"uptime_s\":" + String(millis()/1000) + "}");
+    });
+
+    server.onNotFound(handleNotFound);
+
     server.begin();
+    portalActive = true;
+    Logger::portal("Captive Portal Started at %s. SSID: 'ENYX-ENTERPRISE-%s'", apIP.toString().c_str(), Config::NODE_ID.c_str());
 }
 ```
 
@@ -361,26 +379,27 @@ void WebConfigPortal::startAP() {
 | `/script.js` | GET | Static JS |
 | `/logo.svg` | GET | Static logo |
 | `/favicon.svg` | GET | Static favicon |
-| `/api/login` | POST | Login admin → generate Bearer token |
-| `/api/fullconfig` | GET | Ambil seluruh konfigurasi saat ini (JSON) |
-| `/api/wifi` | POST | Simpan SSID + password WiFi |
-| `/api/mqtt` | POST | Simpan server, port, credentials MQTT |
-| `/api/device` | POST | Ubah NODE_ID, fw_version |
-| `/api/hardware` | POST | **Daftarkan sensor/aktuator baru** (inputs/outputs/modbus/sensors) |
+| `/api/login` | POST | Login admin → generate Bearer token (rate-limited: 5 percobaan per IP, blokir 30 detik) |
+| `/api/fullconfig` | GET | Ambil seluruh konfigurasi saat ini (JSON; kredensial sensitif disaring) |
+| `/api/wifi` | POST | Simpan SSID + password WiFi; kredensial disimpan di NVS; reboot diperlukan |
+| `/api/mqtt` | POST | Simpan server, port, credentials MQTT; kredensial disimpan di NVS; reboot diperlukan |
+| `/api/device` | POST | Ubah NODE_ID, fw_version, dan pin RS485/I2C; reboot diperlukan |
+| `/api/hardware` | POST | **Daftarkan sensor/aktuator baru** (inputs/outputs/modbus/sensors); config di-hot-swap tanpa reboot |
 | `/api/hardware/discover` | GET | I2C scan → deteksi perangkat yang terhubung |
-| `/api/modbus/start_scan` | POST | Scan Modbus slave ID 1–247 |
+| `/api/modbus/start_scan` | POST | Scan Modbus slave ID 1–247; parameter `baud` (single) atau `bauds` (comma-separated) |
 | `/api/modbus/cancel_scan` | POST | Cancel ongoing Modbus scan |
 | `/api/modbus/scan_status` | GET | Ambil status scan Modbus yang sedang berjalan |
 | `/api/modbus/scan_reg` | GET | Baca satu register Modbus |
 | `/api/modbus/scan_reg_batch` | POST | Baca batch register Modbus |
-| `/api/account` | POST | Ganti admin username/password |
+| `/api/account` | POST | Ganti admin username/password; AUTH_TOKEN di-reset untuk memaksa login ulang; reboot diperlukan |
 | `/api/status` | GET | Status WiFi, MQTT, heap, uptime |
 | `/api/ota` | POST | Upload firmware baru (OTA) |
 | `/api/publish_discovery` | POST | Paksa kirim discovery ke MQTT broker |
-| `/api/config/export` | GET | Download config.json |
-| `/api/config/import` | POST | Upload config.json |
-| `/api/telemetry/latest` | GET | Baca telemetry terakhir tanpa MQTT |
+| `/api/config/export` | GET | Download config.json (kredensial tidak disertakan; header Content-Disposition untuk download) |
+| `/api/config/import` | POST | Upload config.json (kredensial diekstrak ke NVS, tidak disimpan di LittleFS; mendukung body JSON raw atau form `payload`) |
+| `/api/telemetry/latest` | GET | Baca telemetry terakhir tanpa MQTT (mengembalikan salinan JSON terbaru yang di-protect oleh `telemetryMutex`) |
 | `/api/root/health` | GET | Health check (liveness probe) |
+| *(catch-all)* | GET | Redirect ke portal AP (`192.133.22.6`) |
 
 ### Cara Portal Menyimpan Sensor Baru
 
@@ -419,36 +438,80 @@ Sensor (input) dan aktuator (output) **bukan sistem terpisah**. Keduanya:
 | Discovery | `<prefix>/discovery` | Node → Broker | Auto-discovery signal (dikirim setiap 60 detik dan setelah koneksi broker) |
 | Status | `<prefix>/status/<node_id>` | Node → Broker | LWT online/offline |
 
-### 3.x.4.2 Overall Diagram
+### 3.x.4.2.1 Struktur JSON Telemetri
 
-```mermaid
-flowchart TD
-    CFG["config.json"]
-    CFG --> CM["ConfigManager::loadConfig()"]
-    CM --> HM["HardwareManager::reloadConfiguration()"]
-    HM --> PR["ProtocolRegistry::createHandler()"]
-    PR --> VEC["activeHandlers\n(vector)"]
-    PR --> MAP["activeOutputHandlers\n(map name → handler)"]
-    VEC --> TT["TelemetryTask\nCore 1"]
-    TT -->|"handler->read()"| SENSOR["Sensor Fisik"]
-    TT -->|"publish"| BROKER["MQTT Broker"]
-    BROKER -->|"subscribe"| CB["MqttCallback\nMqttTask context"]
-    CB --> CQ["bounded control queue"]
-    CQ --> SO["ControlTask\nPriority 3\nsetOutput(name, value)"]
-    SO --> MAP
-    MAP -->|"handler->write()"| ACT["Aktuator Fisik"]
+Telemetry JSON yang dipublish ke `<prefix>/<node_id>/telemetry` memiliki struktur:
+
+```json
+{
+  "node_id": "<node_id>",
+  "fw_version": "<fw_version>",
+  "network": {
+    "ssid": "<wifi_ssid>",
+    "ip_address": "<ip>",
+    "wifi_rssi": -65
+  },
+  "device_info": {
+    "uptime_s": 12345,
+    "cpu_freq_mhz": 240,
+    "free_heap_kb": 120,
+    "flash_size_mb": 4
+  },
+  "connection_stats": {
+    "mqtt_connected": true,
+    "mqtt_broker": "167.205.44.103"
+  },
+  "telemetry": {
+    "outputs": {
+      "misting_pump": 1,
+      "cooling_fan": 128
+    },
+    "inputs": {
+      "soil_moisture": 2048
+    },
+    "modbus": {
+      "ec_ph_sensor": {
+        "ec_value": 1.23,
+        "ph_value": 6.50
+      }
+    },
+    "i2c": {
+      "bme280_atas": {
+        "temperature": 26.5,
+        "humidity": 78.0
+      }
+    }
+  }
+}
 ```
+
+### 3.x.4.2.2 `latestSensorValues` Key Naming
+
+`HardwareManager::latestSensorValues` (`std::map<String, float>`) menyimpan nilai sensor terakhir dengan pola kunci:
+
+| Handler | Key Pattern | Contoh |
+|---------|-------------|--------|
+| `GPIOInputHandler` | `<name>` | `soil_moisture` |
+| `ModbusHandler` / `ModbusTCPHandler` | `<name>_<reg.name>` dan `<reg.name>` | `ec_ph_sensor_ec_value`, `ec_value` |
+| `I2CHandler` (INA219) | `<name>_bus_voltage`, `<name>_current`, `<name>_power`, `<name>` | `power_monitor_current` |
+| `I2CHandler` (BME280) | `<name>_temp`, `<name>_humidity`, `<name>` | `bme280_atas_temp` |
+| `I2CHandler` (DHT12) | `<name>_temp`, `<name>_humidity`, `<name>` | `dht12_akar_temp` |
+| `Pcf8575InputHandler` | `<name>` | `float_switch` |
 
 ### 3.x.4.3 Aktuator: `activeOutputHandlers` Map & MQTT → `write()`
 
 Aktuator menggunakan **map** karena `setOutput()` menerima `targetName` (string) dan perlu **lookup by name** secara langsung.
 
 Alur eksekusi aktuator:
-1. `MqttManager` subscribe `smartfarm/actuator/<node_id>`
+1. `MqttManager` subscribe `<prefix>/actuator/<node_id>`
 2. `mqttCallback` memvalidasi dan memasukkan `{action, target, value, req_id}` ke bounded queue
 3. `ControlTask` priority 3 memanggil `setOutput(target, value)` → `activeOutputHandlers.find(target)->write(value)`
 4. `outputStates[target] = value` + `xTaskNotifyGive(telemetryTaskHandle)`
 5. `ControlTask` memasukkan ACK hasil aktual ke publish queue; hanya `MqttTask` menyentuh `PubSubClient`
+
+#### Emergency Stop pada MQTT Disconnect
+
+Saat `MqttManager::mqttTask()` mendeteksi koneksi MQTT terputus (`!mqttClient->connected()`) dan `Config::MQTT_DISCONNECT_EMERGENCY_STOP == true`, fungsi `HardwareManager::triggerMqttDisconnectEmergencyStop()` dipanggil. Fungsi ini memasukkan perintah emergency stop ke `controlQueue`, yang kemudian diterima oleh `ControlTask` untuk mematikan semua aktuator.
 
 **`setOutput()` implementation** — [`HardwareManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/HardwareManager.cpp):
 ```cpp
@@ -483,7 +546,7 @@ bool ModbusTCPHandler::read(JsonObject& telemetry) {
     return true;
 }
 ```
-> **Catatan:** `baudrate` diabainkan untuk `transport: "TCP"`. Diperlukan `ip_address` dan `port` (default 502).
+> **Catatan:** `baudrate` diabaikan untuk `transport: "TCP"`. Diperlukan `ip_address` dan `port` (default 502).
 
 ---
 
@@ -596,7 +659,7 @@ Fungsi: Menyimpan seluruh konfigurasi non-sensitif. File ini **bisa diekspor/dii
 | `protocols.wifi.ent_client_key` | string | Tidak | Client key WiFi Enterprise — hanya dibaca saat migrasi awal; disimpan di NVS setelahnya |
 | `protocols.mqtt.server` | string | Ya | Hostname/IP broker MQTT |
 | `protocols.mqtt.port` | int | Ya | Port broker MQTT (default: 1883) |
-| `protocols.mqtt.topic_prefix` | string | Tidak | Prefix topik MQTT (default: "smartfarm") |
+| `protocols.mqtt.topic_prefix` | string | Tidak | Prefix topik MQTT (default: "smartgrid") |
 | `protocols.mqtt.use_tls` | bool | Tidak | Enable TLS untuk MQTT (default: false) |
 | `protocols.mqtt.telemetry_interval_ms` | uint32 | Tidak | Interval publish telemetry dalam ms (default: 5000) |
 | `protocols.mqtt.mqtt_disconnect_emergency_stop` | bool | Tidak | Emergency stop saat MQTT disconnect (default: true) |
@@ -673,7 +736,7 @@ Fungsi: Menyimpan seluruh konfigurasi non-sensitif. File ini **bisa diekspor/dii
 
 1. Saat boot (`ConfigManager::init()`), jika NVS namespace `creds` **tidak memiliki** `has_creds = true`:
    - Baca `security.*` dan `protocols.wifi.password`, `protocols.wifi.ent_*`, `protocols.mqtt.user/pass` dari `config.json`
-   - Simpan ke NVS namespace `creds` via `CredentialManager::saveCredentials()`
+   - Simpan ke NVS namespace `creds` via `CredentialManager::saveCredentials()` dengan key NVS: `ent_enabled`, `ent_user`, `ent_pass`, `ent_ca`, `ent_cert`, `ent_key`
    - Set `has_creds = true`
 2. Setelah migrasi, config.json **tetap menyimpan** nilai non-sensitif (`ssid`, `ent_enabled`, dll) untuk fallback, tetapi password sensitif **tidak ditulis kembali** ke config.json.
 3. Saat import config.json via `/api/config/import`, kredensial yang ada di payload **disaring** dan dimigrasikan ke NVS, bukan disimpan ke LittleFS.
@@ -686,6 +749,33 @@ Key berikut adalah **kontrak stabil** dan tidak boleh diubah nama, tipe, atau se
 **NVS keys:** `admin_user`, `admin_pass`, `auth_token`, `wifi_ssid`, `wifi_pass`, `ent_enabled`, `ent_user`, `ent_pass`, `ent_ca`, `ent_cert`, `ent_key`, `mqtt_user`, `mqtt_pass`, `has_creds`
 
 **config.json keys:** `device.node_id`, `device.fw_version`, `protocols.wifi.*`, `protocols.mqtt.*`, `hardware.inputs`, `hardware.outputs`, `hardware.modbus`, `hardware.sensors`, `hardware.rs485_rx`, `hardware.rs485_tx`, `hardware.rs485_de`, `hardware.rs485_parity`, `hardware.i2c_sda_pin`, `hardware.i2c_scl_pin`
+
+### 3.x.5.6 Variabel Konfigurasi Tambahan
+
+| Variabel | Tipe | Deskripsi |
+|----------|------|-----------|
+| `PIN_LED_INDICATOR` | `uint8` | Pin GPIO untuk LED indikator koneksi MQTT (default: 2 = built-in LED; 255 = disabled) |
+| `MQTT_CA_CERT` | `String` | CA certificate untuk TLS MQTT client |
+| `MQTT_CLIENT_CERT` | `String` | Client certificate untuk TLS MQTT client |
+| `MQTT_CLIENT_KEY` | `String` | Client private key untuk TLS MQTT client |
+
+### 3.x.5.7 WiFi Task Reconnect Behavior
+
+`NetworkManager::wifiTask()` mengatur:
+- `WiFi.mode(WIFI_AP_STA)` — AP dan Station berjalan bersamaan
+- `WiFi.setAutoReconnect(true)` dan `WiFi.persistent(true)`
+- Timeout reconnect: **30 detik** untuk WPA/WPA2 Personal, **60 detik** untuk WPA2 Enterprise
+- Jeda 100ms setelah `WiFi.disconnect()` sebelum reconnect
+- Membuat `ArduinoOTA` dengan password `enyx-ota` setelah koneksi WiFi berhasil
+
+### 3.x.5.8 Detail Payload MQTT
+
+| Topic | Payload |
+|-------|---------|
+| `<prefix>/status/<node_id>` (LWT offline) | `{"status":"offline","mac":"AA:BB:CC:DD:EE:FF"}` |
+| `<prefix>/status/<node_id>` (online) | `{"status":"online","mac":"AA:BB:CC:DD:EE:FF","ip":"192.168.1.100","fw":"1.0.0"}` |
+| `<prefix>/discovery` | `{"node_id":"...","mac":"...","ip":"...","fw_version":"...","status":"online"}` (dikirim saat connect dan setiap 60 detik) |
+| `<prefix>/<node_id>/confirm` | `{"req_id":"...","target":"...","value":1,"status":"executed","error":"output_not_found"}` (opsional `error`) |
 
 ---
 
