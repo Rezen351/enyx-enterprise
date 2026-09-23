@@ -380,12 +380,18 @@ button.btn-success:hover { background: var(--surface); color: #10b981; }
     overflow-y: auto; line-height: 1.6; border: 1px solid #374151; 
 }
 .register-row {
-    display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; 
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 8px; 
     background: #fff; padding: 6px; border-radius: 4px; 
-    border: 1px solid #ddd; align-items: center;
+    border: 1px solid #ddd; align-items: end;
 }
-.form-field-sm { flex: 1; min-width: 60px; font-size: 12px; padding: 6px; margin: 0; }
-.form-select-sm { flex: 1.5; min-width: 85px; font-size: 12px; padding: 6px; margin: 0; }
+.register-row .form-input-sm,
+.register-row .form-select-sm {
+    width: 100%;
+}
+.register-row .btn-icon {
+    grid-column: 1 / -1;
+    justify-self: end;
+}
 
 .flex-col { flex-direction: column; }
 .justify-end { justify-content: flex-end; }
@@ -542,6 +548,23 @@ input:valid:not(:placeholder-shown) { border-color: #10b981; }
     .sidebar-bottom { padding-top: 8px; }
     .main-content { padding: 32px 24px; }
     .view-section { max-width: 100%; }
+}
+
+@media (min-width: 769px) {
+    .register-row {
+        grid-template-columns: repeat(6, auto);
+        align-items: center;
+    }
+    .register-row > div {
+        grid-column: auto;
+    }
+    .register-row > div[style*="grid-column: 1 / -1"] {
+        grid-column: 1 / -1;
+    }
+    .register-row .btn-icon {
+        grid-column: auto;
+        justify-self: center;
+    }
 }
 
 @media (max-width: 768px) {
