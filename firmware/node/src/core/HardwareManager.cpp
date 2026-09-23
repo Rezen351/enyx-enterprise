@@ -205,6 +205,9 @@ namespace HardwareManager {
         JsonArray i2cDevices = ddoc.createNestedArray("i2c");
         
         for (uint8_t address = 1; address < 127; address++) {
+            if (address % 10 == 0) {
+                TaskWatchdog::heartbeat("discoverSensors");
+            }
             Wire.beginTransmission(address);
             byte error = Wire.endTransmission();
             

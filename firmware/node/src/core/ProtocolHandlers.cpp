@@ -14,7 +14,7 @@ static bool isValidGpioPin(uint8_t pin) {
 }
 
 void initI2C(uint8_t sda, uint8_t scl) {
-    if (!isValidGpioPin(sda) || !isValidGpioPin(scl)) {
+    if (!isValidGpioPin(sda) || !isValidGpioPin(scl) || sda == scl) {
         Logger::hardware("Invalid I2C pins: SDA=%d, SCL=%d. Using defaults 21/22.", sda, scl);
         sda = 21;
         scl = 22;
@@ -22,6 +22,7 @@ void initI2C(uint8_t sda, uint8_t scl) {
     if (!wireInitialized || activeSda != sda || activeScl != scl) {
         Wire.end();
         Wire.begin(sda, scl);
+        Wire.setTimeOut(5000);
         wireInitialized = true;
         activeSda = sda;
         activeScl = scl;

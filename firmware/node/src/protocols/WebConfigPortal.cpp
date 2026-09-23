@@ -606,6 +606,10 @@ void WebConfigPortal::handleApiHardwarePost() {
              if (pdoc.containsKey("i2c_scl_pin")) {
                  Config::PIN_I2C_SCL = pdoc["i2c_scl_pin"].as<uint8_t>();
              }
+             if (Config::PIN_I2C_SDA == Config::PIN_I2C_SCL) {
+                 server.send(400, "application/json", "{\"error\":\"Invalid I2C pins: SDA and SCL must be different.\"}");
+                 return;
+             }
              if (Config::PIN_I2C_SDA > 39 || Config::PIN_I2C_SCL > 39) {
                  server.send(400, "application/json", "{\"error\":\"Invalid I2C pins. SDA and SCL must be GPIO 0-39.\"}");
                  return;
