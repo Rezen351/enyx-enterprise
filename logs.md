@@ -2,6 +2,14 @@
 
 > **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
 
+### Backward Compatibility NVS Keys WPA2-Enterprise (2026-09-23)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | Menambahkan fallback NVS keys legacy `wifi_eap_id` dan `wifi_eap_pw` di `CredentialManager::loadCredentials()` untuk perangkat yang pernah flashed dengan versi sebelumnya. |
+| 2 | ✅ | Memperbarui `hasCredentials()` dan `clearCredentials()` agar juga memeriksa/menghapus key legacy. |
+| 3 | ✅ | Build ESP32-S3 berhasil; commit dua perubahan: `5821b1a` untuk backward compatibility NVS dan `0dbc6a7` untuk menonaktifkan default OTA di `platformio.ini`. |
+
 ### Perbaikan Persistence Konfigurasi Firmware (2026-09-21)
 
 | # | Status | Aktivitas |
