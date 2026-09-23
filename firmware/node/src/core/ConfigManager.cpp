@@ -8,6 +8,27 @@
 #include "CredentialManager.h"
 #include "MemoryHelper.h"
 
+static void applyBoardDefaultPins() {
+    String chip = ESP.getChipModel();
+    Logger::config("Detected chip: %s", chip.c_str());
+
+    if (chip.indexOf("ESP32-S3") >= 0) {
+        Config::PIN_I2C_SDA = 40;
+        Config::PIN_I2C_SCL = 41;
+        Config::PIN_RS485_RX = 17;
+        Config::PIN_RS485_TX = 18;
+        Config::PIN_RS485_DE = 15;
+        Logger::config("Applied ESP32-S3 default pins: I2C=40/41, RS485=17/18/DE=15");
+    } else {
+        Config::PIN_I2C_SDA = 21;
+        Config::PIN_I2C_SCL = 22;
+        Config::PIN_RS485_RX = 16;
+        Config::PIN_RS485_TX = 17;
+        Config::PIN_RS485_DE = 255;
+        Logger::config("Applied ESP32 default pins: I2C=21/22, RS485=16/17/DE=not set");
+    }
+}
+
 void ConfigManager::init() {
     Logger::config("Mounting LittleFS...");
 
@@ -36,8 +57,9 @@ void ConfigManager::init() {
                    MemoryHelper::getFreePsram() / 1024);
 
     CredentialManager::init();
+    applyBoardDefaultPins();
     if (!loadConfig()) {
-        Logger::config("Failed to load config.json. Using default compiled configs.");
+        Logger::config("Failed to load config.json. Using board-specific defaults.");
     }
     if (CredentialManager::hasCredentials()) {
         Logger::config("Found credentials in NVS. Overriding credentials from NVS...");
@@ -338,10 +360,17 @@ bool ConfigManager::loadConfig() {
         Config::PIN_I2C_SCL = doc["hardware"]["i2c_scl_pin"].as<uint8_t>();
     }
 
-    if (Config::PIN_I2C_SDA > 39 || Config::PIN_I2C_SCL > 39) {
-        Logger::config("Invalid I2C pins detected in config, resetting to defaults 21/22");
-        Config::PIN_I2C_SDA = 21;
-        Config::PIN_I2C_SCL = 22;
+    String chip = ESP.getChipModel();
+    uint8_t maxGpio = chip.indexOf("ESP32-S3") >= 0 ? 47 : 39;
+    if (Config::PIN_I2C_SDA > maxGpio || Config::PIN_I2C_SCL > maxGpio) {
+        Logger::config("Invalid I2C pins detected in config for %s, resetting to defaults", chip.c_str());
+        if (chip.indexOf("ESP32-S3") >= 0) {
+            Config::PIN_I2C_SDA = 40;
+            Config::PIN_I2C_SCL = 41;
+        } else {
+            Config::PIN_I2C_SDA = 21;
+            Config::PIN_I2C_SCL = 22;
+        }
     }
 
     return true;
