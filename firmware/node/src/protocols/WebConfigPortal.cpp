@@ -41,9 +41,9 @@ static bool saveFullConfig() {
     JsonObject protocols = doc.createNestedObject("protocols");
     JsonObject wifi = protocols.createNestedObject("wifi");
     wifi["ssid"]         = Config::WIFI_SSID;
-    wifi["eap_identity"] = Config::WIFI_EAP_IDENTITY;
-    wifi["eap_username"] = Config::WIFI_EAP_USERNAME;
     wifi["auto_reconnect"] = true;
+    wifi["ent_enabled"]  = Config::WIFI_ENT_ENABLED;
+    wifi["ent_username"] = Config::WIFI_ENT_USERNAME;
     
     JsonObject mqtt = protocols.createNestedObject("mqtt");
     mqtt["server"]               = Config::MQTT_SERVER;
@@ -315,10 +315,16 @@ void WebConfigPortal::handleApiFullConfigGet() {
     doc["security"]["admin_user"] = Config::ADMIN_USER;
     
     // WiFi — only non-sensitive fields
-    doc["protocols"]["wifi"]["ssid"]         = Config::WIFI_SSID;
-    doc["protocols"]["wifi"]["eap_identity"] = Config::WIFI_EAP_IDENTITY;
-    doc["protocols"]["wifi"]["eap_username"] = Config::WIFI_EAP_USERNAME;
-    // password and eap_password are intentionally omitted for security
+    doc["protocols"]["wifi"]["ssid"] = Config::WIFI_SSID;
+    doc["protocols"]["wifi"]["ent_enabled"] = Config::WIFI_ENT_ENABLED;
+    doc["protocols"]["wifi"]["ent_username"] = Config::WIFI_ENT_USERNAME;
+    if (Config::WIFI_ENT_ENABLED) {
+        doc["protocols"]["wifi"]["wifi_type"] = "wpa_enterprise";
+    } else if (Config::WIFI_PASS.length() > 0) {
+        doc["protocols"]["wifi"]["wifi_type"] = "wpa_personal";
+    } else {
+        doc["protocols"]["wifi"]["wifi_type"] = "open";
+    }
     
     // MQTT — do not expose mqtt_user
     doc["protocols"]["mqtt"]["server"]                = Config::MQTT_SERVER;
@@ -416,34 +422,35 @@ void WebConfigPortal::handleApiWifiPost() {
         server.send(400, "application/json", "{\"error\":\"SSID is required\"}");
         return;
     }
-    bool hasEnterpriseIdentity = server.hasArg("eap_identity") && server.arg("eap_identity").length() > 0;
-    bool hasEnterpriseUsername = server.hasArg("eap_username") && server.arg("eap_username").length() > 0;
-    if (hasEnterpriseIdentity && !hasEnterpriseUsername) {
-        server.send(400, "application/json", "{\"error\":\"Enterprise inner username is required when outer identity is set\"}");
-        return;
-    }
-    if ((hasEnterpriseIdentity || hasEnterpriseUsername) && (!server.hasArg("eap_password") || server.arg("eap_password").length() == 0)) {
-        server.send(400, "application/json", "{\"error\":\"Enterprise password is required when identity is set\"}");
-        return;
-    }
     if (server.hasArg("ssid")) { Config::WIFI_SSID = server.arg("ssid"); Config::WIFI_SSID.trim(); }
     if (server.hasArg("pass")) { Config::WIFI_PASS = server.arg("pass"); Config::WIFI_PASS.trim(); }
-    if (server.hasArg("eap_identity")) { Config::WIFI_EAP_IDENTITY = server.arg("eap_identity"); Config::WIFI_EAP_IDENTITY.trim(); }
-    if (server.hasArg("eap_username")) { Config::WIFI_EAP_USERNAME = server.arg("eap_username"); Config::WIFI_EAP_USERNAME.trim(); }
-    if (server.hasArg("eap_password")) { Config::WIFI_EAP_PASSWORD = server.arg("eap_password"); Config::WIFI_EAP_PASSWORD.trim(); }
-
-    // Older portal bundles did not submit eap_username for personal/open WiFi.
-    // An empty identity therefore explicitly clears stale Enterprise credentials.
-    if (server.hasArg("eap_identity") && Config::WIFI_EAP_IDENTITY.length() == 0 &&
-        Config::WIFI_EAP_USERNAME.length() == 0) {
-        Config::WIFI_EAP_PASSWORD = "";
+    if (server.hasArg("ent_enabled")) Config::WIFI_ENT_ENABLED = server.arg("ent_enabled") == "true" || server.arg("ent_enabled") == "1";
+    else Config::WIFI_ENT_ENABLED = false;
+    if (server.hasArg("ent_username")) { Config::WIFI_ENT_USERNAME = server.arg("ent_username"); Config::WIFI_ENT_USERNAME.trim(); }
+    if (server.hasArg("ent_password")) { Config::WIFI_ENT_PASSWORD = server.arg("ent_password"); Config::WIFI_ENT_PASSWORD.trim(); }
+    if (server.hasArg("ent_ca_cert")) { Config::WIFI_ENT_CA_CERT = server.arg("ent_ca_cert"); Config::WIFI_ENT_CA_CERT.trim(); }
+    if (server.hasArg("ent_client_cert")) { Config::WIFI_ENT_CLIENT_CERT = server.arg("ent_client_cert"); Config::WIFI_ENT_CLIENT_CERT.trim(); }
+    if (server.hasArg("ent_client_key")) { Config::WIFI_ENT_CLIENT_KEY = server.arg("ent_client_key"); Config::WIFI_ENT_CLIENT_KEY.trim(); }
+    
+    if (Config::WIFI_ENT_ENABLED) {
+        if (Config::WIFI_ENT_USERNAME.length() == 0) {
+            server.send(400, "application/json", "{\"error\":\"Enterprise username is required when WPA2 Enterprise is enabled\"}");
+            return;
+        }
+        if (Config::WIFI_ENT_PASSWORD.length() == 0) {
+            server.send(400, "application/json", "{\"error\":\"Enterprise password is required when WPA2 Enterprise is enabled\"}");
+            return;
+        }
     }
     
     CredentialManager::setWifiSsid(Config::WIFI_SSID);
     CredentialManager::setWifiPass(Config::WIFI_PASS);
-    CredentialManager::setWifiEapIdentity(Config::WIFI_EAP_IDENTITY);
-    CredentialManager::setWifiEapUsername(Config::WIFI_EAP_USERNAME);
-    CredentialManager::setWifiEapPassword(Config::WIFI_EAP_PASSWORD);
+    CredentialManager::setWifiEntEnabled(Config::WIFI_ENT_ENABLED);
+    CredentialManager::setWifiEntUsername(Config::WIFI_ENT_USERNAME);
+    CredentialManager::setWifiEntPassword(Config::WIFI_ENT_PASSWORD);
+    CredentialManager::setWifiEntCaCert(Config::WIFI_ENT_CA_CERT);
+    CredentialManager::setWifiEntClientCert(Config::WIFI_ENT_CLIENT_CERT);
+    CredentialManager::setWifiEntClientKey(Config::WIFI_ENT_CLIENT_KEY);
     
     if (saveFullConfig()) {
         server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true}");
@@ -846,9 +853,12 @@ void WebConfigPortal::handleApiConfigImport() {
     String importedAuthToken = doc["security"]["auth_token"] | "";
     String importedWifiSsid = doc["protocols"]["wifi"]["ssid"] | "";
     String importedWifiPass = doc["protocols"]["wifi"]["password"] | "";
-    String importedWifiEapIdentity = doc["protocols"]["wifi"]["eap_identity"] | "";
-    String importedWifiEapUsername = doc["protocols"]["wifi"]["eap_username"] | "";
-    String importedWifiEapPassword = doc["protocols"]["wifi"]["eap_password"] | "";
+    String importedWifiEntEnabled = doc["protocols"]["wifi"]["ent_enabled"] | "";
+    String importedWifiEntUsername = doc["protocols"]["wifi"]["ent_username"] | "";
+    String importedWifiEntPassword = doc["protocols"]["wifi"]["ent_password"] | "";
+    String importedWifiEntCaCert = doc["protocols"]["wifi"]["ent_ca_cert"] | "";
+    String importedWifiEntClientCert = doc["protocols"]["wifi"]["ent_client_cert"] | "";
+    String importedWifiEntClientKey = doc["protocols"]["wifi"]["ent_client_key"] | "";
     String importedMqttUser = doc["protocols"]["mqtt"]["user"] | "";
     String importedMqttPass = doc["protocols"]["mqtt"]["pass"] | "";
 
@@ -860,7 +870,10 @@ void WebConfigPortal::handleApiConfigImport() {
     }
     if (doc.containsKey("protocols") && doc["protocols"].containsKey("wifi")) {
         doc["protocols"]["wifi"].remove("password");
-        doc["protocols"]["wifi"].remove("eap_password");
+        doc["protocols"]["wifi"].remove("ent_password");
+        doc["protocols"]["wifi"].remove("ent_ca_cert");
+        doc["protocols"]["wifi"].remove("ent_client_cert");
+        doc["protocols"]["wifi"].remove("ent_client_key");
     }
     if (doc.containsKey("protocols") && doc["protocols"].containsKey("mqtt")) {
         doc["protocols"]["mqtt"].remove("user");
@@ -879,9 +892,12 @@ void WebConfigPortal::handleApiConfigImport() {
         if (importedAuthToken.length() > 0) CredentialManager::setAuthToken(importedAuthToken);
         if (importedWifiSsid.length() > 0) CredentialManager::setWifiSsid(importedWifiSsid);
         if (importedWifiPass.length() > 0) CredentialManager::setWifiPass(importedWifiPass);
-        if (importedWifiEapIdentity.length() > 0) CredentialManager::setWifiEapIdentity(importedWifiEapIdentity);
-        if (importedWifiEapUsername.length() > 0) CredentialManager::setWifiEapUsername(importedWifiEapUsername);
-        if (importedWifiEapPassword.length() > 0) CredentialManager::setWifiEapPassword(importedWifiEapPassword);
+        if (importedWifiEntEnabled.length() > 0) CredentialManager::setWifiEntEnabled(importedWifiEntEnabled == "true" || importedWifiEntEnabled == "1");
+        if (importedWifiEntUsername.length() > 0) CredentialManager::setWifiEntUsername(importedWifiEntUsername);
+        if (importedWifiEntPassword.length() > 0) CredentialManager::setWifiEntPassword(importedWifiEntPassword);
+        if (importedWifiEntCaCert.length() > 0) CredentialManager::setWifiEntCaCert(importedWifiEntCaCert);
+        if (importedWifiEntClientCert.length() > 0) CredentialManager::setWifiEntClientCert(importedWifiEntClientCert);
+        if (importedWifiEntClientKey.length() > 0) CredentialManager::setWifiEntClientKey(importedWifiEntClientKey);
         if (importedMqttUser.length() > 0) CredentialManager::setMqttUser(importedMqttUser);
         if (importedMqttPass.length() > 0) CredentialManager::setMqttPass(importedMqttPass);
         

@@ -22,9 +22,12 @@ namespace Config {
     // Jika kosong, device masuk Captive Portal untuk setup pertama
     String WIFI_SSID = "";
     String WIFI_PASS = "";
-    String WIFI_EAP_IDENTITY = "";
-    String WIFI_EAP_USERNAME = "";
-    String WIFI_EAP_PASSWORD = "";
+    bool WIFI_ENT_ENABLED = false;
+    String WIFI_ENT_USERNAME = "";
+    String WIFI_ENT_PASSWORD = "";
+    String WIFI_ENT_CA_CERT = "";
+    String WIFI_ENT_CLIENT_CERT = "";
+    String WIFI_ENT_CLIENT_KEY = "";
 
     // --- Konfigurasi MQTT ---
     // Nilai diisi dari config.json via ConfigManager::init()

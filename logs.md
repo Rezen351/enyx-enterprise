@@ -1,6 +1,31 @@
 # 📓 Development Logs — enyx-enterprise
 
-> **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`  
+> **Format:** `[YYYY-MM-DD] [STATUS] Deskripsi`
+
+### WPA2 Enterprise Stabilization & WiFi Mode Audit (2026-09-23)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | Menyelesaikan fitur WPA2 Enterprise (eduroam) di firmware node: UI captive portal, API backend, NVS credential storage, dan runtime connection mode. |
+| 2 | ✅ | Memperbaiki bug flag `WIFI_ENT_ENABLED` ditimpa `false` saat NVS kosong, sehingga mode enterprise dari `config.json` tetap aktif. |
+| 3 | ✅ | Memperbaiki `KEY_TOO_LONG` pada NVS dengan mengganti nama kunci enterprise menjadi pendek (`ent_enabled`, `ent_user`, `ent_pass`, `ent_ca`, `ent_cert`, `ent_key`). |
+| 4 | ✅ | Menambahkan validasi backend: jika `ent_enabled=true`, maka `ent_username` dan `ent_password` wajib diisi. |
+| 5 | ✅ | Memastikan password enterprise tidak disimpan ke `config.json`, hanya ke NVS; export/import API juga tidak membocorkan password. |
+| 6 | ✅ | Menambahkan field `wifi_type` pada `/api/fullconfig` agar UI bisa menampilkan mode Open/WPA Personal/WPA Enterprise dengan benar setelah reload. |
+| 7 | ✅ | Memperbaiki logout mode WiFi: saat user pilih Open atau Personal, flag `ent_enabled` otomatis `false` dan tidak menempel ke sesi berikutnya. |
+| 8 | ✅ | Meningkatkan timeout khusus WPA2 Enterprise menjadi 60 detik, sementara mode Personal/Open tetap 30 detik. |
+| 9 | ✅ | Build `esp32dev` dan `esp32s3` berhasil; WiFi modes saling toggle dengan benar. |
+
+**Keputusan Teknis:**
+- WPA2 Enterprise menggunakan header native `esp_wpa2.h` karena `WiFi.h` Arduino core tidak mengekspos API 802.1X yang dibutuhkan.
+- Password enterprise hanya disimpan di NVS namespace `creds` dengan kunci pendek untuk menghindari `KEY_TOO_LONG`.
+- Frontend mengirim `ent_enabled`, `ent_username`, dan `ent_password` hanya saat mode enterprise dipilih; untuk mode lain `ent_enabled=false` dikirim eksplisit.
+
+**Catatan:**
+- Setelah perubahan ini, mode WiFi (Open / WPA2 Personal / WPA2 Enterprise) sudah berjalan stabil.
+- **Jangan merubah ulang implementasi WiFi di firmware kecuali ada bug kritis atau permintaan fitur baru.**
+
+---
 
 ### Frontend XSS Hardening — `firmware/node/data/script.js` & `index.html` (2026-09-22)
 
@@ -22,6 +47,23 @@
 - Inline event handlers tetap dipakai (bukan diganti `addEventListener`) agar konsisten dengan arsitektur firmware yang ada; hanya `switchView` yang diubah untuk menerima `event` eksplisit.
 
 ---
+
+### Auto-Deteksi Pin I2C/RS485 Berdasarkan Board (2026-09-23)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | Menambahkan `applyBoardDefaultPins()` di `ConfigManager::init()` yang mendeteksi chip via `ESP.getChipModel()` dan menerapkan default pin sesuai board sebelum `loadConfig()`. |
+| 2 | ✅ | ESP32-S3 default: I2C=8/9, RS485 RX=16/TX=15/DE=17; ESP32 default tetap I2C=21/22 dan RS485=16/17/DE=255. |
+| 3 | ✅ | Memperbarui validasi I2C di `loadConfig()` agar batas maksimal GPIO menyesuaikan chip (`47` untuk S3, `39` untuk ESP32) dan fallback default ikut board. |
+| 4 | ✅ | Build ESP32-S3 berhasil; commit `6842627` untuk update default pin ESP32-S3. |
+
+### Backward Compatibility NVS Keys WPA2-Enterprise (2026-09-23)
+
+| # | Status | Aktivitas |
+|---|---|---|
+| 1 | ✅ | Menambahkan fallback NVS keys legacy `wifi_eap_id` dan `wifi_eap_pw` di `CredentialManager::loadCredentials()` untuk perangkat yang pernah flashed dengan versi sebelumnya. |
+| 2 | ✅ | Memperbarui `hasCredentials()` dan `clearCredentials()` agar juga memeriksa/menghapus key legacy. |
+| 3 | ✅ | Build ESP32-S3 berhasil; commit dua perubahan: `5821b1a` untuk backward compatibility NVS dan `0dbc6a7` untuk menonaktifkan default OTA di `platformio.ini`. |
 
 ### Perbaikan Persistence Konfigurasi Firmware (2026-09-21)
 
@@ -115,6 +157,8 @@
 - Menggunakan raw TCP frame daripada library `ModbusIP` untuk menghindari dependensi eksternal baru dan kontrol penuh terhadap MBAP header pada ESP32.
 - `ModbusTCPHandler` menggunakan single static `WiFiClient` yang reconnect otomatis jika koneksi terputus, menjaga konsistensi dengan pola single-transport-per-handler yang sudah ada.
 - Scanner Modbus (`/api/modbus/start_scan`, `/api/modbus/scan_reg_batch`) intentionally **belum diubah** ke TCP; UI scanner tetap RTU-only untuk sekarang. Transisi UI scanner ke RTU/TCP choice akan dilakukan di fase berikutnya.
+
+---
 
 ### Integrasi Modul Multiplexer PCF8575 Relay (Output) & Sensor/Switch (Input) (2026-09-19)
 
@@ -219,6 +263,7 @@
 
 **Keputusan Teknis:**
 - Parameter kelistrikan SunnyBoy (solar PV DC & grid AC), SunnyIsland (baterai DC, SOC %, & AC), dan AC Power Meter dimasukkan ke dalam `telemetry.modbus` sebagai perangkat Modbus RTU terpisah dengan slave ID unik (1..4) sesuai standar industri inverter SMA / SunSpec.
+
 ---
 
 ### Firmware Audit & Critical Fixes — Aeroponic Node (2026-09-14)
@@ -289,7 +334,7 @@
 | # | Status | Aktivitas |
 |---|---|---|
 | 1 | ✅ | **Membuat `CredentialManager`** — module baru [`src/core/CredentialManager.h`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/CredentialManager.h) & [`src/core/CredentialManager.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/CredentialManager.cpp) yang membungkus semua operasi NVS namespace `creds` untuk 9 field kredensial: `admin_user`, `admin_pass`, `auth_token`, `wifi_ssid`, `wifi_pass`, `wifi_eap_identity`, `wifi_eap_password`, `mqtt_user`, `mqtt_pass`. |
-| 2 | ✅ | **Integrasi `CredentialManager` ke boot flow** — [`ConfigManager::init()`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/ConfigManager.cpp:~9) kini memanggil `CredentialManager::init()` lalu `CredentialManager::loadCredentials()` jika NVS berisi kredensial. Jika NVS kosong, fallback ke `loadConfig()` dari `config.json` lalu otomatis memigrasi ke NVS. |
+| 2 | ✅ | **Integrasi `CredentialManager` ke boot flow** — [`ConfigManager::init()`](file:///home/almuzky/TA/Microservices/firmware/node/src/core/ConfigManager.cpp:~9) kini memanggil `CredentialManager::init()` lalu `CredentialManager::loadCredentials()` jika NVS berisi kredensial. Jika NVS kosong, fallback ke `loadConfig()` dari `config.json` lalu otomatis memigrasikan ke NVS. |
 | 3 | ✅ | **Pembatasan `loadConfig()`** — field kredensial di `config.json` hanya di-load jika NVS belum berisi kredensial (`!useNvsCredentials`). Ini mencegah overwrite NVS saat device sudah pernah di-konfigurasi. |
 | 4 | ✅ | **Penyelarasan API handlers** — `handleApiLogin`, `handleApiWifiPost`, `handleApiMqttPost`, dan `handleApiAccountPost` di [`WebConfigPortal.cpp`](file:///home/almuzky/TA/Microservices/firmware/node/src/protocols/WebConfigPortal.cpp) kini menulis kredensial yang diubah ke NVS melalui `CredentialManager::set*()` sebelum menyimpan config non-kredensial. |
 | 5 | ✅ | **Config export/import tanpa credential** — endpoint `/api/config/export` mengembalikan raw `config.json` (tidak ada credential untuk di-strip karena sudah pindah ke NVS). Endpoint `/api/config/import` memvalidasi payload, menulis ke `config.json`, lalu memanggil `CredentialManager::saveCredentials()` agar kredensial yang ada di payload otomatis dimigrasikan ke NVS. |
@@ -304,4 +349,3 @@
 - `saveFullConfig()` tidak lagi menyertakan field credential ke JSON, sehingga export/import lebih aman dan konsisten.
 
 ---
-
