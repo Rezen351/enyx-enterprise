@@ -1214,7 +1214,7 @@ async function importConfig() {
             return;
         }
 
-        let opts = { method: 'POST', headers: { 'Content-Type': 'application/json' } };
+        let opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: contents };
         if (token) opts.headers['Authorization'] = 'Bearer ' + token;
         let response = await fetch('/api/config/import', opts);
         let d = await response.json();
