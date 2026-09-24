@@ -140,7 +140,7 @@ async function api(path, method = 'GET', body = null) {
                 security: { admin_user: 'admin' },
                 protocols: {
                     wifi: { ssid: 'MyWiFi', ent_enabled: false, ent_username: '', wifi_type: 'open' },
-                    mqtt: { server: 'broker.emqx.io', port: 1883, topic_prefix: 'smartfarm', telemetry_interval_ms: 5000, mqtt_disconnect_emergency_stop: true }
+                    mqtt: { server: 'broker.emqx.io', port: 1883, topic_prefix: 'smartfarm', client_id: '', telemetry_interval_ms: 5000, mqtt_disconnect_emergency_stop: true }
                 },
                 hardware: {
                     inputs: [{ pin: 4, type: 'DIGITAL', pull: 'UP', name: 'Water Sensor' }],
@@ -155,7 +155,11 @@ async function api(path, method = 'GET', body = null) {
                         { name: 'BME280 Main', protocol: 'I2C', type: 'BME280', address: '0x76' }
                     ],
                     i2c_sda_pin: 21,
-                    i2c_scl_pin: 22
+                    i2c_scl_pin: 22,
+                    rs485_rx: 16,
+                    rs485_tx: 17,
+                    rs485_de: 255,
+                    rs485_parity: 0
                 }
             };
         }
@@ -381,6 +385,9 @@ async function loadFullConfig() {
         if (document.getElementById('cfg_rs485_de')) {
             document.getElementById('cfg_rs485_de').value = (d.hardware && d.hardware.rs485_de != null) ? d.hardware.rs485_de : 255;
         }
+        if (document.getElementById('cfg_rs485_parity')) {
+            document.getElementById('cfg_rs485_parity').value = (d.hardware && d.hardware.rs485_parity != null) ? d.hardware.rs485_parity : 0;
+        }
         // I2C global pins
         if (document.getElementById('cfg_i2c_sda')) {
             document.getElementById('cfg_i2c_sda').value = (d.hardware && d.hardware.i2c_sda_pin != null) ? d.hardware.i2c_sda_pin : 21;
@@ -403,6 +410,7 @@ async function loadFullConfig() {
         document.getElementById('cfg_mqtt_srv').value = mqtt.server || '';
         document.getElementById('cfg_mqtt_port').value = mqtt.port || '';
         document.getElementById('cfg_mqtt_pre').value = mqtt.topic_prefix || '';
+        document.getElementById('cfg_mqtt_client_id').value = mqtt.client_id || '';
         document.getElementById('cfg_mqtt_u').value = mqtt.user || '';
         document.getElementById('cfg_mqtt_p').value = '';
         document.getElementById('cfg_mqtt_p').placeholder = mqtt.pass ? PW_PLACEHOLDER : '';
@@ -990,7 +998,8 @@ async function saveRS485() {
     let rx = document.getElementById('cfg_rs485_rx').value;
     let tx = document.getElementById('cfg_rs485_tx').value;
     let de = document.getElementById('cfg_rs485_de').value;
-    let body = `rs485_rx=${encodeURIComponent(rx)}&rs485_tx=${encodeURIComponent(tx)}&rs485_de=${encodeURIComponent(de)}`;
+    let parity = document.getElementById('cfg_rs485_parity').value;
+    let body = `rs485_rx=${encodeURIComponent(rx)}&rs485_tx=${encodeURIComponent(tx)}&rs485_de=${encodeURIComponent(de)}&rs485_parity=${encodeURIComponent(parity)}`;
     let d = await api('/api/device', 'POST', body);
     setButtonLoading(btn, false, 'Save & Reboot');
     if (d) triggerRebootSequence();
@@ -1030,7 +1039,7 @@ async function saveMqtt() {
     let pre = document.getElementById('cfg_mqtt_pre').value;
     let u = document.getElementById('cfg_mqtt_u').value;
     let int = document.getElementById('cfg_mqtt_int').value;
-    let body = `server=${encodeURIComponent(s)}&port=${encodeURIComponent(p)}&topic_prefix=${encodeURIComponent(pre)}&user=${encodeURIComponent(u)}&telemetry_interval_ms=${encodeURIComponent(int)}&mqtt_disconnect_emergency_stop=${document.getElementById('cfg_mqtt_emergency_stop').checked}`;
+    let body = `server=${encodeURIComponent(s)}&port=${encodeURIComponent(p)}&topic_prefix=${encodeURIComponent(pre)}&client_id=${encodeURIComponent(document.getElementById('cfg_mqtt_client_id').value)}&user=${encodeURIComponent(u)}&telemetry_interval_ms=${encodeURIComponent(int)}&mqtt_disconnect_emergency_stop=${document.getElementById('cfg_mqtt_emergency_stop').checked}`;
     if (pwDirty.cfg_mqtt_p) body += `&pass=${encodeURIComponent(document.getElementById('cfg_mqtt_p').value)}`;
     let d = await api('/api/mqtt', 'POST', body);
     setButtonLoading(btn, false, 'Save & Reboot');

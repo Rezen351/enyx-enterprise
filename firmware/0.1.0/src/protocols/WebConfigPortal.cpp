@@ -52,6 +52,7 @@ static bool saveFullConfig() {
     mqtt["use_tls"]              = Config::MQTT_USE_TLS;
     mqtt["telemetry_interval_ms"]= Config::MQTT_PUBLISH_INTERVAL;
     mqtt["mqtt_disconnect_emergency_stop"] = Config::MQTT_DISCONNECT_EMERGENCY_STOP;
+    mqtt["client_id"]            = Config::MQTT_CLIENT_ID;
     
     JsonObject hardware = doc.createNestedObject("hardware");
     JsonArray inputs = hardware.createNestedArray("inputs");
@@ -334,6 +335,7 @@ void WebConfigPortal::handleApiFullConfigGet() {
     doc["protocols"]["mqtt"]["use_tls"]               = Config::MQTT_USE_TLS;
     doc["protocols"]["mqtt"]["telemetry_interval_ms"] = Config::MQTT_PUBLISH_INTERVAL;
     doc["protocols"]["mqtt"]["mqtt_disconnect_emergency_stop"] = Config::MQTT_DISCONNECT_EMERGENCY_STOP;
+    doc["protocols"]["mqtt"]["client_id"]             = Config::MQTT_CLIENT_ID;
     
     // Hardware Inputs
     JsonArray inputs = doc["hardware"].createNestedArray("inputs");
@@ -467,6 +469,7 @@ void WebConfigPortal::handleApiMqttPost() {
     if (server.hasArg("topic_prefix")) { Config::MQTT_TOPIC_PREFIX = server.arg("topic_prefix"); Config::MQTT_TOPIC_PREFIX.trim(); }
     if (server.hasArg("user")) { Config::MQTT_USER = server.arg("user"); Config::MQTT_USER.trim(); }
     if (server.hasArg("pass")) { Config::MQTT_PASS = server.arg("pass"); Config::MQTT_PASS.trim(); }
+    if (server.hasArg("client_id")) { Config::MQTT_CLIENT_ID = server.arg("client_id"); Config::MQTT_CLIENT_ID.trim(); }
     if (server.hasArg("telemetry_interval_ms")) Config::MQTT_PUBLISH_INTERVAL = server.arg("telemetry_interval_ms").toInt();
     if (server.hasArg("use_tls")) Config::MQTT_USE_TLS = server.arg("use_tls") == "true";
     if (server.hasArg("mqtt_disconnect_emergency_stop")) Config::MQTT_DISCONNECT_EMERGENCY_STOP = server.arg("mqtt_disconnect_emergency_stop") == "true";
@@ -490,6 +493,28 @@ void WebConfigPortal::handleApiDevicePost() {
     if (server.hasArg("rs485_tx")) { Config::PIN_RS485_TX = server.arg("rs485_tx").toInt(); }
     if (server.hasArg("rs485_de")) { Config::PIN_RS485_DE = server.arg("rs485_de").toInt(); }
     if (server.hasArg("rs485_parity")) { Config::PARITY = server.arg("rs485_parity").toInt(); }
+
+    {
+        String chip = ESP.getChipModel();
+        uint8_t maxGpio = chip.indexOf("ESP32-S3") >= 0 ? 47 : 39;
+        if (Config::PIN_RS485_RX > maxGpio || Config::PIN_RS485_TX > maxGpio ||
+            (Config::PIN_RS485_DE != 255 && Config::PIN_RS485_DE > maxGpio)) {
+            server.send(400, "application/json", "{\"error\":\"Invalid RS485 pins. RX/TX/DE must be within GPIO 0-" + String(maxGpio) + ", or DE=255 for auto.\"}");
+            return;
+        }
+        if (Config::PIN_RS485_RX == Config::PIN_RS485_TX) {
+            server.send(400, "application/json", "{\"error\":\"RS485 RX and TX must not be the same pin.\"}");
+            return;
+        }
+        if (Config::PIN_RS485_DE != 255 && (Config::PIN_RS485_DE == Config::PIN_RS485_RX || Config::PIN_RS485_DE == Config::PIN_RS485_TX)) {
+            server.send(400, "application/json", "{\"error\":\"RS485 DE pin must be different from RX and TX.\"}");
+            return;
+        }
+        if (Config::PARITY > 2) {
+            server.send(400, "application/json", "{\"error\":\"Invalid parity. Must be 0=None, 1=Even, or 2=Odd.\"}");
+            return;
+        }
+    }
 
     if (saveFullConfig()) {
         server.send(200, "application/json", "{\"status\":\"ok\",\"reboot\":true,\"message\":\"Device config updated. Rebooting...\"}");

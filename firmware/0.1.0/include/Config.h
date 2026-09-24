@@ -86,6 +86,7 @@ namespace Config {
     extern String MQTT_TOPIC_PREFIX;
     extern String MQTT_USER;
     extern String MQTT_PASS;
+    extern String MQTT_CLIENT_ID;
     extern bool MQTT_USE_TLS;
     extern String MQTT_CA_CERT;
     extern String MQTT_CLIENT_CERT;

@@ -36,6 +36,7 @@ namespace Config {
     String MQTT_TOPIC_PREFIX = "smartfarm";
     String MQTT_USER = "";
     String MQTT_PASS = "";
+    String MQTT_CLIENT_ID = "";
     bool MQTT_USE_TLS = false;
     String MQTT_CA_CERT = "";
     String MQTT_CLIENT_CERT = "";

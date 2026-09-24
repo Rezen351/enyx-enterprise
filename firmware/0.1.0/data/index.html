@@ -205,6 +205,8 @@
                             max="65535"></div>
                     <div class="form-group"><label for="cfg_mqtt_pre">Topic Prefix</label><input type="text" id="cfg_mqtt_pre" required
                             pattern="[a-zA-Z0-9_\/]+"></div>
+                    <div class="form-group"><label for="cfg_mqtt_client_id">Client ID (Optional)</label><input type="text"
+                            id="cfg_mqtt_client_id" placeholder="Leave empty to use enyx-&lt;node_id&gt;"></div>
                     <div class="form-group"><label for="cfg_mqtt_u">MQTT Username (Optional)</label><input type="text" id="cfg_mqtt_u"
                             placeholder="Leave empty for public broker" autocomplete="username"></div>
                     <div class="form-group"><label for="cfg_mqtt_p">MQTT Password (Optional)</label><input type="password"
@@ -258,6 +260,14 @@
                         <div class="form-group">
                             <label for="cfg_rs485_de">DE Pin (GPIO Driver Enable, 255 = auto/disabled)</label>
                             <input type="number" id="cfg_rs485_de" min="0" max="255" value="255">
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg_rs485_parity">Parity</label>
+                            <select id="cfg_rs485_parity">
+                                <option value="0" selected>None (8N1)</option>
+                                <option value="1">Even (8E1)</option>
+                                <option value="2">Odd (8O1)</option>
+                            </select>
                         </div>
                         <button type="submit">Save & Reboot</button>
                     </form>

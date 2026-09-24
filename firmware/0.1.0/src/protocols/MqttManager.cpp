@@ -195,7 +195,7 @@ void MqttManager::mqttTask(void* parameter) {
                 Logger::mqtt("Connecting to broker...");
                 addLog("Connecting to broker...");
                 
-                String clientId = "enyx-" + Config::NODE_ID;
+                String clientId = Config::MQTT_CLIENT_ID.length() > 0 ? Config::MQTT_CLIENT_ID : ("enyx-" + Config::NODE_ID);
                 String lwtTopic = Config::MQTT_TOPIC_PREFIX + "/status/" + Config::NODE_ID;
                 String macAsli = WiFi.macAddress();
                 String lwtPayload = "{\"status\":\"offline\",\"mac\":\"" + macAsli + "\"}";

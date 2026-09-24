@@ -8,27 +8,6 @@
 #include "CredentialManager.h"
 #include "MemoryHelper.h"
 
-static void applyBoardDefaultPins() {
-    String chip = ESP.getChipModel();
-    Logger::config("Detected chip: %s", chip.c_str());
-
-    if (chip.indexOf("ESP32-S3") >= 0) {
-        Config::PIN_I2C_SDA = 8;
-        Config::PIN_I2C_SCL = 9;
-        Config::PIN_RS485_RX = 16;
-        Config::PIN_RS485_TX = 15;
-        Config::PIN_RS485_DE = 17;
-        Logger::config("Applied ESP32-S3 default pins: I2C=8/9, RS485=16/15/DE=17");
-    } else {
-        Config::PIN_I2C_SDA = 21;
-        Config::PIN_I2C_SCL = 22;
-        Config::PIN_RS485_RX = 16;
-        Config::PIN_RS485_TX = 17;
-        Config::PIN_RS485_DE = 255;
-        Logger::config("Applied ESP32 default pins: I2C=21/22, RS485=16/17/DE=not set");
-    }
-}
-
 void ConfigManager::init() {
     Logger::config("Mounting LittleFS...");
 
@@ -57,7 +36,6 @@ void ConfigManager::init() {
                    MemoryHelper::getFreePsram() / 1024);
 
     CredentialManager::init();
-    applyBoardDefaultPins();
     if (!loadConfig()) {
         Logger::config("Failed to load config.json. Using board-specific defaults.");
     }
@@ -92,8 +70,22 @@ void ConfigManager::init() {
 }
 
 bool ConfigManager::loadConfig() {
+    // Apply board-specific defaults first
+    String chip = ESP.getChipModel();
+    bool isS3 = chip.indexOf("ESP32-S3") >= 0;
+    
+    Config::PIN_I2C_SDA = isS3 ? 8 : 21;
+    Config::PIN_I2C_SCL = isS3 ? 9 : 22;
+    Config::PIN_RS485_RX = 16;
+    Config::PIN_RS485_TX = isS3 ? 15 : 17;
+    Config::PIN_RS485_DE = 255;
+    Config::PARITY = 0;
+    
     File file = LittleFS.open("/config.json", "r");
     if (!file) {
+        Logger::config("No config.json found. Using board-specific defaults.");
+        Logger::config("I2C pins: SDA=%d, SCL=%d", Config::PIN_I2C_SDA, Config::PIN_I2C_SCL);
+        Logger::config("RS485 pins: RX=%d, TX=%d, DE=%d, Parity=%d", Config::PIN_RS485_RX, Config::PIN_RS485_TX, Config::PIN_RS485_DE, Config::PARITY);
         return false;
     }
 
@@ -104,6 +96,9 @@ bool ConfigManager::loadConfig() {
 
     if (error) {
         Logger::config("Failed to parse config.json: %s", error.c_str());
+        Logger::config("Using board-specific defaults due to parse error.");
+        Logger::config("I2C pins: SDA=%d, SCL=%d", Config::PIN_I2C_SDA, Config::PIN_I2C_SCL);
+        Logger::config("RS485 pins: RX=%d, TX=%d, DE=%d, Parity=%d", Config::PIN_RS485_RX, Config::PIN_RS485_TX, Config::PIN_RS485_DE, Config::PARITY);
         return false;
     }
 
@@ -219,6 +214,10 @@ bool ConfigManager::loadConfig() {
     }
     if (doc["protocols"]["mqtt"].containsKey("telemetry_interval_ms")) {
         Config::MQTT_PUBLISH_INTERVAL = doc["protocols"]["mqtt"]["telemetry_interval_ms"].as<uint32_t>();
+    }
+    if (doc["protocols"]["mqtt"].containsKey("client_id")) {
+        Config::MQTT_CLIENT_ID = doc["protocols"]["mqtt"]["client_id"].as<String>();
+        Config::MQTT_CLIENT_ID.trim();
     }
 
     // MQTT TLS
@@ -371,18 +370,20 @@ bool ConfigManager::loadConfig() {
         Config::PIN_I2C_SCL = doc["hardware"]["i2c_scl_pin"].as<uint8_t>();
     }
 
-    String chip = ESP.getChipModel();
     uint8_t maxGpio = chip.indexOf("ESP32-S3") >= 0 ? 47 : 39;
     if (Config::PIN_I2C_SDA > maxGpio || Config::PIN_I2C_SCL > maxGpio) {
         Logger::config("Invalid I2C pins detected in config for %s, resetting to defaults", chip.c_str());
         if (chip.indexOf("ESP32-S3") >= 0) {
-            Config::PIN_I2C_SDA = 40;
-            Config::PIN_I2C_SCL = 41;
+            Config::PIN_I2C_SDA = 8;
+            Config::PIN_I2C_SCL = 9;
         } else {
             Config::PIN_I2C_SDA = 21;
             Config::PIN_I2C_SCL = 22;
         }
     }
+
+    Logger::config("Final I2C pins: SDA=%d, SCL=%d", Config::PIN_I2C_SDA, Config::PIN_I2C_SCL);
+    Logger::config("Final RS485 pins: RX=%d, TX=%d, DE=%d, Parity=%d", Config::PIN_RS485_RX, Config::PIN_RS485_TX, Config::PIN_RS485_DE, Config::PARITY);
 
     return true;
 }

@@ -1,7 +1,7 @@
 {
   "device": {
     "node_id": "",
-    "fw_version": "1.0.0",
+    "fw_version": "0.1.0",
     "description": "Node Control and Sensor Acquisition"
   },
   "protocols": {
@@ -13,6 +13,7 @@
       "server": "167.205.44.103",
       "port": 1883,
       "topic_prefix": "smartgrid",
+      "client_id": "",
       "use_tls": false,
       "telemetry_interval_ms": 5000
     }
