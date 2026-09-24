@@ -862,26 +862,49 @@ void WebConfigPortal::handleApiConfigImport() {
     String importedMqttUser = doc["protocols"]["mqtt"]["user"] | "";
     String importedMqttPass = doc["protocols"]["mqtt"]["pass"] | "";
 
-    // Strip credentials from payload so config.json stays clean
-    if (doc.containsKey("security")) {
-        doc["security"].remove("admin_user");
-        doc["security"].remove("admin_pass");
-        doc["security"].remove("auth_token");
+    // Merge imported payload with existing config so partial imports
+    // (e.g. hardware-only changes) do not wipe device / protocols sections.
+    DynamicJsonDocument mergedDoc(24576);
+    File existingFile = LittleFS.open("/config.json", "r");
+    if (existingFile) {
+        String existingJson = existingFile.readString();
+        existingFile.close();
+        if (existingJson.length() > 0) {
+            deserializeJson(mergedDoc, existingJson);
+        }
     }
-    if (doc.containsKey("protocols") && doc["protocols"].containsKey("wifi")) {
-        doc["protocols"]["wifi"].remove("password");
-        doc["protocols"]["wifi"].remove("ent_password");
-        doc["protocols"]["wifi"].remove("ent_ca_cert");
-        doc["protocols"]["wifi"].remove("ent_client_cert");
-        doc["protocols"]["wifi"].remove("ent_client_key");
+    for (const auto& kv : doc.as<JsonObject>()) {
+        if (mergedDoc.containsKey(kv.key()) && kv.value().is<JsonObject>() && mergedDoc[kv.key()].is<JsonObject>()) {
+            JsonObject importedObj = kv.value().as<JsonObject>();
+            JsonObject existingObj = mergedDoc[kv.key()].as<JsonObject>();
+            for (const auto& subKv : importedObj) {
+                existingObj[subKv.key()] = subKv.value();
+            }
+        } else {
+            mergedDoc[kv.key()] = kv.value();
+        }
     }
-    if (doc.containsKey("protocols") && doc["protocols"].containsKey("mqtt")) {
-        doc["protocols"]["mqtt"].remove("user");
-        doc["protocols"]["mqtt"].remove("pass");
+
+    // Strip credentials from merged payload so config.json stays clean
+    if (mergedDoc.containsKey("security")) {
+        mergedDoc["security"].remove("admin_user");
+        mergedDoc["security"].remove("admin_pass");
+        mergedDoc["security"].remove("auth_token");
+    }
+    if (mergedDoc.containsKey("protocols") && mergedDoc["protocols"].containsKey("wifi")) {
+        mergedDoc["protocols"]["wifi"].remove("password");
+        mergedDoc["protocols"]["wifi"].remove("ent_password");
+        mergedDoc["protocols"]["wifi"].remove("ent_ca_cert");
+        mergedDoc["protocols"]["wifi"].remove("ent_client_cert");
+        mergedDoc["protocols"]["wifi"].remove("ent_client_key");
+    }
+    if (mergedDoc.containsKey("protocols") && mergedDoc["protocols"].containsKey("mqtt")) {
+        mergedDoc["protocols"]["mqtt"].remove("user");
+        mergedDoc["protocols"]["mqtt"].remove("pass");
     }
 
     String filteredPayload;
-    serializeJson(doc, filteredPayload);
+    serializeJson(mergedDoc, filteredPayload);
 
     if (ConfigManager::saveConfig(filteredPayload)) {
         ConfigManager::loadConfig();
