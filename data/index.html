@@ -222,21 +222,21 @@
             </div>
 
             <div id="view-gpio" class="view-section">
-                <form class="card" onsubmit="event.preventDefault(); saveHardware();">
+                <form class="card" onsubmit="event.preventDefault(); saveHardware(document.querySelector('#view-gpio button.w-full'));">
                     <h3 class="mt-0">Input Mapping</h3>
                     <div id="input-rows"></div>
                     <button class="outline mt-10" onclick="addInputRow()" type="button">+ Add
                         Input</button>
                 </form>
 
-                <form class="card" onsubmit="event.preventDefault(); saveHardware();">
+                <form class="card" onsubmit="event.preventDefault(); saveHardware(document.querySelector('#view-gpio button.w-full'));">
                     <h3 class="mt-0">Output Mapping</h3>
                     <div id="output-rows"></div>
                     <button class="outline mt-10" onclick="addOutputRow()" type="button">+ Add
                         Output</button>
                 </form>
 
-                <button class="w-full mt-10" onclick="saveHardware()">Save & Reboot</button>
+                <button class="w-full mt-10" onclick="saveHardware(this)">Apply</button>
             </div>
 
             <!-- MODBUS -->
@@ -246,7 +246,7 @@
                     <p class="text-muted text-sm mb-16">
                         Configure UART pins for Modbus RTU.
                     </p>
-                    <form onsubmit="event.preventDefault(); saveRS485();">
+                    <form id="form-rs485" onsubmit="event.preventDefault(); saveRS485();">
                         <div class="form-group">
                             <label for="cfg_rs485_rx">RX Pin</label>
                             <input type="number" id="cfg_rs485_rx" min="0" max="48" value="16">
@@ -314,19 +314,19 @@
                         appear here...</div>
                 </div>
 
-                <form class="card" onsubmit="event.preventDefault(); saveHardware();">
+                <form class="card" onsubmit="event.preventDefault(); saveHardware(this.querySelector('button[type="submit"]'));">
                     <h3 class="mt-0">Sensor Configurations</h3>
                     <div id="modbus-rows"></div>
                     <button class="outline mt-10" onclick="addModbusSensor()" type="button">+ Add
                         Modbus
                         Sensor</button>
-                    <button class="w-full mt-10" type="submit">Save & Reboot</button>
+                    <button class="w-full mt-10" type="submit">Apply</button>
                 </form>
             </div>
 
             <!-- I2C -->
             <div id="view-i2c" class="view-section">
-                <form class="card" onsubmit="event.preventDefault(); saveHardware();">
+                <form class="card" onsubmit="event.preventDefault(); saveHardware(this.querySelector('button[type="submit"]'));">
                     <h3 class="mt-0">I2C Configuration</h3>
                     <p class="text-muted text-sm mb-16">
                         Configure the global I2C bus pins. These pins are shared across all I2C sensors.
@@ -341,9 +341,10 @@
                             <input type="number" id="cfg_i2c_scl" min="0" max="48" value="22">
                         </div>
                     </div>
+                    <button class="w-full mt-10" type="submit">Apply</button>
                 </form>
 
-                <form class="card" onsubmit="event.preventDefault(); saveHardware();">
+                <form class="card" onsubmit="event.preventDefault(); saveHardware(this.querySelector('button[type="submit"]'));">
                     <h3 class="mt-0">I2C Sensors</h3>
                     <p class="text-muted text-sm mb-16">
                         Add I2C sensors (INA219, BME280, DHT12). I2C pins are configured globally above.
@@ -351,7 +352,7 @@
                     <div id="i2c-rows"></div>
                     <button class="outline mt-10" onclick="addI2CSensor()" type="button">+ Add
                         I2C Sensor</button>
-                    <button class="w-full mt-10" type="submit">Save & Reboot</button>
+                    <button class="w-full mt-10" type="submit">Apply</button>
                 </form>
             </div>
 

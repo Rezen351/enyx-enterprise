@@ -36,7 +36,7 @@ static bool saveFullConfig() {
     device["fw_version"] = Config::FW_VERSION;
     
     JsonObject security = doc.createNestedObject("security");
-    security["credentials_encrypted"] = false;
+    security["admin_user"] = Config::ADMIN_USER;
     
     JsonObject protocols = doc.createNestedObject("protocols");
     JsonObject wifi = protocols.createNestedObject("wifi");
@@ -817,8 +817,67 @@ void WebConfigPortal::handleApiConfigExport() {
     String contents = file.readString();
     file.close();
 
+    DynamicJsonDocument configDoc(24576);
+    DeserializationError err = deserializeJson(configDoc, contents);
+    if (err) {
+        server.send(500, "application/json", "{\"error\":\"Failed to parse config.json\"}");
+        return;
+    }
+
+    DynamicJsonDocument exportDoc(24576);
+    if (configDoc.containsKey("device")) exportDoc["device"] = configDoc["device"];
+    if (configDoc.containsKey("protocols")) exportDoc["protocols"] = configDoc["protocols"];
+    if (configDoc.containsKey("hardware")) exportDoc["hardware"] = configDoc["hardware"];
+
+    JsonObject creds = exportDoc.createNestedObject("_credentials");
+    creds["admin_user"] = CredentialManager::getAdminUser();
+    creds["admin_pass"] = CredentialManager::getAdminPass();
+    creds["auth_token"] = CredentialManager::getAuthToken();
+    creds["wifi_ssid"] = CredentialManager::getWifiSsid();
+    creds["wifi_password"] = CredentialManager::getWifiPass();
+    creds["wifi_ent_enabled"] = CredentialManager::getWifiEntEnabled();
+    creds["wifi_ent_username"] = CredentialManager::getWifiEntUsername();
+    creds["wifi_ent_password"] = CredentialManager::getWifiEntPassword();
+    creds["wifi_ent_ca_cert"] = CredentialManager::getWifiEntCaCert();
+    creds["wifi_ent_client_cert"] = CredentialManager::getWifiEntClientCert();
+    creds["wifi_ent_client_key"] = CredentialManager::getWifiEntClientKey();
+    creds["mqtt_user"] = CredentialManager::getMqttUser();
+    creds["mqtt_pass"] = CredentialManager::getMqttPass();
+
+    String out;
+    serializeJson(exportDoc, out);
     server.sendHeader("Content-Disposition", "attachment; filename=config.json");
-    server.send(200, "application/json", contents);
+    server.send(200, "application/json", out);
+}
+
+static bool validateConfigSchema(JsonDocument& doc) {
+    if (!doc.containsKey("protocols") || !doc["protocols"].is<JsonObject>()) {
+        return false;
+    }
+    if (!doc["protocols"].containsKey("wifi") || !doc["protocols"]["wifi"].is<JsonObject>()) {
+        return false;
+    }
+    if (!doc["protocols"]["wifi"].containsKey("ssid")) {
+        return false;
+    }
+    if (!doc["protocols"].containsKey("mqtt") || !doc["protocols"]["mqtt"].is<JsonObject>()) {
+        return false;
+    }
+    if (!doc["protocols"]["mqtt"].containsKey("server") || !doc["protocols"]["mqtt"].containsKey("port")) {
+        return false;
+    }
+    int port = doc["protocols"]["mqtt"]["port"].as<int>();
+    if (port < 1 || port > 65535) {
+        return false;
+    }
+    if (!doc.containsKey("hardware") || !doc["hardware"].is<JsonObject>()) {
+        return false;
+    }
+    if (!doc["hardware"].containsKey("inputs") || !doc["hardware"]["inputs"].is<JsonArray>()) return false;
+    if (!doc["hardware"].containsKey("outputs") || !doc["hardware"]["outputs"].is<JsonArray>()) return false;
+    if (!doc["hardware"].containsKey("modbus") || !doc["hardware"]["modbus"].is<JsonArray>()) return false;
+    if (!doc["hardware"].containsKey("sensors") || !doc["hardware"]["sensors"].is<JsonArray>()) return false;
+    return true;
 }
 
 void WebConfigPortal::handleApiConfigImport() {
@@ -847,23 +906,30 @@ void WebConfigPortal::handleApiConfigImport() {
         return;
     }
 
-    // Extract credentials from payload before stripping them
-    String importedAdminUser = doc["security"]["admin_user"] | "";
-    String importedAdminPass = doc["security"]["admin_pass"] | "";
-    String importedAuthToken = doc["security"]["auth_token"] | "";
-    String importedWifiSsid = doc["protocols"]["wifi"]["ssid"] | "";
-    String importedWifiPass = doc["protocols"]["wifi"]["password"] | "";
-    String importedWifiEntEnabled = doc["protocols"]["wifi"]["ent_enabled"] | "";
-    String importedWifiEntUsername = doc["protocols"]["wifi"]["ent_username"] | "";
-    String importedWifiEntPassword = doc["protocols"]["wifi"]["ent_password"] | "";
-    String importedWifiEntCaCert = doc["protocols"]["wifi"]["ent_ca_cert"] | "";
-    String importedWifiEntClientCert = doc["protocols"]["wifi"]["ent_client_cert"] | "";
-    String importedWifiEntClientKey = doc["protocols"]["wifi"]["ent_client_key"] | "";
-    String importedMqttUser = doc["protocols"]["mqtt"]["user"] | "";
-    String importedMqttPass = doc["protocols"]["mqtt"]["pass"] | "";
+    if (!validateConfigSchema(doc)) {
+        server.send(400, "application/json", "{\"error\":\"Invalid config schema: missing or invalid required fields\"}");
+        return;
+    }
 
-    // Merge imported payload with existing config so partial imports
-    // (e.g. hardware-only changes) do not wipe device / protocols sections.
+    JsonObject credsSource = doc.containsKey("_credentials") && doc["_credentials"].is<JsonObject>()
+        ? doc["_credentials"].as<JsonObject>()
+        : doc.as<JsonObject>();
+
+    String importedAdminUser = credsSource["admin_user"] | "";
+    String importedAdminPass = credsSource["admin_pass"] | "";
+    String importedAuthToken = credsSource["auth_token"] | "";
+    String importedWifiSsid = credsSource["wifi_ssid"] | doc["protocols"]["wifi"]["ssid"] | "";
+    String importedWifiPass = credsSource["wifi_password"] | "";
+    bool hasEntEnabled = !credsSource["wifi_ent_enabled"].isNull();
+    bool importedWifiEntEnabled = hasEntEnabled ? credsSource["wifi_ent_enabled"].as<bool>() : false;
+    String importedWifiEntUsername = credsSource["wifi_ent_username"] | "";
+    String importedWifiEntPassword = credsSource["wifi_ent_password"] | "";
+    String importedWifiEntCaCert = credsSource["wifi_ent_ca_cert"] | "";
+    String importedWifiEntClientCert = credsSource["wifi_ent_client_cert"] | "";
+    String importedWifiEntClientKey = credsSource["wifi_ent_client_key"] | "";
+    String importedMqttUser = credsSource["mqtt_user"] | "";
+    String importedMqttPass = credsSource["mqtt_pass"] | "";
+
     DynamicJsonDocument mergedDoc(24576);
     File existingFile = LittleFS.open("/config.json", "r");
     if (existingFile) {
@@ -874,6 +940,7 @@ void WebConfigPortal::handleApiConfigImport() {
         }
     }
     for (const auto& kv : doc.as<JsonObject>()) {
+        if (kv.key() == "_credentials") continue;
         if (mergedDoc.containsKey(kv.key()) && kv.value().is<JsonObject>() && mergedDoc[kv.key()].is<JsonObject>()) {
             JsonObject importedObj = kv.value().as<JsonObject>();
             JsonObject existingObj = mergedDoc[kv.key()].as<JsonObject>();
@@ -885,7 +952,7 @@ void WebConfigPortal::handleApiConfigImport() {
         }
     }
 
-    // Strip credentials from merged payload so config.json stays clean
+    // Strip any residual credential fields from merged payload so config.json stays clean
     if (mergedDoc.containsKey("security")) {
         mergedDoc["security"].remove("admin_user");
         mergedDoc["security"].remove("admin_pass");
@@ -909,13 +976,22 @@ void WebConfigPortal::handleApiConfigImport() {
     if (ConfigManager::saveConfig(filteredPayload)) {
         ConfigManager::loadConfig();
         
-        // Save imported credentials to NVS
+        bool importHasCredentials = doc.containsKey("_credentials") && doc["_credentials"].is<JsonObject>() &&
+            (importedAdminUser.length() > 0 || importedAdminPass.length() > 0 || importedAuthToken.length() > 0 ||
+             importedWifiSsid.length() > 0 || importedWifiPass.length() > 0 || hasEntEnabled ||
+             importedWifiEntUsername.length() > 0 || importedWifiEntPassword.length() > 0 ||
+             importedWifiEntCaCert.length() > 0 || importedWifiEntClientCert.length() > 0 ||
+             importedWifiEntClientKey.length() > 0 || importedMqttUser.length() > 0 || importedMqttPass.length() > 0);
+        if (importHasCredentials) {
+            CredentialManager::clearCredentials();
+        }
+        
         if (importedAdminUser.length() > 0) CredentialManager::setAdminUser(importedAdminUser);
         if (importedAdminPass.length() > 0) CredentialManager::setAdminPass(importedAdminPass);
         if (importedAuthToken.length() > 0) CredentialManager::setAuthToken(importedAuthToken);
         if (importedWifiSsid.length() > 0) CredentialManager::setWifiSsid(importedWifiSsid);
         if (importedWifiPass.length() > 0) CredentialManager::setWifiPass(importedWifiPass);
-        if (importedWifiEntEnabled.length() > 0) CredentialManager::setWifiEntEnabled(importedWifiEntEnabled == "true" || importedWifiEntEnabled == "1");
+        if (hasEntEnabled) CredentialManager::setWifiEntEnabled(importedWifiEntEnabled);
         if (importedWifiEntUsername.length() > 0) CredentialManager::setWifiEntUsername(importedWifiEntUsername);
         if (importedWifiEntPassword.length() > 0) CredentialManager::setWifiEntPassword(importedWifiEntPassword);
         if (importedWifiEntCaCert.length() > 0) CredentialManager::setWifiEntCaCert(importedWifiEntCaCert);
@@ -924,7 +1000,7 @@ void WebConfigPortal::handleApiConfigImport() {
         if (importedMqttUser.length() > 0) CredentialManager::setMqttUser(importedMqttUser);
         if (importedMqttPass.length() > 0) CredentialManager::setMqttPass(importedMqttPass);
         
-        server.send(200, "application/json", "{\"status\":\"success\",\"reboot\":true,\"message\":\"Configuration imported successfully. Rebooting to apply all settings.\"}");
+        server.send(200, "application/json", "{\"success\":true,\"message\":\"Configuration imported successfully. Rebooting to apply all settings.\",\"reboot\":true}");
         delay(100);
         ESP.restart();
     } else {

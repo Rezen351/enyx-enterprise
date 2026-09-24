@@ -229,11 +229,6 @@ bool ConfigManager::loadConfig() {
         Config::MQTT_DISCONNECT_EMERGENCY_STOP = doc["protocols"]["mqtt"]["mqtt_disconnect_emergency_stop"].as<bool>();
     }
 
-    // Migrate credentials to NVS if they came from config.json and NVS is empty
-    if (!useNvsCredentials) {
-        CredentialManager::saveCredentials();
-    }
-
     // Updating dynamic topics based on potentially new NODE_ID and TOPIC_PREFIX
     Config::TOPIC_TELEMETRY = Config::MQTT_TOPIC_PREFIX + "/" + Config::NODE_ID + "/telemetry";
     Config::TOPIC_ACTUATOR  = Config::MQTT_TOPIC_PREFIX + "/actuator/" + Config::NODE_ID;

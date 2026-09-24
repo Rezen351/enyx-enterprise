@@ -957,19 +957,19 @@ async function startScanReg() {
     }
 }
 
-async function saveHardware() {
-    if (!await showModal('Confirm', 'Save hardware config and reboot?')) return;
-    let btn = document.querySelector('#view-gpio button[type="submit"]');
-    setButtonLoading(btn, true, 'Save & Reboot');
+async function saveHardware(btn) {
+    if (!await showModal('Confirm', 'Save hardware config?')) return;
+    if (!btn) btn = document.querySelector('#view-gpio button.w-full');
+    setButtonLoading(btn, true, 'Apply');
     let i2cSda = document.getElementById('cfg_i2c_sda') ? document.getElementById('cfg_i2c_sda').value : 21;
     let i2cScl = document.getElementById('cfg_i2c_scl') ? document.getElementById('cfg_i2c_scl').value : 22;
     let hwPayload = { inputs: hwInputs, outputs: hwOutputs, modbus: hwModbus, sensors: hwI2C, i2c_sda_pin: parseInt(i2cSda), i2c_scl_pin: parseInt(i2cScl) };
     let payload = encodeURIComponent(JSON.stringify(hwPayload));
     let d = await api('/api/hardware', 'POST', `payload=${payload}`);
-    setButtonLoading(btn, false, 'Save & Reboot');
+    setButtonLoading(btn, false, 'Apply');
     if (d) {
         await loadFullConfig();
-        showMsg('Hardware configuration applied.');
+        showMsg(d.message || 'Hardware config applied (hot-swapped, no reboot).');
     }
 }
 
@@ -985,7 +985,7 @@ async function saveDevice() {
 
 async function saveRS485() {
     if (!await showModal('Confirm', 'Save RS485 config and reboot?')) return;
-    let btn = document.querySelector('#view-modbus button[type="submit"]');
+    let btn = document.querySelector('#form-rs485 button[type="submit"]');
     setButtonLoading(btn, true, 'Save & Reboot');
     let rx = document.getElementById('cfg_rs485_rx').value;
     let tx = document.getElementById('cfg_rs485_tx').value;
